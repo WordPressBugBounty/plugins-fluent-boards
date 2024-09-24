@@ -1,0 +1,41 @@
+<?php return array(
+    'root' => array(
+        'name' => 'wpfluent/wpfluent',
+        'pretty_version' => 'dev-develop',
+        'version' => 'dev-develop',
+        'reference' => '87e2371d0fd81048fc7504576dee90e1ee787f43',
+        'type' => 'project',
+        'install_path' => __DIR__ . '/../../',
+        'aliases' => array(),
+        'dev' => true,
+    ),
+    'versions' => array(
+        'woocommerce/action-scheduler' => array(
+            'pretty_version' => '3.8.1',
+            'version' => '3.8.1.0',
+            'reference' => 'e331b534d7de10402d7545a0de50177b874c0779',
+            'type' => 'wordpress-plugin',
+            'install_path' => __DIR__ . '/../woocommerce/action-scheduler',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'wpfluent/framework' => array(
+            'pretty_version' => '2.4.6',
+            'version' => '2.4.6.0',
+            'reference' => 'ae98d8bdc3790d78587428cc45313f05ebeb9927',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../wpfluent/framework',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'wpfluent/wpfluent' => array(
+            'pretty_version' => 'dev-develop',
+            'version' => 'dev-develop',
+            'reference' => '87e2371d0fd81048fc7504576dee90e1ee787f43',
+            'type' => 'project',
+            'install_path' => __DIR__ . '/../../',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+    ),
+);
