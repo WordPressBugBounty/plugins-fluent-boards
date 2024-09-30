@@ -748,7 +748,7 @@ class BoardService
                     'parent_id'   => null,
                     'archived_at' => null
                 ])
-                ->with(['assignees', 'labels', 'watcher', 'customFields'])
+                ->with(['assignees', 'labels', 'watchers', 'customFields'])
                 ->orderBy('due_at', 'ASC')
                 ->get();
         } else {
