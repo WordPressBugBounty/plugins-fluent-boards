@@ -103,6 +103,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     //# Route prefix: /projects/{id}/tasks
     $router->prefix('/tasks')->group(function ($router) {
         $router->get('/', 'TaskController@getTasksByBoard')->int('board_id');
+        $router->get('/by-stage', 'TaskController@getTasksByBoardStage')->int('board_id');
         $router->post('/', 'TaskController@create');
         $router->get('/archived', 'TaskController@getArchivedTasks')->int('board_id');
         $router->get('/{task_id}', 'TaskController@find')->int('board_id')->int('task_id')->int('task_id');
@@ -119,7 +120,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->post('/{task_id}/comments', 'CommentController@create')->int('board_id')->int('task_id');
         $router->put('/comments/{comment_id}', 'CommentController@update')->int('board_id')->int('comment_id');
         $router->put('/reply/{reply_id}', 'CommentController@updateReply')->int('board_id')->int('reply_id');
-        $router->delete('/comments/{comment_id}', 'CommentController@delete')->int('board_id')->int('comment_id');
+        $router->delete('/comments/{comment_id}', 'CommentController@deleteComment')->int('board_id')->int('comment_id');
         $router->delete('/reply/{reply_id}', 'CommentController@deleteReply')->int('board_id')->int('reply_id');
 
 

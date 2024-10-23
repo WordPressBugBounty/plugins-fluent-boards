@@ -116,4 +116,37 @@ class ExternalPages
         $sign = md5($attachment->id . date('YmdH'));
         return $sign === $_REQUEST['secure_sign'];
     }
+
+    public function redirectToPage()
+    {
+        $taskId = $_GET['taskId'];
+        $task = Task::findOrFail($taskId);
+        if ($this->isFrontendEnabled() == 'no') {
+            $urlBase = apply_filters('fluent_boards/app_url', admin_url('admin.php?page=fluent-boards#/'));
+            $page_url = $urlBase . 'boards/' . $task->board_id . '/tasks/' . $task->id . '-' .substr($task->title, 0, 10);
+            wp_redirect($page_url);
+            exit;
+        } else {
+            $urlBase = apply_filters('fluent_boards/app_url');
+            $page_url = $urlBase . 'boards/' . $task->board_id . '/tasks/' . $task->id . '-' .substr($task->title, 0, 10);
+            wp_redirect($page_url);
+            exit;
+        }
+
+        die();
+    }
+
+    private function isFrontendEnabled()
+    {
+        $storedSettings = get_option('fluent_boards_modules', []);
+        if ($storedSettings && is_array($storedSettings)) {
+            $settings = maybe_serialize($storedSettings);
+        }
+
+        if (isset($settings['frontend']['enabled'])) {
+            return $settings['frontend']['enabled'];
+        }
+
+        return 'no';
+    }
 }

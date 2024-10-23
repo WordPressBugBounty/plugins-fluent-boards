@@ -147,3 +147,11 @@ if(isset($_GET['fbs']) && $_GET['fbs'] == 1) {
     }
 
 }
+
+if(isset($_GET['redirect']) && $_GET['redirect'] == 'to_task') {
+    if (isset($_GET['taskId'])) {
+        add_action('init', function() {
+            (new \FluentBoards\App\Hooks\Handlers\ExternalPages())->redirectToPage();
+        });
+    }
+}

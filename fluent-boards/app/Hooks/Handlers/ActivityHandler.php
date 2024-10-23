@@ -4,6 +4,7 @@ namespace FluentBoards\App\Hooks\Handlers;
 
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Stage;
+use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Constant;
 use FluentCrm\App\Models\Subscriber;
@@ -24,6 +25,11 @@ class ActivityHandler
             'description' => $description,
             'settings' => $settings
         ];
+        $userId = get_current_user_id();
+        if($userId == 0){
+            $task = Task::find($taskId);
+            $data['created_by'] = $task->created_by;
+        }
 
         Helper::createActivity($data);
     }
@@ -37,6 +43,7 @@ class ActivityHandler
     public function logAssigneeAddedActivity($task, $newAssigneeId)
     {
         $user = User::findOrFail($newAssigneeId);
+        $currentUserId = get_current_user_id();
         if($user) {
             $this->createLogActivity($task->id, 'added', 'assignee', null, $user->display_name);
         }

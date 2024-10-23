@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.6
 Requires PHP: 7.3
-Stable tag: 1.31
+Stable tag: 1.32
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,22 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v1.32 (Date: October 23, 2024) =
+- Improvement: Task Performance Optimization
+- Improvement: More images can be uploaded in comment
+- Improvement: Default due time updated
+- Improvement: UX in Comment & Reply
+- Fixed: Move card issue Resolved and Improved
+- Fixed: "Go to Comment" Button in Email Issue
+- Fixed: Image issue in task description
+- Fixed: Task redirection issue from subtask related notifications
+- Fixed: Attachment title issue
+- Fixed: Activity issue in profile section
+- Fixed: Email send issue for Comment's reply
+- Fixed: Comment edit issue for uploaded image
+- Other Improvement & Bug Fixes
+
 
 = v1.31 (Date: September 25, 2024) =
 - Fixed: Tasks Dashboard Issue

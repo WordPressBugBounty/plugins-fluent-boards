@@ -125,7 +125,7 @@
         text-align: center;
         text-decoration: none;
         margin-top: 10px;
-        width: 32%;
+        width: 170px;
     }
 
     .fbs_daily_reminder {

@@ -15,7 +15,7 @@ use FluentBoards\App\Services\Helper;
 
 class BoardHandler
 {
-    public function createLogActivity($boardId, $action, $column = null, $oldValue = null, $newValue = null, $description = null, $settings = null )
+    public function createLogActivity($boardId, $action, $column = null, $oldValue = null, $newValue = null, $description = null, $settings = null, $userId = null )
     {
         $data = [
             'object_type' => Constant::ACTIVITY_BOARD,
@@ -27,6 +27,9 @@ class BoardHandler
             'description' => $description,
             'settings' => $settings
         ];
+        if($userId) {
+            $data['created_by'] = $userId;
+        }
 
         Helper::createActivity($data);
     }
@@ -61,7 +64,7 @@ class BoardHandler
         $this->updateBoardTaskCount($boardId, 1);
         $taskStage = $task->stage;
         $settings = ['task_id' => $task->id];
-        $this->createLogActivity($boardId, 'created', 'task', null, $task->title, 'on stage '.$taskStage->title, $settings);
+        $this->createLogActivity($boardId, 'created', 'task', null, $task->title, 'on stage '.$taskStage->title, $settings, $task->created_by);
     }
 
     public function boardStagesReOrdered($boardId, $oldStageOrders)

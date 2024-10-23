@@ -402,6 +402,7 @@ class TransStrings
             'An email will be sent to the user with an invitation link.'                          => __('An email will be sent to the user with an invitation link.', 'fluent-boards'),
             'task_comment_added'                      => __('added a new comment', 'fluent-boards'),
             'task_reply_added'                        => __('replied to a comment', 'fluent-boards'),
+            'comment_created'                         => __('added a new comment', 'fluent-boards'),
             'task_comment_mentioned'                  => __('mentioned you in a comment', 'fluent-boards'),
             'subtask_added'                           => __('created a new subtask', 'fluent-boards'),
             'task_due_date_changed'                   => __('updated due date', 'fluent-boards'),
@@ -534,6 +535,8 @@ class TransStrings
             'Logged at'                                                          => __('Logged at', 'fluent-boards'),
             'Others'                                                             => __('Others', 'fluent-boards'),
             'Are you sure you want to restore the board'                         => __('Are you sure you want to restore the board?', 'fluent-boards'),
+            'Upload Error'                                                       => __('Upload Error', 'fluent-boards'),
+            'You can only upload a maximum of 10 images for a comment.'          => __('You can only upload a maximum of 10 images for a comment.', 'fluent-boards'),
         ];
     }
 }

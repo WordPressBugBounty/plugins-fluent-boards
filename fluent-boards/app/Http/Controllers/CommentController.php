@@ -4,6 +4,7 @@ namespace FluentBoards\App\Http\Controllers;
 
 use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Models\Task;
+use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\NotificationService;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
@@ -85,11 +86,24 @@ class CommentController extends Controller
 
             $comment = $this->commentService->create($commentData, $task_id);
             $comment['user'] = $comment->user;
-            //sending emails to assignees who enabled their email
-            $usersToSendEmail = $this->notificationService->filterAssigneeToSendEmail($task_id, Constant::BOARD_EMAIL_COMMENT);
 
-            $this->sendMailAfterComment($comment->id, $usersToSendEmail);
-            
+            $usersToSendEmail = [];
+            if ($comment->type == 'reply') {
+                $parentComment = Comment::findOrFail($comment->parent_id);
+                $commenterId = $parentComment->created_by;
+                if ($commenterId != get_current_user_id())
+                {
+                    $commenter = User::select('user_email')->findOrFail($commenterId);
+                    $commenterEmail = $commenter->user_email;
+                    $usersToSendEmail[] = $commenterEmail;
+                }
+                $this->sendMailAfterComment($comment->id, $usersToSendEmail);
+            } else {
+                //sending emails to assignees who enabled their email
+                $usersToSendEmail = $this->notificationService->filterAssigneeToSendEmail($task_id, Constant::BOARD_EMAIL_COMMENT);
+                $this->sendMailAfterComment($comment->id, $usersToSendEmail);
+            }
+
             if($request->mentionData)
             {
                 $this->notificationService->mentionInComment($comment, $request->mentionData);
@@ -101,7 +115,10 @@ class CommentController extends Controller
                 $comment->load(['images']);
             }
 
-            $comment->load('replies');
+            if ($comment->type == 'comment')
+            {
+                $comment->load('replies');
+            }
 
             return $this->sendSuccess([
                 'message' => __('Comment has been added', 'fluent-boards'),
@@ -161,7 +178,7 @@ class CommentController extends Controller
         }
     }
 
-    public function delete($board_id, $comment_id)
+    public function deleteComment($board_id, $comment_id)
     {
         try {
             $this->commentService->delete($comment_id);

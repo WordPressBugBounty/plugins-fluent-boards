@@ -22,7 +22,7 @@ class ScheduleHandler
             if ( ! $comment) {
                 return;
             }
-            if ('comment' != $comment->type) {
+            if (!in_array($comment->type, ['comment', 'reply'])) {
                 return;
             }
 
@@ -30,9 +30,10 @@ class ScheduleHandler
             if ( ! $task) {
                 return;
             }
-//            $assignees = $task->assignees;
+
             $board    = $task->board;
-            $page_url = fluent_boards_page_url();
+
+            $page_url = site_url('/') . '?redirect=to_task&taskId='.$task->id;
 
             $user = $task->user($comment->created_by);
 
@@ -51,10 +52,25 @@ class ScheduleHandler
                             .htmlspecialchars($boardUrl).'">'
                             .htmlspecialchars($board->title).'</a>';
 
+            $preparedBody = 'commented on '.$taskLinkTag.' on '
+                .$boardLinkTag.' board.';
+            $preHeader = 'New comment has been added on task';
+            $mailSubject = 'New comment has been added on task';
+
+
+            if ($comment->type == 'reply')
+            {
+                $preparedBody = 'replied on your comment on '.$taskLinkTag.' on '
+                    .$boardLinkTag.' board.';
+
+                $preHeader = 'A reply has been added to your comment on a task.';
+                $mailSubject = 'New Reply on Your Task Comment';
+            }
+
             $data = [
-                'body'        => 'commented on '.$taskLinkTag.' on '
-                                 .$boardLinkTag.' board.',
-                'pre_header'  => 'New comment added on task',
+                'body'        => $preparedBody,
+                'comment_link' => $page_url,
+                'pre_header'  => $preHeader,
                 'show_footer' => true,
                 'comment'     => $comment->description,
                 'userData'    => $userData,
@@ -63,7 +79,6 @@ class ScheduleHandler
                 'site_logo'   => fluent_boards_site_logo(),
             ];
 
-            $mailSubject = 'new comment added on task';
             $message     = Helper::loadView('emails.comment2', $data);
             $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
@@ -82,7 +97,8 @@ class ScheduleHandler
             if ( ! $comment) {
                 return;
             }
-            if ('comment' != $comment->type) {
+
+            if (!in_array($comment->type, ['comment', 'reply'])) {
                 return;
             }
 
@@ -92,7 +108,8 @@ class ScheduleHandler
             }
 //            $assignees = $task->assignees;
             $board    = $task->board;
-            $page_url = fluent_boards_page_url();
+
+            $page_url = site_url('/') . '?redirect=to_task&taskId='.$task->id;
 
             $user = $task->user($comment->created_by);
 
@@ -116,7 +133,7 @@ class ScheduleHandler
             $data = [
                 'body'        => 'mentioned you in a comment on '.$taskLinkTag.' on '
                     .$boardLinkTag.' board.',
-                'comment_link' => $commentLink,
+                'comment_link' => $page_url,
                 'pre_header'  => 'You are mentioned in a comment',
                 'show_footer' => true,
                 'comment'     => $comment->description,

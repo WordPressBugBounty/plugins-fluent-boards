@@ -43,31 +43,96 @@ class TaskController extends Controller
     public function getTasksByBoard($board_id)
     {
         $board = Board::findOrFail($board_id);
-        
+
+        // Get stage IDs
+        $stageIds = $this->getStageIdsByBoard($board_id);
+
+        // Fetch tasks for the board
         $tasks = Task::with(['assignees', 'labels', 'watchers', 'taskCustomFields'])
             ->where('board_id', $board_id)
             ->whereNull('archived_at')
             ->whereNull('parent_id')
+            ->whereIn('stage_id', $stageIds)
             ->orderBy('due_at', 'ASC')
             ->get();
 
-        foreach ($tasks as $task) {
-            $task->isOverdue = $task->isOverdue();
-            $task->isUpcoming = $task->upcoming();
-            $task->contact = Helper::crm_contact($task->crm_contact_id);
-            $task->is_watching = $task->isWatching();
-            $task->assignees = Helper::sanitizeUserCollections($task->assignees);
-            $task->watchers = Helper::sanitizeUserCollections($task->watchers);
-            $task->notifications = $this->notificationService->getUnreadNotificationsOfTasks($task);
-            if($board->type == 'roadmap') {
-                $task->popular = $task->getPopularCount();
-            }
+        // Process each task
+        $this->processTasks($tasks, $board);
+
+        return [
+            'tasks' => $tasks,
+        ];
+    }
+
+    public function getTasksByBoardStage($board_id)
+    {
+        $board = Board::findOrFail($board_id);
+
+        // Get stage IDs
+        $stageIds = $this->getStageIdsByBoard($board_id);
+
+        // Initialize tasks array
+        $tasks = [];
+
+        // Fetch and process tasks for each stage
+        foreach ($stageIds as $stageId) {
+            $stageTasks = Task::with(['assignees', 'labels', 'watchers', 'taskCustomFields'])
+                ->where('board_id', $board_id)
+                ->where('stage_id', $stageId)
+                ->whereNull('archived_at')
+                ->whereNull('parent_id')
+                ->orderBy('position', 'ASC')
+                ->limit(20)
+                ->get();
+
+            // Process each stage's tasks
+            $this->processTasks($stageTasks, $board);
+            $tasks = array_merge($tasks, $stageTasks->toArray()); // Merge with the main task list
         }
 
         return [
             'tasks' => $tasks,
         ];
     }
+
+    /**
+     * Get Stage IDs by Board ID.
+     *
+     * @param int $board_id
+     * @return array
+     */
+    private function getStageIdsByBoard($board_id)
+    {
+        return Stage::where('board_id', $board_id)
+            ->whereNull('archived_at')
+            ->pluck('id')
+            ->toArray();
+    }
+
+    /**
+     * Process and append extra information for each task.
+     *
+     * @param \Illuminate\Database\Eloquent\Collection $tasks
+     * @param \App\Models\Board $board
+     */
+    private function processTasks($tasks, $board)
+    {
+        foreach ($tasks as $task) {
+            $task->isOverdue = $task->isOverdue();
+            $task->isUpcoming = $task->upcoming();
+            $task->contact = Helper::crm_contact($task->crm_contact_id); // Handle possible null contact
+            $task->is_watching = $task->isWatching();
+            $task->assignees = Helper::sanitizeUserCollections($task->assignees);
+            $task->watchers = Helper::sanitizeUserCollections($task->watchers);
+            $task->notifications = $this->notificationService->getUnreadNotificationsOfTasks($task);
+
+            // If the board type is 'roadmap', calculate popularity
+            if ($board->type === 'roadmap') {
+                $task->popular = $task->getPopularCount();
+            }
+        }
+    }
+
 
     public function create(Request $request, $board_id)
     {
@@ -105,9 +170,14 @@ class TaskController extends Controller
 
             $task = Task::findOrFail($task_id);
 
+            if (isset($task->parent_id)) {
+                $task = Task::findOrFail($task->parent_id);
+            }
+
             if(!$task) {
                 throw new \Exception(__('Task not found', 'fluent-boards'));
             }
+
             if (defined('FLUENT_BOARDS_PRO')) {
                 $task->load(['attachments']);
             }

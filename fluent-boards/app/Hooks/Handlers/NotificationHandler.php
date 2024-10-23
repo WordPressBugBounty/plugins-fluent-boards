@@ -169,6 +169,10 @@ class NotificationHandler
             'description' => $description,
             'settings' => $settings
         ];
+        $currentUser = get_current_user_id();
+        if($currentUser == 0) {
+            $data['activity_by'] = $task->created_by;
+        }
         return Notification::create($data);
     }
 
