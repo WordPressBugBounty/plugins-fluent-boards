@@ -15,6 +15,8 @@ use FluentBoards\App\Services\UploadService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\Framework\Support\Arr;
+use FluentBoardsPro\App\Services\AttachmentService;
+
 class TaskController extends Controller
 {
     private TaskService $taskService;
@@ -471,6 +473,8 @@ class TaskController extends Controller
 
         if ($oldStageId != $newStageId) {
 
+            $this->taskService->manageDefaultAssignees($task, $newStageId);
+
             $defaultPosition = $task->stage->defaultTaskStatus();
 
             if ($defaultPosition == 'closed' && $task->status != 'closed') {
@@ -557,6 +561,13 @@ class TaskController extends Controller
 
             $fileData = $uploadInfo[0];
             $fileUploadedData = $this->taskService->uploadMediaFileFromWpEditor($task_id, $fileData, Constant::TASK_DESCRIPTION);
+            if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
+                $mediaData = (new AttachmentService())->processMediaData($fileData, $file);
+                $fileUploadedData['driver'] = $mediaData['driver'];
+                $fileUploadedData['file_path'] = $mediaData['file_path'];
+                $fileUploadedData['full_url'] = $mediaData['full_url'];
+                $fileUploadedData->save();
+            }
 
             return $this->sendSuccess([
                 'message' => __('Image has been uploaded', 'fluent-boards-pro'),

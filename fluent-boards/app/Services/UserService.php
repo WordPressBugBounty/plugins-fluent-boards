@@ -45,7 +45,11 @@ class UserService
 
             $boardUserMaps[$boardObject->foreign_id][] = [
                 'board_id' => $boardObject->object_id,
-                'role'     => Arr::get($boardObject->settings, 'is_admin') ? 'admin' : 'member'
+                'role' => Arr::get($boardObject->settings, 'is_admin')
+                    ? 'admin'
+                    : (Arr::has($boardObject->settings, 'is_viewer_only') && Arr::get($boardObject->settings, 'is_viewer_only')
+                        ? 'viewer'
+                        : 'member')
             ];
         }
 

@@ -124,10 +124,11 @@ class BoardService
     {
         $boardData = [
             'title'       => $boardData['title'],
-            'type'        => $boardData['type'] ? $boardData['type'] : 'todo',
+            'type'        => $boardData['type'] ? $boardData['type'] : 'to-do',
             'description' => $boardData['description'],
             'currency'    => isset($boardData['currency']) ? $boardData['currency'] : 'USD',
             'background'  => isset($boardData['background']) ? $boardData['background'] : '',
+            'created_by'  => isset($boardData['created_by']) ? $boardData['created_by'] : get_current_user_id()
         ];
 
         $boardData = apply_filters('fluent_boards/before_create_board', $boardData);
@@ -142,7 +143,7 @@ class BoardService
     private function setCurrentUserPreferencesOnBoardCreate($board)
     {
         $board->users()->attach(
-            get_current_user_id(),
+            $board->created_by,
             [
                 'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
                 'settings'    => maybe_serialize([
@@ -169,7 +170,18 @@ class BoardService
         $user->tasks()->detach($taskIdsToDetach);
         $user->watchingTasks()->detach($taskIdsToDetach);
 
-//                do_action('fluent_boards/board_member_removed', $boardId, $user->display_name);
+    }
+
+    private function removeFromDefaultAssignee($boardId, $user)
+    {
+        $stages = Stage::where('board_id', $boardId)->get();
+        foreach ($stages as $stage) {
+            if (isset($stage->settings['default_task_assignees'])) {
+                if (($key = array_search($user, $stage->settings['default_task_assignees'])) !== false) {
+                    unset($stage->settings['default_task_assignees'][$key]);
+                }
+            }
+        }
     }
 
     public function removeFromRecentlyOpened($boardId, $userId)
@@ -336,24 +348,33 @@ class BoardService
         return $isAlreadyMember ?? false;
     }
 
-    public function addMembersInBoard($boardId, $memberId)
+    public function addMembersInBoard($boardId, $memberId, $isViewerOnly = null)
     {
         $board = Board::find($boardId);
 
         if (!$board) {
             return false;
         }
+        $settings = Constant::BOARD_USER_SETTINGS;
+
+        if($isViewerOnly === 'yes') {
+            $settings = Constant::BOARD_USER_VIEWER_ONLY_SETTINGS;
+        }
 
         $board->users()->attach(
             $memberId,
             [
                 'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
-                'settings'    => maybe_serialize(Constant::BOARD_USER_SETTINGS),
+                'settings'    => maybe_serialize($settings),
                 'preferences' => maybe_serialize(Constant::BOARD_NOTIFICATION_TYPES)
             ]
         );
         $boardMember = User::find($memberId);
-        do_action('fluent_boards/board_member_added', $boardId, $boardMember);
+        if(!$isViewerOnly) {
+            do_action('fluent_boards/board_viewer_added', $boardId, $boardMember);
+        } else {
+            do_action('fluent_boards/board_member_added', $boardId, $boardMember);
+        }
         return $boardMember;
     }
 
@@ -742,15 +763,19 @@ class BoardService
         $taskDeletedOrMovedFormBoard = Activity::where('object_id', $boardId)->where('updated_at', '>=', $oneMinuteAgo)->where('action', 'deleted')->orWhere('action', 'moved')->where('column', 'task')->exists();
 
         if ($taskDeletedOrMovedFormBoard) {
-            $tasks = Task::query()
+            $tasksQuery = Task::query()
                 ->where([
                     'board_id'    => $boardId,
                     'parent_id'   => null,
                     'archived_at' => null
                 ])
-                ->with(['assignees', 'labels', 'watchers', 'customFields'])
-                ->orderBy('due_at', 'ASC')
-                ->get();
+                ->with(['assignees', 'labels', 'watchers']);
+
+            if (!!defined('FLUENT_BOARDS_PRO_VERSION')) {
+                $tasksQuery->with('customFields');
+            }
+
+            $tasks = $tasksQuery->orderBy('due_at', 'ASC')->get();
         } else {
             $tasks = (new TaskService())->getLastOneMinuteUpdatedTasks($boardId);
         }
@@ -976,6 +1001,44 @@ class BoardService
 
         do_action('fluent_boards/board_restored', $board);
         return $board;
+    }
+
+    public function makeMember($boardId, $userId)
+    {
+        $boardUser = Relation::where('object_id', $boardId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->where('foreign_id', $userId)->first();
+
+        $boardUser->settings = [
+            'is_admin' => false,
+            'is_viewer_only' => false
+        ];
+
+        $boardUser->save();
+        $user = User::findOrFail($userId);
+        do_action('fluent_boards/board_member_added', $boardId, $boardUser);
+        $user['is_admin'] = false;
+        $user['is_board_admin'] = false;
+        return $user;
+    }
+
+    public function makeViewer($boardId, $userId)
+    {
+        $boardUser = Relation::where('object_id', $boardId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->where('foreign_id', $userId)->first();
+
+        $boardUser->settings = [
+            'is_admin' => false,
+            'is_viewer_only' => true
+        ];
+
+        $boardUser->save();
+        $user = User::findOrFail($userId);
+        do_action('fluent_boards/board_viewer_added', $boardId, $boardUser);
+        $user['is_admin'] = false;
+        $user['is_board_admin'] = false;
+        return $user;
     }
 
 }

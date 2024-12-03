@@ -452,6 +452,9 @@ class BoardController extends Controller
             ->where('object_id', $board_id)
             ->get()->keyBy('foreign_id');
 
+        $superAdminIds = Meta::query()->where('object_type', Constant::FLUENT_BOARD_ADMIN)
+            ->get()->pluck('object_id')->toArray();
+
         $userIds = $boardObjects->pluck('foreign_id')->toArray();
 
         $coreUsers = [];
@@ -472,12 +475,15 @@ class BoardController extends Controller
 
             $boardRelation = $boardObjects[$user->ID] ?? null;
 
+
             $formattedUsers[] = [
                 'ID'           => $user->ID,
                 'display_name' => $name,
                 'email'        => $user->user_email,
                 'photo'        => fluent_boards_user_avatar($user->user_email, $name),
-                'role'         => $boardRelation && $boardRelation->settings['is_admin'] ? 'manager' : 'member'
+                'role'         => $this->boardUserRole($boardRelation),
+                'is_super'     => in_array($user->ID, $superAdminIds),
+                'is_wpadmin'   => $user->has_cap('manage_options')
             ];
         }
 
@@ -522,7 +528,9 @@ class BoardController extends Controller
                     'display_name' => $name,
                     'email'        => $user->user_email,
                     'photo'        => fluent_boards_user_avatar($user->user_email, $name),
-                    'role'         => 'admin'
+                    'role'         => 'admin',
+                    'is_super'     => in_array($user->ID, $superAdminIds),
+                    'is_wpadmin'   => $user->has_cap('manage_options')
                 ];
             }
 
@@ -554,6 +562,7 @@ class BoardController extends Controller
     public function addMembersInBoard(Request $request, $board_id)
     {
         $memberId = $request->getSafe('memberId');
+        $isViewerOnly = $request->getSafe('isViewerOnly');
         $isAlreadyMember = $this->boardService->isAlreadyMember($board_id, $memberId);
 
         if ($isAlreadyMember) {
@@ -561,7 +570,7 @@ class BoardController extends Controller
                 'message' => __('User already a member', 'fluent-boards'),
             ], 304);
         }
-        $member = $this->boardService->addMembersInBoard($board_id, $memberId);
+        $member = $this->boardService->addMembersInBoard($board_id, $memberId, $isViewerOnly);
 
         return [
             'message' => __('Member added successfully', 'fluent-boards'),
@@ -945,6 +954,15 @@ class BoardController extends Controller
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
         }
+    }
+
+    private function boardUserRole($boardRelation)
+    {
+        return $boardRelation && Arr::get($boardRelation->settings, 'is_admin')
+            ? 'manager'
+            : ($boardRelation && Arr::has($boardRelation->settings, 'is_viewer_only') && Arr::get($boardRelation->settings, 'is_viewer_only')
+            ? 'viewer'
+            : 'member');
     }
 
 }

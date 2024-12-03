@@ -44,7 +44,9 @@ class ActivityHandler
     {
         $user = User::findOrFail($newAssigneeId);
         $currentUserId = get_current_user_id();
-        if($user) {
+        if($currentUserId === $user->ID){
+            $this->taskAssigneeJoin($task->id);
+        } elseif ($user) {
             $this->createLogActivity($task->id, 'added', 'assignee', null, $user->display_name);
         }
     }
@@ -52,7 +54,10 @@ class ActivityHandler
     public function logAssigneeRemovedActivity($task, $newAssigneeId)
     {
         $user = User::findOrFail($newAssigneeId);
-        if($user) {
+        $currentUserId = get_current_user_id();
+        if($currentUserId === $user->ID){
+            $this->taskAssigneeLeave($task->id);
+        } else if($user) {
             $this->createLogActivity($task->id, 'removed', 'assignee', null, $user->display_name);
         }
     }

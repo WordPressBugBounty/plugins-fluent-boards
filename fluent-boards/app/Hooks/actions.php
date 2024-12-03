@@ -56,6 +56,7 @@ $app->addCustomAction('task_deleted', 'BoardHandler@taskdeleted', 10, 1);
 $app->addCustomAction('task_moved_from_board', 'BoardHandler@taskMovedFromBoard', 10, 3);
 $app->addCustomAction('task_archived', 'BoardHandler@taskarchivedOnBoard', 10, 1);
 $app->addCustomAction('board_member_added', 'BoardHandler@boardMemberAdded', 10, 2);
+$app->addCustomAction('board_viewer_added', 'BoardHandler@boardViewerAdded', 10, 2);
 $app->addCustomAction('board_member_removed', 'BoardHandler@boardMemberRemoved', 10, 2);
 $app->addCustomAction('board_admin_added', 'BoardHandler@boardAdminAdded', 10, 2);
 $app->addCustomAction('board_admin_removed', 'BoardHandler@boardAdminRemoved', 10, 2);
@@ -68,7 +69,7 @@ $app->addCustomAction('board_label_created', 'BoardHandler@boardLabelCreatedActi
 $app->addCustomAction('board_label_updated', 'BoardHandler@boardLabelUpdatedActivity', 10, 1);
 $app->addCustomAction('board_label_deleted', 'BoardHandler@boardLabelDeletedActivity', 10, 1);
 $app->addCustomAction('board_stages_reordered', 'BoardHandler@boardStagesReOrdered', 10, 2);
-
+$app->addCustomAction('default_assignees_updated', 'BoardHandler@defaultAssigneesUpdated', 10, 2);
 
 $app->addCustomAction('comment_created', 'NotificationHandler@addCommentNotification', 10, 1);
 $app->addCustomAction('mention_comment_notification', 'NotificationHandler@mentionInCommentNotification', 10, 2);
@@ -155,3 +156,4 @@ if(isset($_GET['redirect']) && $_GET['redirect'] == 'to_task') {
         });
     }
 }
+

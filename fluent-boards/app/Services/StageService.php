@@ -124,7 +124,8 @@ class StageService
         $stage->board_id = $boardId;
         $stage->title = $stageData['title'];
         $stage->settings = [
-            'default_task_status' => Arr::get($stageData, 'status') ?? 'open'
+            'default_task_status' => Arr::get($stageData, 'status') ?? 'open',
+            'default_task_assignees' => []
         ];
         if (!Arr::get($stageData, 'position')) {
             $lastStagePosition = $this->getLastPositionOfStagesOfBoard($boardId);
@@ -420,30 +421,29 @@ class StageService
         return $tasks;
     }
 
-    public function checkStageEditable($stages, $toBeUpdatedStage)
-    {
-        $stageEditable = true;
-        if (empty(sanitize_text_field($toBeUpdatedStage['title']))) {
-            $stageEditable = false;
-        } else {
-            foreach ($stages as $stage) { // check if stage label is similar to any other stage label
-                if (strtolower($stage->title) == strtolower(trim($toBeUpdatedStage['title']))) {
-                    $stageEditable = false;
-                    break;
-                }
-            }
-        }
-
-        return $stageEditable;
-    }
 
     public function updateStage($updatedStage, $board_id, $oldStage)
     {
         $stageBeforeUpdate = clone $oldStage;
-        $oldStage->title = Arr::get($updatedStage, 'title');
-        $oldStage->bg_color = Arr::get($updatedStage, 'cover_bg');
+        $oldStage->title = sanitize_text_field(Arr::get($updatedStage, 'title'));
+        $oldStage->bg_color = sanitize_text_field(Arr::get($updatedStage, 'cover_bg'));
         $oldStage->save();
         do_action('fluent_boards/stage_updated', $board_id, $updatedStage, $stageBeforeUpdate);
         return $oldStage;
+    }
+
+    public function setDefaultAssignees($stage_id, $assignees)
+    {
+        $stage = Stage::findOrFail($stage_id);
+        if ($stage) {
+            $oldSettings = $stage->settings;
+            $oldSettings['default_task_assignees'] = $assignees;
+            $stage->settings = $oldSettings;
+            $stage->save();
+
+            do_action('fluent_boards/default_assignees_updated', $stage, $assignees);
+
+            return $stage;
+        }
     }
 }

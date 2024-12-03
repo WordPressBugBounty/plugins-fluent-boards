@@ -300,12 +300,10 @@ class CommentService
         $attachment->driver = 'local';
         $attachment->save();
 
-        $attachment->public_url = $this->createPublicUrl($attachment, $boardId);
-
         return $attachment;
     }
 
-    private function createPublicUrl($attachment, $boardId)
+    public function createPublicUrl($attachment, $boardId)
     {
         return add_query_arg([
             'fbs'               => 1,

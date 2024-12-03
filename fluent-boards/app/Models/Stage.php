@@ -115,4 +115,9 @@ class Stage extends BoardTerm
         }
     }
 
+    public function tasks()
+    {
+        return $this->hasMany(Task::class, 'stage_id');
+    }
+
 }

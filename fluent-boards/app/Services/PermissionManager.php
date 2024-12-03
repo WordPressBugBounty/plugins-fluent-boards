@@ -140,13 +140,15 @@ class PermissionManager
             }
         }
 
+        // if boardId is not provided then we will return false
+        if (!$boardId) {
+            return false;
+        }
+
         if (static::isAdmin($userId)) {
             return true; // if task some admin we will allow him.
         }
 
-        if (!$boardId) {
-            return false;
-        }
 
         /* now, if user is board admin or board member then will allow him */
         return Relation::where('object_id', $boardId)
@@ -327,5 +329,45 @@ class PermissionManager
         }
 
         return user_can($userId, 'manage_options');
+    }
+
+    public static function userHasBoardPermission($boardId, $requestMethod, $userId = null)
+    {
+        // Get the current user if no user ID is provided
+        if (!$userId) {
+            $userId = get_current_user_id();
+            if (!$userId) {
+                return false; // Return false if no user is logged in
+            }
+        }
+
+        // Ensure the board ID is valid
+        if (!$boardId) {
+            return false; // Return false if no board ID is provided
+        }
+
+        // Admins have full permissions, allow access immediately
+        if (static::isAdmin()) {
+            return true;
+        }
+
+        // Fetch user permissions for the given board
+        $boardPermissions = Relation::where('object_id', $boardId)
+            ->where('foreign_id', $userId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->first();
+
+        // If no permissions are found, deny access
+        if (!$boardPermissions) {
+            return false;
+        }
+
+        // Allow read-only access for GET requests
+        if ($requestMethod === 'GET') {
+            return true;
+        }
+
+        // Deny access if the user is a viewer only and trying to modify data
+        return !($boardPermissions->settings['is_viewer_only'] ?? false);
     }
 }

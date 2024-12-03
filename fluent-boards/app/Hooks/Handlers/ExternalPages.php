@@ -27,6 +27,14 @@ class ExternalPages
             die('Invalid Attachment Hash');
         }
 
+        if ('local' !== $attachment->driver) {
+            if(!empty($attachment->file_path)){
+                $this->redirectToExternalAttachment($attachment->full_url);
+            }else{
+                die('File could not be found');
+            }
+            return;
+        }
         $fileName = $attachment->file_path;
         $boardId = $boardId;
         $filePath = $fileName;
@@ -148,5 +156,10 @@ class ExternalPages
         }
 
         return 'no';
+    }
+    private function redirectToExternalAttachment($redirectUrl)
+    {
+        wp_redirect($redirectUrl, 307);
+        exit();
     }
 }

@@ -103,6 +103,7 @@ class Helper
             'id'              => 'sanitize_text_field',
             'is_image'        => 'rest_sanitize_boolean',
             'color'           => 'sanitize_text_field', // sanitize_hex_color doesn't work when color code is greater than 6 characters
+            'created_by'      => 'intval',
         ];
 
         return self::sanitizeData($data, $fieldMaps);

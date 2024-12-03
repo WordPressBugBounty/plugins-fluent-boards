@@ -23,7 +23,7 @@ class AdminMenuHandler
             if (PermissionManager::userHasAnyBoardAccess()) {
                 $items['fluent-boards'] = [
                     'key'       => 'fluent-boards',
-                    'label'     => __('Fluent Boards', 'fluent-crm'),
+                    'label'     => __('Fluent Boards', 'fluent-boards'),
                     'permalink' => admin_url('admin.php?page=fluent-boards#/')
                 ];
             }
@@ -412,6 +412,7 @@ class AdminMenuHandler
             'is_beta'                         => defined('FLUENT_BOARDS_PRO_VERSION') && !defined('FLUENT_BOARDS_PRO_LIVE'),
             'advanced_modules'                => fluent_boards_get_pref_settings(),
             'crm_base_url'                    => defined('FLUENTCRM') ? fluentcrm_menu_url_base() : '',
+            'start_of_week'                   => intval(get_option('start_of_week', 0)),
         ]);
     }
 
@@ -451,7 +452,7 @@ class AdminMenuHandler
         foreach ($boardUserCollection as $boardWithPermission) {
             $permissions[] = [
                 'board_id'    => $boardWithPermission->object_id,
-                'role'        => $boardWithPermission['settings']['is_admin'] ? 'board_admin' : 'board_member',
+                'role'        => $this->boardUserRole($boardWithPermission),
                 'preferences' => $boardWithPermission->preferences,
                 'permissions' => [],
             ];
@@ -461,6 +462,11 @@ class AdminMenuHandler
             'role'        => $role,
             'permissions' => $permissions,
         ];
+    }
+
+    protected function boardUserRole($boardWithPermission)
+    {
+        return $boardWithPermission['settings']['is_admin'] ? 'board_admin' : (Arr::has($boardWithPermission, 'settings.is_viewer_only') && $boardWithPermission['settings']['is_viewer_only'] ? 'board_viewer' : 'board_member');
     }
 
     protected function getRestInfo($app)

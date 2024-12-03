@@ -60,6 +60,10 @@ class Constant{
     const BOARD_USER_SETTINGS = [
         'is_admin'           => false
     ];
+    const BOARD_USER_VIEWER_ONLY_SETTINGS = [
+        'is_admin'           => false,
+        'is_viewer_only'      => true
+    ];
 
     const FLUENT_BOARD_ADMIN = 'fluent_board_admin';
 

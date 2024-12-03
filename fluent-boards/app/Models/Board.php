@@ -33,7 +33,7 @@ class Board extends Model
         'archived_at',
     ];
 
-    protected $appends = ['meta'];
+    protected $appends = ['meta', 'isUserOnlyViewer'];
 
     public static function boot()
     {
@@ -280,6 +280,20 @@ class Board extends Model
 
         return $meta;
 
+    }
+
+    public function getisUserOnlyViewerAttribute()
+    {
+        $userId = get_current_user_id();
+        if(PermissionManager::isAdmin()) {
+            return false;
+        }
+        $boardPermissions = Relation::where('object_id', $this->id)
+            ->where('foreign_id', $userId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->first();
+
+        return $boardPermissions->settings['is_viewer_only'] ?? false;
     }
 
 

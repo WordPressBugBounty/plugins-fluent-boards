@@ -57,6 +57,9 @@ class TaskService
 
         $data = array_filter($data);
         $task = (new Task())->createTask($data);
+
+        $this->manageDefaultAssignees($task, $stage->id);
+
         if (isset($data['is_template']) && $data['is_template'] == 'yes') {
             $task->updateMeta(Constant::IS_TASK_TEMPLATE, $data['is_template']);
         }
@@ -412,6 +415,7 @@ class TaskService
         }
 
         $task->addOrRemoveAssignee($authUserId);
+        do_action('fluent_boards/task_assignee_added', $task, $authUserId);
         // when user assign himself then he will be watching that task
         $task->watchers()->syncWithoutDetaching([$authUserId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
 
@@ -423,7 +427,10 @@ class TaskService
     public function detachYourselfFromTask($boardId, $taskId)
     {
         $task = Task::find($taskId);
-        $task->addOrRemoveAssignee(get_current_user_id());
+        $authUser = get_current_user_id();
+        $task->addOrRemoveAssignee($authUser);
+        do_action('fluent_boards/task_assignee_removed', $task, $authUser);
+
         $task->load('assignees');
 
         return $task;
@@ -773,7 +780,19 @@ class TaskService
 
         // Fetch comments and activities separately
         $comments = $task->comments()->with('user')->orderBy('created_at', 'desc')->get()->toArray();
-        $activities = $task->activities()->with('user')->orderBy('created_at', 'desc')->get()->toArray();
+        $activities = $task->activities()
+            ->with('user')
+            ->where(function($query) {
+                $query->whereNotIn('column', [ 'comment', 'a reply'])
+                    ->orWhere(function($subQuery) {
+                        $subQuery->whereNotIn('action', ['added', 'updated']);
+                    });
+            })
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->toArray();
+
+
 
         // Merge comments and activities into a single array
         $commentsAndActivities = array_merge($comments, $activities);
@@ -878,5 +897,26 @@ class TaskService
         return $title ?? $UrlMeta['title'] ?? '';
     }
 
+    public function manageDefaultAssignees($task, $stageId)
+    {
+        $stage = Stage::findOrFail($stageId);
+        if ($stage && isset($stage->settings['default_task_assignees'])) {
+            $defaultAssignees = $stage->settings['default_task_assignees'];
+            foreach ($defaultAssignees as $assigneeId) {
+                $alreadyAssigneeIds = $task->assignees->pluck('ID')->toArray();
+                $IfAlreadyAssignee = in_array($assigneeId, $alreadyAssigneeIds);
+                if (!$IfAlreadyAssignee) {
+                    $this->updateAssignee($assigneeId, $task);
+                }
+            }
+        }
+    }
 
+    public function setDefaultAssigneesToEveryTasks($stage)
+    {
+        $tasks = $stage->tasks->whereNull('archived_at');
+        foreach ($tasks as $task) {
+            $this->manageDefaultAssignees($task, $stage->id);
+        }
+    }
 }

@@ -479,18 +479,18 @@ class OptionsController extends Controller
                 $boardQuery = Board::query()->whereRaw('LOWER(title) LIKE ?', ['%' . $query . '%']);
             }
             if ($isUserAdmin) {
-                $boards = $boardQuery->get();
-                $tasks = $tasksQuery->get();
+                $boards = $boardQuery->limit(10)->get();
+                $tasks = $tasksQuery->limit(10)->get();
             } else {
                 $boardIds = PermissionManager::getBoardIdsForUser($currentUserId);
-                $boards = $boardQuery->whereIn('id', $boardIds)->get();
-                $tasks = $tasksQuery->whereIn('board_id', $boardIds)->get();
+                $boards = $boardQuery->whereIn('id', $boardIds)->limit(10)->get();
+                $tasks = $tasksQuery->whereIn('board_id', $boardIds)->limit(10)->get();
             }
         } else {
             $boards = []; // boards results is not needed in scoped search
             $inBoard = (int)$scope;
             if ($isUserAdmin || in_array($inBoard, $boardIds = PermissionManager::getBoardIdsForUser($currentUserId))) {
-                $tasks = $tasksQuery->where('board_id', $inBoard)->get();
+                $tasks = $tasksQuery->where('board_id', $inBoard)->limit(10)->get();
             } else {
                 // Out of permission scope search
                 $tasks = [];
@@ -660,6 +660,10 @@ class OptionsController extends Controller
         do_action('fluent_boards/saving_addons', $settings, $prefSettings);
 
         update_option('fluent_boards_modules', $settings, 'yes');
+
+        if (isset($settings['recurring_task']['enabled']) && $settings['recurring_task']['enabled'] == 'no') {
+            do_action('fluent_boards/recurring_task_disabled');
+        }
 
         return $this->sendSuccess([
             'message'        => __('Settings are saved', 'fluent-boards'),

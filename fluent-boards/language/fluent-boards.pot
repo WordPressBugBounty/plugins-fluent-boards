@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Fluent Boards\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2024-10-23 07:08+0000\n"
+"POT-Creation-Date: 2024-12-03 11:53+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: \n"
@@ -16,7 +16,7 @@ msgstr ""
 "X-Loco-Version: 2.6.4; wp-6.3.1\n"
 "X-Domain: fluent-boards"
 
-#: app/Http/Controllers/OptionsController.php:865
+#: app/Http/Controllers/OptionsController.php:869
 msgid "(no title)"
 msgstr ""
 
@@ -72,7 +72,7 @@ msgstr ""
 msgid "Activate FluentCRM"
 msgstr ""
 
-#: app/Services/TransStrings.php:531
+#: app/Services/TransStrings.php:526
 msgid "Active"
 msgstr ""
 
@@ -84,7 +84,7 @@ msgstr ""
 msgid "Activity history"
 msgstr ""
 
-#: app/Services/TransStrings.php:533
+#: app/Services/TransStrings.php:527
 msgid "Add"
 msgstr ""
 
@@ -200,27 +200,31 @@ msgstr ""
 msgid "After 2 Days"
 msgstr ""
 
-#: app/Services/TransStrings.php:47 app/Services/TransStrings.php:487
+#: app/Services/TransStrings.php:484
 msgid "All"
 msgstr ""
 
-#: app/Services/TransStrings.php:48
+#: app/Services/TransStrings.php:47
 msgid "All Access"
 msgstr ""
 
-#: app/Services/TransStrings.php:49
+#: app/Services/TransStrings.php:483
+msgid "All activities"
+msgstr ""
+
+#: app/Services/TransStrings.php:48
 msgid "All Boards"
 msgstr ""
 
-#: app/Services/TransStrings.php:50
+#: app/Services/TransStrings.php:49
 msgid "All Members:"
 msgstr ""
 
-#: app/Models/Task.php:692
+#: app/Models/Task.php:701
 msgid "An array of label IDs or titles. Example: [1, \"feature\", 44]"
 msgstr ""
 
-#: app/Models/Task.php:698
+#: app/Models/Task.php:707
 msgid "An array of WP User IDs. Example: [1,2,44]"
 msgstr ""
 
@@ -232,23 +236,27 @@ msgstr ""
 msgid "Angle"
 msgstr ""
 
-#: app/Services/TransStrings.php:53
+#: app/Services/TransStrings.php:52
 msgid "Archive all tasks"
 msgstr ""
 
-#: app/Services/TransStrings.php:51
+#: app/Models/Task.php:601
+msgid "Archive Date"
+msgstr ""
+
+#: app/Services/TransStrings.php:50
 msgid "Archive Stages"
 msgstr ""
 
-#: app/Services/TransStrings.php:52
+#: app/Services/TransStrings.php:51
 msgid "Archive Task"
 msgstr ""
 
-#: app/Services/TransStrings.php:54
+#: app/Services/TransStrings.php:53
 msgid "Archive this Stage"
 msgstr ""
 
-#: app/Services/TransStrings.php:55 app/Services/TransStrings.php:532
+#: app/Services/TransStrings.php:553
 msgid "Archived"
 msgstr ""
 
@@ -256,91 +264,91 @@ msgstr ""
 msgid "archived a task"
 msgstr ""
 
-#: app/Services/TransStrings.php:56
+#: app/Services/TransStrings.php:54
 msgid "Archived Tasks"
 msgstr ""
 
-#: app/Services/TransStrings.php:57
+#: app/Services/TransStrings.php:55
 msgid "Are you sure to delete this?"
 msgstr ""
 
-#: app/Services/TransStrings.php:58
+#: app/Services/TransStrings.php:56
 msgid "Are you sure you want to delete?"
 msgstr ""
 
-#: app/Services/TransStrings.php:59
+#: app/Services/TransStrings.php:57
 msgid "Are you sure you want to remove someone from all board ?"
 msgstr ""
 
-#: app/Services/TransStrings.php:537
+#: app/Services/TransStrings.php:531
 msgid "Are you sure you want to restore the board?"
 msgstr ""
 
-#: app/Services/TransStrings.php:60
+#: app/Services/TransStrings.php:58
 msgid "Are you sure? You want to leave from"
 msgstr ""
 
-#: app/Services/TransStrings.php:61
+#: app/Services/TransStrings.php:59
 msgid "Are you sure? You want to remove"
 msgstr ""
 
-#: app/Services/TransStrings.php:62
+#: app/Services/TransStrings.php:60
 msgid "Assigned to a task"
 msgstr ""
 
-#: app/Services/TransStrings.php:63
+#: app/Services/TransStrings.php:61
 msgid "Assignee"
 msgstr ""
 
-#: app/Models/Task.php:695 app/Services/TransStrings.php:64
+#: app/Models/Task.php:704 app/Services/TransStrings.php:62
 msgid "Assignees"
 msgstr ""
 
-#: app/Services/TransStrings.php:65
+#: app/Services/TransStrings.php:63
 msgid "Associate Tasks"
 msgstr ""
 
-#: app/Models/Task.php:680
+#: app/Models/Task.php:689
 msgid "Associated CRM Contact First Name. Example: \"John\""
 msgstr ""
 
-#: app/Models/Task.php:686
+#: app/Models/Task.php:695
 msgid "Associated CRM Contact Last Name"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:779
+#: app/Http/Controllers/BoardController.php:788
 msgid "Associated Crm Member has been updated"
 msgstr ""
 
-#: app/Services/TransStrings.php:66
+#: app/Services/TransStrings.php:64
 msgid "Attachment"
 msgstr ""
 
-#: app/Http/Controllers/CommentController.php:279
+#: app/Http/Controllers/CommentController.php:286
 msgid "attachment has been added"
 msgstr ""
 
-#: app/Services/TransStrings.php:477
+#: app/Services/TransStrings.php:474
 msgid "Attachment uploaded successfully."
 msgstr ""
 
-#: app/Services/TransStrings.php:67
+#: app/Services/TransStrings.php:65
 msgid "Attachments"
 msgstr ""
 
-#: app/Services/TransStrings.php:68
+#: app/Services/TransStrings.php:66
 msgid "Back"
 msgstr ""
 
-#: app/Services/TransStrings.php:69
+#: app/Services/TransStrings.php:67
 msgid "Background Color"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:699
+#: app/Http/Controllers/BoardController.php:708
 msgid "Background updated successfully"
 msgstr ""
 
-#: app/Models/Task.php:597 app/Services/TransStrings.php:70
+#: app/Models/Task.php:603 app/Services/TransStrings.php:68
 msgid "Board"
 msgstr ""
 
@@ -348,7 +356,7 @@ msgstr ""
 msgid "board"
 msgstr ""
 
-#: app/Services/TransStrings.php:71
+#: app/Services/TransStrings.php:70
 msgid "Board Description"
 msgstr ""
 
@@ -356,7 +364,7 @@ msgstr ""
 msgid "Board doesn't exists"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:929
+#: app/Http/Controllers/BoardController.php:938
 msgid "Board has been archived successfully!"
 msgstr ""
 
@@ -372,33 +380,37 @@ msgstr ""
 msgid "Board has been deleted"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:943
+#: app/Http/Controllers/BoardController.php:952
 msgid "Board has been restored successfully!"
 msgstr ""
 
 #: app/Http/Controllers/BoardController.php:331
-#: app/Http/Controllers/BoardController.php:917
+#: app/Http/Controllers/BoardController.php:926
 msgid "Board has been updated"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:150
+#: app/Http/Controllers/TaskController.php:152
 msgid "Board id is not valid"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:694
+#: app/Http/Controllers/BoardController.php:703
 msgid "Board id is required"
 msgstr ""
 
-#: app/Services/TransStrings.php:72
+#: app/Services/TransStrings.php:71
 msgid "Board Info"
 msgstr ""
 
-#: app/Services/TransStrings.php:73
+#: app/Services/TransStrings.php:72
 msgid "Board Members"
 msgstr ""
 
-#: app/Services/TransStrings.php:74
+#: app/Services/TransStrings.php:73
 msgid "Board Menu"
+msgstr ""
+
+#: app/Services/TransStrings.php:69
+msgid "Board Not Found"
 msgstr ""
 
 #: app/Http/Controllers/NotificationController.php:83
@@ -410,25 +422,25 @@ msgstr ""
 msgid "Board stage has been updated"
 msgstr ""
 
-#: app/Services/TransStrings.php:75
+#: app/Models/Task.php:594 app/Services/TransStrings.php:74
 msgid "Board Title"
 msgstr ""
 
-#: app/Hooks/Handlers/AdminMenuHandler.php:92
+#: app/Services/TransStrings.php:552 app/Hooks/Handlers/AdminMenuHandler.php:92
 #: app/Hooks/Handlers/AdminMenuHandler.php:93
 #: app/Hooks/Handlers/AdminMenuHandler.php:216
 msgid "Boards"
 msgstr ""
 
-#: app/Services/TransStrings.php:76
+#: app/Services/TransStrings.php:75
 msgid "Border Radius"
 msgstr ""
 
-#: app/Services/TransStrings.php:77
+#: app/Services/TransStrings.php:76
 msgid "Button Preview"
 msgstr ""
 
-#: app/Services/TransStrings.php:78
+#: app/Services/TransStrings.php:77
 msgid "Button Text"
 msgstr ""
 
@@ -436,39 +448,43 @@ msgstr ""
 msgid "button to create a new task."
 msgstr ""
 
-#: app/Services/TransStrings.php:79
+#: app/Services/TransStrings.php:78
 msgid "Button URL"
 msgstr ""
 
-#: app/Services/TransStrings.php:80
+#: app/Services/TransStrings.php:79
 msgid "By Tasks"
 msgstr ""
 
-#: app/Services/TransStrings.php:81
+#: app/Services/TransStrings.php:80
 msgid "By Users"
 msgstr ""
 
-#: app/Services/TransStrings.php:85
+#: app/Services/TransStrings.php:84
 msgid "Can users reactions with unauthenticated along with authentication?*"
 msgstr ""
 
-#: app/Services/TransStrings.php:86
+#: app/Services/TransStrings.php:85
 msgid "Can users vote and comment with name, email along with authentication?*"
 msgstr ""
 
-#: app/Services/TransStrings.php:87 app/Services/TransStrings.php:377
+#: app/Services/TransStrings.php:545
+msgid "Can't change, board is archived"
+msgstr ""
+
+#: app/Services/TransStrings.php:86 app/Services/TransStrings.php:377
 msgid "Cancel"
 msgstr ""
 
-#: app/Services/TransStrings.php:88
+#: app/Services/TransStrings.php:87
 msgid "Card View"
 msgstr ""
 
-#: app/Services/TransStrings.php:89
+#: app/Services/TransStrings.php:88
 msgid "Cards View Preference"
 msgstr ""
 
-#: app/Services/TransStrings.php:90
+#: app/Services/TransStrings.php:89
 msgid "Change Cover"
 msgstr ""
 
@@ -476,7 +492,7 @@ msgstr ""
 msgid "changed task priority"
 msgstr ""
 
-#: app/Services/TransStrings.php:91
+#: app/Services/TransStrings.php:90
 msgid "Choose a file or drag & drop it here."
 msgstr ""
 
@@ -484,7 +500,7 @@ msgstr ""
 msgid "Circle"
 msgstr ""
 
-#: app/Services/TransStrings.php:92
+#: app/Services/TransStrings.php:91
 msgid "Clear"
 msgstr ""
 
@@ -492,7 +508,7 @@ msgstr ""
 msgid "click here"
 msgstr ""
 
-#: app/Services/TransStrings.php:93
+#: app/Services/TransStrings.php:92
 msgid "Click on the"
 msgstr ""
 
@@ -500,11 +516,11 @@ msgstr ""
 msgid "Click Send Invitation to add to this board"
 msgstr ""
 
-#: app/Services/TransStrings.php:94
+#: app/Services/TransStrings.php:93
 msgid "Click to change Status"
 msgstr ""
 
-#: app/Services/TransStrings.php:95
+#: app/Services/TransStrings.php:94
 msgid "Close"
 msgstr ""
 
@@ -522,12 +538,8 @@ msgid ""
 "your CRM with the Fastest Contact Form Builder Plugin for WordPress"
 msgstr ""
 
-#: app/Services/TransStrings.php:96
+#: app/Services/TransStrings.php:95
 msgid "Comment"
-msgstr ""
-
-#: app/Services/TransStrings.php:486
-msgid "Comment & Activity history"
 msgstr ""
 
 #: app/Http/Controllers/CommentController.php:124
@@ -542,7 +554,7 @@ msgstr ""
 msgid "Comment has been updated"
 msgstr ""
 
-#: app/Services/TransStrings.php:98
+#: app/Services/TransStrings.php:97
 msgid "Comments"
 msgstr ""
 
@@ -550,23 +562,27 @@ msgstr ""
 msgid "Community"
 msgstr ""
 
-#: app/Services/TransStrings.php:99
+#: app/Services/TransStrings.php:98
 msgid "Completed"
 msgstr ""
 
-#: app/Services/TransStrings.php:463
+#: app/Services/TransStrings.php:460
 msgid "Completed Ideas"
 msgstr ""
 
-#: app/Services/TransStrings.php:458
+#: app/Services/TransStrings.php:455
 msgid "Completed Tasks"
 msgstr ""
 
-#: app/Services/TransStrings.php:100 app/Services/TransStrings.php:379
+#: app/Models/Task.php:607
+msgid "Completion"
+msgstr ""
+
+#: app/Services/TransStrings.php:99 app/Services/TransStrings.php:379
 msgid "Confirm"
 msgstr ""
 
-#: app/Services/TransStrings.php:101
+#: app/Services/TransStrings.php:100
 msgid "Confirmation Required"
 msgstr ""
 
@@ -592,19 +608,19 @@ msgstr ""
 msgid "Contact added to task in any of the selected boards"
 msgstr ""
 
-#: app/Models/Task.php:677
+#: app/Models/Task.php:686
 msgid "Contact First Name"
 msgstr ""
 
-#: app/Models/Task.php:683
+#: app/Models/Task.php:692
 msgid "Contact Last Name"
 msgstr ""
 
-#: app/Services/TransStrings.php:102
+#: app/Services/TransStrings.php:101
 msgid "Convert to Task"
 msgstr ""
 
-#: app/Services/TransStrings.php:103
+#: app/Services/TransStrings.php:102
 msgid "Copy Stage"
 msgstr ""
 
@@ -619,53 +635,53 @@ msgstr ""
 msgid "Copy the webhook URL you want to send your POST request to."
 msgstr ""
 
-#: app/Services/TransStrings.php:104
+#: app/Services/TransStrings.php:103
 msgid "Cover photo"
 msgstr ""
 
-#: app/Services/TransStrings.php:105
+#: app/Services/TransStrings.php:104
 msgid "Create"
 msgstr ""
 
-#: app/Services/TransStrings.php:110
+#: app/Services/TransStrings.php:109
 msgid "Create a new template"
 msgstr ""
 
-#: app/Services/TransStrings.php:527
+#: app/Services/TransStrings.php:523
 msgid "Create a task when repeating"
 msgstr ""
 
-#: app/Services/TransStrings.php:106
+#: app/Services/TransStrings.php:105
 msgid "Create Board"
 msgstr ""
 
-#: app/Services/TransStrings.php:107
+#: app/Services/TransStrings.php:106
 msgid "Create First Task"
 msgstr ""
 
-#: app/Services/TransStrings.php:111
+#: app/Services/TransStrings.php:110
 msgid "Create new board"
 msgstr ""
 
-#: app/Services/TransStrings.php:112
+#: app/Services/TransStrings.php:111
 msgid "Create new task"
 msgstr ""
 
-#: app/Services/TransStrings.php:113
+#: app/Services/TransStrings.php:112
 msgid "Create roadmap"
 msgstr ""
 
-#: app/Services/TransStrings.php:108
+#: app/Services/TransStrings.php:107
 #: app/Services/Intergrations/FluentCRM/Automations/TaskCreateAction.php:25
 #: app/Services/Intergrations/FluentCRM/Automations/TaskCreateAction.php:38
 msgid "Create Task"
 msgstr ""
 
-#: app/Services/TransStrings.php:114
+#: app/Services/TransStrings.php:113
 msgid "Create task"
 msgstr ""
 
-#: app/Services/TransStrings.php:115
+#: app/Services/TransStrings.php:114
 msgid "Create task from template"
 msgstr ""
 
@@ -673,7 +689,7 @@ msgstr ""
 msgid "Create Task to the selected Board"
 msgstr ""
 
-#: app/Services/TransStrings.php:109
+#: app/Services/TransStrings.php:108
 msgid "Create Your Board"
 msgstr ""
 
@@ -681,31 +697,35 @@ msgstr ""
 msgid "created a new subtask"
 msgstr ""
 
-#: app/Services/TransStrings.php:116
+#: app/Services/TransStrings.php:115
 msgid "Created By"
 msgstr ""
 
-#: app/Services/TransStrings.php:117
+#: app/Services/TransStrings.php:116
 msgid "Created On"
 msgstr ""
 
-#: app/Services/TransStrings.php:83
+#: app/Services/TransStrings.php:82
 msgid "CRM Contact"
 msgstr ""
 
-#: app/Services/TransStrings.php:84
+#: app/Services/TransStrings.php:83
 msgid "CRM contact"
 msgstr ""
 
-#: app/Models/Task.php:671
+#: app/Models/Task.php:680
 msgid "CRM Contact Email"
 msgstr ""
 
-#: app/Models/Task.php:665
+#: app/Models/Task.php:674
 msgid "CRM Contact Id"
 msgstr ""
 
-#: app/Services/TransStrings.php:511
+#: app/Services/TransStrings.php:538
+msgid "CSV Headers"
+msgstr ""
+
+#: app/Services/TransStrings.php:507
 msgid "Daily"
 msgstr ""
 
@@ -719,11 +739,11 @@ msgstr ""
 msgid "Dashboard view settings are updated"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:292
+#: app/Http/Controllers/TaskController.php:294
 msgid "Dates has been updated"
 msgstr ""
 
-#: app/Services/TransStrings.php:517
+#: app/Services/TransStrings.php:513
 msgid "day(s)"
 msgstr ""
 
@@ -731,78 +751,86 @@ msgstr ""
 msgid "days"
 msgstr ""
 
-#: app/Services/TransStrings.php:118
+#: app/Services/TransStrings.php:549
+msgid "Default Assignees"
+msgstr ""
+
+#: app/Services/TransStrings.php:117
 msgid "Define Board Stages"
 msgstr ""
 
-#: app/Services/TransStrings.php:119
+#: app/Services/TransStrings.php:118
 msgid "Define Stages"
 msgstr ""
 
-#: app/Services/TransStrings.php:120
+#: app/Services/TransStrings.php:119
 msgid "Define stages & complete your roadmap"
 msgstr ""
 
-#: app/Services/TransStrings.php:121
+#: app/Services/TransStrings.php:120
 msgid "Define your deal stages"
 msgstr ""
 
-#: app/Services/TransStrings.php:122
+#: app/Services/TransStrings.php:121
 msgid "Delete"
 msgstr ""
 
-#: app/Services/TransStrings.php:123
+#: app/Services/TransStrings.php:122
 msgid "Delete Label"
 msgstr ""
 
-#: app/Services/TransStrings.php:124
+#: app/Services/TransStrings.php:123
 msgid "Deleting item cannot be restored. Are you sure you want to proceed"
 msgstr ""
 
-#: app/Services/TransStrings.php:126
+#: app/Services/TransStrings.php:125
 msgid "Demote from Boards Admin"
 msgstr ""
 
-#: app/Services/TransStrings.php:125
+#: app/Services/TransStrings.php:124
 msgid "Demote from Manager"
 msgstr ""
 
-#: app/Services/TransStrings.php:127
+#: app/Services/TransStrings.php:126
 msgid "Denotes mandatory field"
 msgstr ""
 
-#: app/Services/TransStrings.php:128
+#: app/Services/TransStrings.php:127
 msgid "Describe Your Board"
 msgstr ""
 
-#: app/Services/TransStrings.php:129
+#: app/Services/TransStrings.php:128
 msgid "Describe your first roadmap"
 msgstr ""
 
-#: app/Models/Task.php:593 app/Models/Task.php:629
-#: app/Services/TransStrings.php:130
+#: app/Models/Task.php:597 app/Models/Task.php:638
+#: app/Services/TransStrings.php:129
 #: app/Services/Intergrations/FluentCRM/Automations/TaskCreateAction.php:65
 msgid "Description"
 msgstr ""
 
-#: app/Models/Task.php:632
+#: app/Models/Task.php:641
 msgid "Description of the task"
 msgstr ""
 
-#: app/Services/TransStrings.php:131
+#: app/Services/TransStrings.php:130
 msgid "Design Your Button"
 msgstr ""
 
-#: app/Services/TransStrings.php:132
+#: app/Services/TransStrings.php:542
+msgid "Drop csv file here or"
+msgstr ""
+
+#: app/Services/TransStrings.php:131
 msgid "Drop json file here or"
 msgstr ""
 
-#: app/Services/TransStrings.php:478
+#: app/Services/TransStrings.php:475
 msgid "Drop Task Here"
 msgstr ""
 
-#: app/Models/Task.php:595 app/Models/Task.php:641
-#: app/Services/TransStrings.php:133
+#: app/Models/Task.php:599 app/Models/Task.php:650
+#: app/Services/TransStrings.php:132
 #: app/Hooks/Handlers/FluentCrmIntegration.php:170
 #: app/Services/Intergrations/FluentCRM/Automations/TaskCreateAction.php:56
 msgid "Due Date"
@@ -812,19 +840,15 @@ msgstr ""
 msgid "Due date has been updated of a task you are watching."
 msgstr ""
 
-#: app/Services/TransStrings.php:134
+#: app/Services/TransStrings.php:133
 msgid "Duplicate"
 msgstr ""
 
-#: app/Http/Controllers/StageController.php:113
-msgid "Duplicate or empty stage"
-msgstr ""
-
-#: app/Services/TransStrings.php:135
+#: app/Services/TransStrings.php:134
 msgid "Edit"
 msgstr ""
 
-#: app/Services/TransStrings.php:136
+#: app/Services/TransStrings.php:135
 msgid "Edit template"
 msgstr ""
 
@@ -832,23 +856,27 @@ msgstr ""
 msgid "Ellipse"
 msgstr ""
 
-#: app/Services/TransStrings.php:137
+#: app/Services/TransStrings.php:136
 msgid "Email Notification Preferences"
 msgstr ""
 
-#: app/Services/TransStrings.php:138
+#: app/Services/TransStrings.php:137
 msgid "Email Notifications"
+msgstr ""
+
+#: app/Services/TransStrings.php:138
+msgid "Empty value"
 msgstr ""
 
 #: app/Services/TransStrings.php:139
 msgid "Enable All"
 msgstr ""
 
-#: app/Services/TransStrings.php:481
+#: app/Services/TransStrings.php:478
 msgid "Enable comment submission"
 msgstr ""
 
-#: app/Services/TransStrings.php:479
+#: app/Services/TransStrings.php:476
 msgid "Enable idea submission"
 msgstr ""
 
@@ -856,7 +884,7 @@ msgstr ""
 msgid "Enable Time Tracking Feature"
 msgstr ""
 
-#: app/Services/TransStrings.php:483
+#: app/Services/TransStrings.php:480
 msgid "Enable vote submission"
 msgstr ""
 
@@ -906,11 +934,11 @@ msgstr ""
 msgid "Finish"
 msgstr ""
 
-#: app/Services/TransStrings.php:521
+#: app/Services/TransStrings.php:517
 msgid "First day of month"
 msgstr ""
 
-#: app/Services/TransStrings.php:524
+#: app/Services/TransStrings.php:520
 msgid "First day of year"
 msgstr ""
 
@@ -921,6 +949,7 @@ msgstr ""
 #. $parent_slug
 #. $page_title
 #: app/Hooks/Handlers/FluentCrmIntegration.php:18
+#: app/Hooks/Handlers/AdminMenuHandler.php:26
 #: app/Hooks/Handlers/AdminMenuHandler.php:62
 #: app/Hooks/Handlers/AdminMenuHandler.php:63
 #: app/Hooks/Handlers/AdminMenuHandler.php:72
@@ -953,7 +982,7 @@ msgid "Fluent Forms"
 msgstr ""
 
 #: app/Services/InstallService.php:25
-#: app/Http/Controllers/OptionsController.php:696
+#: app/Http/Controllers/OptionsController.php:700
 msgid "Fluent Plugin"
 msgstr ""
 
@@ -1037,7 +1066,7 @@ msgstr ""
 msgid "Go to boards"
 msgstr ""
 
-#: app/Services/TransStrings.php:455 app/Services/TransStrings.php:476
+#: app/Services/TransStrings.php:473
 msgid "Go To task after creation."
 msgstr ""
 
@@ -1053,12 +1082,16 @@ msgstr ""
 msgid "Gradient Type"
 msgstr ""
 
+#: app/Services/TransStrings.php:532
+msgid "Grant access with view-only permissions."
+msgstr ""
+
 #: app/Hooks/Handlers/BoardHandler.php:124
 #, php-format
 msgid "had changed the position of <em><strong>%1s</strong></em> stage."
 msgstr ""
 
-#: app/Services/TransStrings.php:492
+#: app/Services/TransStrings.php:489
 msgid "High"
 msgstr ""
 
@@ -1071,15 +1104,15 @@ msgstr ""
 msgid "https://fluentboards.com"
 msgstr ""
 
-#: app/Services/TransStrings.php:473
+#: app/Services/TransStrings.php:470
 msgid "Idea"
 msgstr ""
 
-#: app/Services/TransStrings.php:469
+#: app/Services/TransStrings.php:466
 msgid "Idea Not Found"
 msgstr ""
 
-#: app/Services/TransStrings.php:465
+#: app/Services/TransStrings.php:462
 msgid "Idea Priority Chart:"
 msgstr ""
 
@@ -1087,12 +1120,16 @@ msgstr ""
 msgid "Idea submitted from frontend page"
 msgstr ""
 
-#: app/Services/TransStrings.php:467
+#: app/Services/TransStrings.php:464
 msgid "Idea Submitted in last 30 days:"
 msgstr ""
 
 #: app/Services/TransStrings.php:156
 msgid "Import"
+msgstr ""
+
+#: app/Services/TransStrings.php:541
+msgid "Import Board"
 msgstr ""
 
 #: app/Services/TransStrings.php:157
@@ -1103,8 +1140,12 @@ msgstr ""
 msgid "Import from"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:885
+#: app/Http/Controllers/BoardController.php:894
 msgid "Import successfully"
+msgstr ""
+
+#: app/Services/TransStrings.php:543
+msgid "Import your data from CSV file."
 msgstr ""
 
 #: app/Services/TransStrings.php:159
@@ -1119,7 +1160,7 @@ msgstr ""
 msgid "in the comment section of the roadmap?*"
 msgstr ""
 
-#: app/Services/TransStrings.php:457
+#: app/Services/TransStrings.php:454
 msgid "Incomplete Tasks"
 msgstr ""
 
@@ -1147,23 +1188,23 @@ msgstr ""
 msgid "Integrations"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:464
+#: app/Http/Controllers/TaskController.php:466
 msgid "Invalid Board"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:691
+#: app/Http/Controllers/OptionsController.php:695
 msgid "Invalid plugin"
 msgstr ""
 
-#: app/Services/StageService.php:376 app/Services/UserService.php:351
+#: app/Services/StageService.php:377 app/Services/UserService.php:355
 msgid "Invalid sort or orderBy parameter"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:457
+#: app/Http/Controllers/TaskController.php:459
 msgid "Invalid Stage"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:460
+#: app/Http/Controllers/TaskController.php:462
 msgid "Invalid Value"
 msgstr ""
 
@@ -1236,7 +1277,7 @@ msgstr ""
 msgid "Label has been updated"
 msgstr ""
 
-#: app/Models/Task.php:689 app/Services/TransStrings.php:172
+#: app/Models/Task.php:698 app/Services/TransStrings.php:172
 msgid "Labels"
 msgstr ""
 
@@ -1244,11 +1285,11 @@ msgstr ""
 msgid "Last 3 months"
 msgstr ""
 
-#: app/Services/TransStrings.php:522
+#: app/Services/TransStrings.php:518
 msgid "Last day of month"
 msgstr ""
 
-#: app/Services/TransStrings.php:525
+#: app/Services/TransStrings.php:521
 msgid "Last day of year"
 msgstr ""
 
@@ -1313,47 +1354,59 @@ msgstr ""
 msgid "Load FluentBoards in the frontend of the website"
 msgstr ""
 
-#: app/Services/TransStrings.php:187 app/Services/TransStrings.php:500
+#: app/Services/TransStrings.php:497
 msgid "Loading"
 msgstr ""
 
-#: app/Services/TransStrings.php:535
+#: app/Services/TransStrings.php:529
 msgid "Logged at"
 msgstr ""
 
-#: app/Services/TransStrings.php:493
+#: app/Services/TransStrings.php:490
 msgid "Low"
 msgstr ""
 
-#: app/Services/TransStrings.php:188
+#: app/Services/TransStrings.php:540
+msgid "Main Properties"
+msgstr ""
+
+#: app/Services/TransStrings.php:187
 msgid "Make FluentBoards Admin"
 msgstr ""
 
-#: app/Services/TransStrings.php:189
+#: app/Services/TransStrings.php:534
+msgid "Make Member"
+msgstr ""
+
+#: app/Services/TransStrings.php:188
 msgid "Make Template"
 msgstr ""
 
-#: app/Services/TransStrings.php:193
+#: app/Services/TransStrings.php:192
 msgid "Make template"
 msgstr ""
 
-#: app/Services/TransStrings.php:190
+#: app/Services/TransStrings.php:189
 msgid "Make This Stage Admin Only"
 msgstr ""
 
-#: app/Services/TransStrings.php:191
+#: app/Services/TransStrings.php:190
 msgid "Make This Stage Public"
 msgstr ""
 
-#: app/Services/TransStrings.php:192
+#: app/Services/TransStrings.php:191
 msgid "Make User Board Admin"
 msgstr ""
 
-#: app/Services/TransStrings.php:194
+#: app/Services/TransStrings.php:535
+msgid "Make Viewer"
+msgstr ""
+
+#: app/Services/TransStrings.php:193
 msgid "Manage"
 msgstr ""
 
-#: app/Services/TransStrings.php:195
+#: app/Services/TransStrings.php:194
 msgid "Manage User Permissions"
 msgstr ""
 
@@ -1361,15 +1414,19 @@ msgstr ""
 msgid "Mark all as read"
 msgstr ""
 
-#: app/Services/TransStrings.php:494
+#: app/Services/TransStrings.php:205
+msgid "Maximum 150 characters allowed"
+msgstr ""
+
+#: app/Services/TransStrings.php:491
 msgid "Medium"
 msgstr ""
 
-#: app/Services/TransStrings.php:196
+#: app/Services/TransStrings.php:195
 msgid "Member"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:567
+#: app/Http/Controllers/BoardController.php:576
 msgid "Member added successfully"
 msgstr ""
 
@@ -1377,7 +1434,7 @@ msgstr ""
 msgid "Member has been set super admin successfully!"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:550
+#: app/Http/Controllers/BoardController.php:558
 msgid "Member removed successfully"
 msgstr ""
 
@@ -1385,7 +1442,7 @@ msgstr ""
 msgid "Members added to boards"
 msgstr ""
 
-#: app/Services/TransStrings.php:197
+#: app/Services/TransStrings.php:196
 msgid "Members Role"
 msgstr ""
 
@@ -1393,19 +1450,19 @@ msgstr ""
 msgid "mentioned you in a comment"
 msgstr ""
 
-#: app/Services/TransStrings.php:198
+#: app/Services/TransStrings.php:197
 msgid "Menu"
 msgstr ""
 
-#: app/Services/TransStrings.php:199
+#: app/Services/TransStrings.php:198
 msgid "Minutes"
 msgstr ""
 
-#: app/Services/TransStrings.php:519
+#: app/Services/TransStrings.php:515
 msgid "month(s) on"
 msgstr ""
 
-#: app/Services/TransStrings.php:513
+#: app/Services/TransStrings.php:509
 msgid "Monthly"
 msgstr ""
 
@@ -1413,27 +1470,27 @@ msgstr ""
 msgid "more"
 msgstr ""
 
-#: app/Services/TransStrings.php:466
+#: app/Services/TransStrings.php:463
 msgid "Most Popular Ideas:"
 msgstr ""
 
-#: app/Services/TransStrings.php:200
+#: app/Services/TransStrings.php:199
 msgid "Move"
 msgstr ""
 
-#: app/Services/TransStrings.php:203
+#: app/Services/TransStrings.php:202
 msgid "Move all tasks"
 msgstr ""
 
-#: app/Services/TransStrings.php:201
+#: app/Services/TransStrings.php:200
 msgid "Move Task"
 msgstr ""
 
-#: app/Services/TransStrings.php:202
+#: app/Services/TransStrings.php:201
 msgid "Move To"
 msgstr ""
 
-#: app/Services/TransStrings.php:204
+#: app/Services/TransStrings.php:203
 msgid "Move to next stage"
 msgstr ""
 
@@ -1441,7 +1498,7 @@ msgstr ""
 msgid "moved task to another stage"
 msgstr ""
 
-#: app/Services/TransStrings.php:205
+#: app/Services/TransStrings.php:204
 msgid "My Tasks"
 msgstr ""
 
@@ -1453,7 +1510,7 @@ msgstr ""
 msgid "Name your roadmap"
 msgstr ""
 
-#: app/Services/TransStrings.php:97
+#: app/Services/TransStrings.php:96
 msgid "New comments added on a task you are watching."
 msgstr ""
 
@@ -1505,12 +1562,20 @@ msgstr ""
 msgid "No contact found"
 msgstr ""
 
+#: app/Services/TransStrings.php:550
+msgid "No default assignees found"
+msgstr ""
+
 #: app/Services/TransStrings.php:226
 msgid "No description, click to add"
 msgstr ""
 
 #: app/Services/TransStrings.php:218
 msgid "No Label"
+msgstr ""
+
+#: app/Services/TransStrings.php:551
+msgid "No members found to assign to this task"
 msgstr ""
 
 #: app/Services/TransStrings.php:227
@@ -1599,7 +1664,7 @@ msgstr ""
 msgid "OK"
 msgstr ""
 
-#: app/Services/TransStrings.php:488
+#: app/Services/TransStrings.php:485
 msgid "Oldest"
 msgstr ""
 
@@ -1627,7 +1692,7 @@ msgstr ""
 msgid "Options"
 msgstr ""
 
-#: app/Services/TransStrings.php:536
+#: app/Services/TransStrings.php:530
 msgid "Others"
 msgstr ""
 
@@ -1639,28 +1704,32 @@ msgstr ""
 msgid "overdue task"
 msgstr ""
 
-#: app/Services/TransStrings.php:459
+#: app/Services/TransStrings.php:456
 msgid "Overdue Tasks"
 msgstr ""
 
-#: app/Models/Task.php:617
+#: app/Models/Task.php:626
 msgid "Parent Task"
 msgstr ""
 
-#: app/Models/Task.php:620
+#: app/Models/Task.php:629
 msgid "Parent Task ID of the subtask. Example: 1"
 msgstr ""
 
-#: app/Services/TransStrings.php:496
+#: app/Services/TransStrings.php:493
 msgid "Paste a link"
 msgstr ""
 
-#: app/Services/TransStrings.php:462
+#: app/Services/TransStrings.php:459
 msgid "Pending Ideas"
 msgstr ""
 
 #: app/Services/TransStrings.php:246
 msgid "Pending Invitations:"
+msgstr ""
+
+#: app/Services/TransStrings.php:546
+msgid "Pick a day"
 msgstr ""
 
 #: app/Services/TransStrings.php:247
@@ -1671,12 +1740,16 @@ msgstr ""
 msgid "Please enter a keyword"
 msgstr ""
 
-#: app/Services/TransStrings.php:504
+#: app/Services/TransStrings.php:501
 msgid "Please input label"
 msgstr ""
 
-#: app/Services/TransStrings.php:503
+#: app/Services/TransStrings.php:500
 msgid "Please input label title"
+msgstr ""
+
+#: app/Services/TransStrings.php:537
+msgid "Please map the fields"
 msgstr ""
 
 #: app/Services/TransStrings.php:248
@@ -1687,7 +1760,7 @@ msgstr ""
 msgid "Please, Try again with a different term"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:709
+#: app/Http/Controllers/OptionsController.php:713
 msgid "Plugin is being installed"
 msgstr ""
 
@@ -1695,7 +1768,7 @@ msgstr ""
 msgid "Plugins that will extend your Fluent Boards Functionalities"
 msgstr ""
 
-#: app/Services/TransStrings.php:252
+#: app/Models/Task.php:605 app/Services/TransStrings.php:252
 msgid "Position"
 msgstr ""
 
@@ -1703,13 +1776,13 @@ msgstr ""
 msgid "Powered By"
 msgstr ""
 
-#: app/Models/Task.php:594 app/Models/Task.php:635
+#: app/Models/Task.php:598 app/Models/Task.php:644
 #: app/Services/TransStrings.php:253
 #: app/Hooks/Handlers/FluentCrmIntegration.php:171
 msgid "Priority"
 msgstr ""
 
-#: app/Models/Task.php:638
+#: app/Models/Task.php:647
 msgid "Priority of the task (low | medium | high). Example: \"medium\" "
 msgstr ""
 
@@ -1729,7 +1802,7 @@ msgstr ""
 msgid "Promote to Manager"
 msgstr ""
 
-#: app/Services/TransStrings.php:461
+#: app/Services/TransStrings.php:458
 msgid "Public Ideas"
 msgstr ""
 
@@ -1801,19 +1874,19 @@ msgstr ""
 msgid "Reorder Stages"
 msgstr ""
 
-#: app/Services/TransStrings.php:516
+#: app/Services/TransStrings.php:512
 msgid "Repeat every"
 msgstr ""
 
-#: app/Services/TransStrings.php:523
+#: app/Services/TransStrings.php:519
 msgid "Repeat every year(s) on"
 msgstr ""
 
-#: app/Services/TransStrings.php:526
+#: app/Services/TransStrings.php:522
 msgid "Repeat only when completed"
 msgstr ""
 
-#: app/Services/TransStrings.php:510
+#: app/Services/TransStrings.php:506
 msgid "Repeat Task"
 msgstr ""
 
@@ -1872,7 +1945,7 @@ msgstr ""
 msgid "Run When"
 msgstr ""
 
-#: app/Services/TransStrings.php:520
+#: app/Services/TransStrings.php:516
 msgid "Same day"
 msgstr ""
 
@@ -1896,7 +1969,7 @@ msgstr ""
 msgid "Search for boards and tasks"
 msgstr ""
 
-#: app/Services/TransStrings.php:485
+#: app/Services/TransStrings.php:482
 msgid "Search Label"
 msgstr ""
 
@@ -1904,11 +1977,11 @@ msgstr ""
 msgid "Search member"
 msgstr ""
 
-#: app/Services/TransStrings.php:509
+#: app/Services/TransStrings.php:505
 msgid "Search members"
 msgstr ""
 
-#: app/Services/TransStrings.php:508
+#: app/Services/TransStrings.php:504
 msgid "Search or Select Stage"
 msgstr ""
 
@@ -1928,15 +2001,15 @@ msgstr ""
 msgid "sections of the roadmap?*"
 msgstr ""
 
-#: app/Services/TransStrings.php:491
+#: app/Services/TransStrings.php:488
 msgid "see less"
 msgstr ""
 
-#: app/Services/TransStrings.php:490
+#: app/Services/TransStrings.php:487
 msgid "see more"
 msgstr ""
 
-#: app/Services/TransStrings.php:505 app/Services/TransStrings.php:530
+#: app/Services/TransStrings.php:554
 msgid "Select"
 msgstr ""
 
@@ -1952,7 +2025,7 @@ msgstr ""
 msgid "Select a stage"
 msgstr ""
 
-#: app/Services/TransStrings.php:501
+#: app/Services/TransStrings.php:498
 msgid "Select assignee"
 msgstr ""
 
@@ -1970,7 +2043,7 @@ msgstr ""
 msgid "Select Board & It's stage"
 msgstr ""
 
-#: app/Services/TransStrings.php:499
+#: app/Services/TransStrings.php:496
 msgid "Select Board to filter"
 msgstr ""
 
@@ -1994,15 +2067,15 @@ msgstr ""
 msgid "Select Priority"
 msgstr ""
 
-#: app/Services/TransStrings.php:506
-msgid "Select Stage Templetes"
+#: app/Services/TransStrings.php:502
+msgid "Select Stage Templates"
 msgstr ""
 
 #: app/Services/TransStrings.php:439
 msgid "Select Subtask Assignee"
 msgstr ""
 
-#: app/Services/TransStrings.php:507
+#: app/Services/TransStrings.php:503
 msgid "Select Time"
 msgstr ""
 
@@ -2014,7 +2087,7 @@ msgstr ""
 msgid "Selected Board has no stage !!"
 msgstr ""
 
-#: app/Services/TransStrings.php:454 app/Services/TransStrings.php:475
+#: app/Services/TransStrings.php:472
 msgid "Send Email when Idea Moved"
 msgstr ""
 
@@ -2022,7 +2095,7 @@ msgstr ""
 msgid "Send Invitation"
 msgstr ""
 
-#: app/Services/TransStrings.php:528
+#: app/Services/TransStrings.php:524
 msgid "Set"
 msgstr ""
 
@@ -2051,8 +2124,8 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:665
-#: app/Http/Controllers/OptionsController.php:910
+#: app/Http/Controllers/OptionsController.php:669
+#: app/Http/Controllers/OptionsController.php:914
 msgid "Settings are saved"
 msgstr ""
 
@@ -2112,19 +2185,23 @@ msgstr ""
 msgid "Skip This Step"
 msgstr ""
 
+#: app/Models/Task.php:593
+msgid "Slug"
+msgstr ""
+
 #: app/Services/TransStrings.php:306
 msgid "Sort By"
 msgstr ""
 
-#: app/Models/Task.php:598 app/Models/Task.php:653
+#: app/Models/Task.php:604 app/Models/Task.php:662
 msgid "Source"
 msgstr ""
 
-#: app/Models/Task.php:659
+#: app/Models/Task.php:668
 msgid "Source Id"
 msgstr ""
 
-#: app/Models/Task.php:596 app/Models/Task.php:611
+#: app/Models/Task.php:602 app/Models/Task.php:620
 #: app/Services/TransStrings.php:307
 #: app/Hooks/Handlers/FluentCrmIntegration.php:168
 msgid "Stage"
@@ -2148,7 +2225,7 @@ msgstr ""
 msgid "Stage has been changed of a task you are watching."
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:803
+#: app/Http/Controllers/BoardController.php:812
 msgid "stage has been created"
 msgstr ""
 
@@ -2157,7 +2234,7 @@ msgid "Stage has been restored"
 msgstr ""
 
 #: app/Http/Controllers/StageController.php:29
-#: app/Http/Controllers/StageController.php:108
+#: app/Http/Controllers/StageController.php:103
 msgid "Stage has been updated"
 msgstr ""
 
@@ -2173,11 +2250,11 @@ msgstr ""
 msgid "Stage name :"
 msgstr ""
 
-#: app/Services/TransStrings.php:471
+#: app/Services/TransStrings.php:468
 msgid "Stage Wise Task Completion Report:"
 msgstr ""
 
-#: app/Services/TransStrings.php:468
+#: app/Services/TransStrings.php:465
 msgid "Stage Wise Total Ideas:"
 msgstr ""
 
@@ -2189,7 +2266,8 @@ msgstr ""
 msgid "Stages Reordered"
 msgstr ""
 
-#: app/Models/Task.php:647 app/Services/TransStrings.php:314
+#: app/Models/Task.php:600 app/Models/Task.php:656
+#: app/Services/TransStrings.php:314
 #: app/Hooks/Handlers/FluentCrmIntegration.php:169
 msgid "Start Date"
 msgstr ""
@@ -2202,7 +2280,8 @@ msgstr ""
 msgid "Starting Angle"
 msgstr ""
 
-#: app/Models/Task.php:623 app/Services/TransStrings.php:316
+#: app/Models/Task.php:595 app/Models/Task.php:632
+#: app/Services/TransStrings.php:316
 msgid "Status"
 msgstr ""
 
@@ -2214,7 +2293,7 @@ msgstr ""
 msgid "Step 2"
 msgstr ""
 
-#: app/Services/TransStrings.php:529
+#: app/Services/TransStrings.php:525
 msgid "Stop Repeating"
 msgstr ""
 
@@ -2222,7 +2301,7 @@ msgstr ""
 msgid "Sub Task"
 msgstr ""
 
-#: app/Services/TransStrings.php:453 app/Services/TransStrings.php:474
+#: app/Services/TransStrings.php:471
 msgid "Subscribe for notifications for a task if you assign someone to it"
 msgstr ""
 
@@ -2238,7 +2317,7 @@ msgstr ""
 msgid "Subtask Count"
 msgstr ""
 
-#: app/Services/TransStrings.php:321
+#: app/Models/Task.php:606 app/Services/TransStrings.php:321
 msgid "Subtasks"
 msgstr ""
 
@@ -2270,11 +2349,11 @@ msgstr ""
 msgid "Task Archived"
 msgstr ""
 
-#: app/Services/TransStrings.php:472
+#: app/Services/TransStrings.php:469
 msgid "Task Completion Chart:"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:303
+#: app/Http/Controllers/TaskController.php:305
 msgid "Task cover photo has been updated"
 msgstr ""
 
@@ -2282,16 +2361,20 @@ msgstr ""
 msgid "Task Dates"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:328
+#: app/Services/TransStrings.php:539
+msgid "Task Fields"
+msgstr ""
+
+#: app/Http/Controllers/TaskController.php:330
 msgid "Task has been deleted"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:157
+#: app/Http/Controllers/TaskController.php:159
 msgid "Task has been successfully created"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:268
-#: app/Http/Controllers/TaskController.php:494
+#: app/Http/Controllers/TaskController.php:270
+#: app/Http/Controllers/TaskController.php:498
 msgid "Task has been updated"
 msgstr ""
 
@@ -2303,7 +2386,7 @@ msgstr ""
 msgid "Task Members"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:178
+#: app/Http/Controllers/TaskController.php:180
 msgid "Task not found"
 msgstr ""
 
@@ -2311,7 +2394,7 @@ msgstr ""
 msgid "task of board"
 msgstr ""
 
-#: app/Services/TransStrings.php:470
+#: app/Services/TransStrings.php:467
 msgid "Task Priority Chart:"
 msgstr ""
 
@@ -2319,7 +2402,7 @@ msgstr ""
 msgid "Task status"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:312
+#: app/Http/Controllers/TaskController.php:314
 msgid "Task status has been updated"
 msgstr ""
 
@@ -2327,7 +2410,7 @@ msgstr ""
 msgid "Task Templates"
 msgstr ""
 
-#: app/Services/TransStrings.php:327
+#: app/Models/Task.php:592 app/Services/TransStrings.php:327
 #: app/Hooks/Handlers/FluentCrmIntegration.php:167
 #: app/Services/Intergrations/FluentCRM/Automations/TaskCreateAction.php:51
 #: app/Services/Intergrations/FluentCRM/Automations/TaskCreateAction.php:52
@@ -2336,6 +2419,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:330
 msgid "Task title cannot be empty."
+msgstr ""
+
+#: app/Services/TransStrings.php:544
+msgid "Task title is required"
 msgstr ""
 
 #: app/Services/TransStrings.php:331
@@ -2350,11 +2437,11 @@ msgstr ""
 msgid "Tasks Due Today:"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:825
+#: app/Http/Controllers/BoardController.php:834
 msgid "Tasks has been archived"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:815
+#: app/Http/Controllers/BoardController.php:824
 msgid "Tasks has been Moved"
 msgstr ""
 
@@ -2370,7 +2457,7 @@ msgstr ""
 msgid "Template"
 msgstr ""
 
-#: app/Services/TransStrings.php:498
+#: app/Services/TransStrings.php:495
 msgid "Template Title"
 msgstr ""
 
@@ -2382,18 +2469,18 @@ msgstr ""
 msgid "Text to display"
 msgstr ""
 
-#: app/Hooks/Handlers/AdminMenuHandler.php:494
+#: app/Hooks/Handlers/AdminMenuHandler.php:500
 #, php-format
 msgid "Thank you for using <a href=\"%s\">FluentBoards</a>"
 msgstr ""
 
-#: app/Models/Task.php:644
+#: app/Models/Task.php:653
 msgid ""
 "The due date of the task in the format YYYY-MM-DD hh:mm. Example: 2099-12-31 "
 "23:59:59"
 msgstr ""
 
-#: app/Models/Task.php:674
+#: app/Models/Task.php:683
 msgid ""
 "The email of the associated CRM contact. Example: \"john.doe@example.com\""
 msgstr ""
@@ -2402,7 +2489,7 @@ msgstr ""
 msgid "The file must be a image type."
 msgstr ""
 
-#: app/Models/Task.php:668
+#: app/Models/Task.php:677
 msgid "The ID of the associated FluentCRM contact. Example: 6465"
 msgstr ""
 
@@ -2410,34 +2497,34 @@ msgstr ""
 msgid "The person with this email is not an user of this site."
 msgstr ""
 
-#: app/Models/Task.php:662
+#: app/Models/Task.php:671
 msgid "The source Id of the task (if any). Example: \"bcy664fh177\""
 msgstr ""
 
-#: app/Models/Task.php:656
+#: app/Models/Task.php:665
 msgid "The source of the task. Example: \"jira\""
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:649
+#: app/Http/Controllers/BoardController.php:658
 msgid "The stage is made admin only!"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:643
+#: app/Http/Controllers/BoardController.php:652
 msgid "The stage is made public!"
 msgstr ""
 
-#: app/Models/Task.php:614
+#: app/Models/Task.php:623
 msgid ""
 "The stage of the task, which can be an ID, title, or slug. Example: 1 | "
 "\"open\" | \"Open\""
 msgstr ""
 
-#: app/Models/Task.php:650
+#: app/Models/Task.php:659
 msgid ""
 "The start date of the task in the format YYYY-MM-DD. Example: 2099-12-31"
 msgstr ""
 
-#: app/Models/Task.php:626
+#: app/Models/Task.php:635
 msgid "The status of the task (open | closed). Example: \"closed\""
 msgstr ""
 
@@ -2455,7 +2542,7 @@ msgstr ""
 msgid "This feature is only available in Fluent Boards Pro"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:890
+#: app/Http/Controllers/OptionsController.php:894
 msgid "This feature is only available in Fluent Boards Pro. Please upgrade."
 msgstr ""
 
@@ -2465,7 +2552,7 @@ msgid ""
 "changed"
 msgstr ""
 
-#: app/Services/TransStrings.php:456
+#: app/Services/TransStrings.php:453
 msgid "This is a pro feature"
 msgstr ""
 
@@ -2509,7 +2596,7 @@ msgstr ""
 msgid "This will run when a contact will be added to a task"
 msgstr ""
 
-#: app/Services/TransStrings.php:515
+#: app/Services/TransStrings.php:511
 msgid "Time"
 msgstr ""
 
@@ -2517,8 +2604,7 @@ msgstr ""
 msgid "Time Tracking"
 msgstr ""
 
-#: app/Models/Task.php:592 app/Models/Task.php:605
-#: app/Services/TransStrings.php:345
+#: app/Models/Task.php:614 app/Services/TransStrings.php:345
 msgid "Title"
 msgstr ""
 
@@ -2526,7 +2612,7 @@ msgstr ""
 msgid "Title is required"
 msgstr ""
 
-#: app/Models/Task.php:608
+#: app/Models/Task.php:617
 msgid "Title of the task."
 msgstr ""
 
@@ -2538,11 +2624,11 @@ msgstr ""
 msgid "Tomorrow"
 msgstr ""
 
-#: app/Services/TransStrings.php:464
+#: app/Services/TransStrings.php:461
 msgid "Total Ideas"
 msgstr ""
 
-#: app/Services/TransStrings.php:460
+#: app/Services/TransStrings.php:457
 msgid "Total Tasks"
 msgstr ""
 
@@ -2550,6 +2636,10 @@ msgstr ""
 msgid ""
 "Track Time on each task and get detailed reports by boards, members, time "
 "range etc"
+msgstr ""
+
+#: app/Models/Task.php:596
+msgid "Type"
 msgstr ""
 
 #: app/Services/TransStrings.php:349
@@ -2564,7 +2654,7 @@ msgstr ""
 msgid "Type name or email"
 msgstr ""
 
-#: app/Services/TransStrings.php:82
+#: app/Services/TransStrings.php:81
 msgid "Type Roadmap"
 msgstr ""
 
@@ -2597,7 +2687,7 @@ msgstr ""
 msgid "updated a task title"
 msgstr ""
 
-#: app/Services/TransStrings.php:489
+#: app/Services/TransStrings.php:486
 msgid "Updated description"
 msgstr ""
 
@@ -2621,11 +2711,11 @@ msgstr ""
 msgid "Upload"
 msgstr ""
 
-#: app/Services/TransStrings.php:538
+#: app/Services/TransStrings.php:547
 msgid "Upload Error"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:561
+#: app/Http/Controllers/BoardController.php:570
 msgid "User already a member"
 msgstr ""
 
@@ -2633,15 +2723,15 @@ msgstr ""
 msgid "User has been removed as super admin successfully!"
 msgstr ""
 
-#: app/Services/TransStrings.php:482
+#: app/Services/TransStrings.php:479
 msgid "User need to be logged in to add a comment"
 msgstr ""
 
-#: app/Services/TransStrings.php:480
+#: app/Services/TransStrings.php:477
 msgid "User need to be logged in to submit a new idea"
 msgstr ""
 
-#: app/Services/TransStrings.php:484
+#: app/Services/TransStrings.php:481
 msgid "User need to be logged in to vote for an idea"
 msgstr ""
 
@@ -2679,6 +2769,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:447
 msgid "View WordPress Profile"
+msgstr ""
+
+#: app/Services/TransStrings.php:533
+msgid "Viewer"
 msgstr ""
 
 #: app/Services/TransStrings.php:363
@@ -2720,11 +2814,11 @@ msgid ""
 "or to third-party services."
 msgstr ""
 
-#: app/Services/TransStrings.php:518
+#: app/Services/TransStrings.php:514
 msgid "week(s) on"
 msgstr ""
 
-#: app/Services/TransStrings.php:512
+#: app/Services/TransStrings.php:508
 msgid "Weekly"
 msgstr ""
 
@@ -2746,7 +2840,7 @@ msgstr ""
 msgid "WordPress Profile"
 msgstr ""
 
-#: app/Services/TransStrings.php:534
+#: app/Services/TransStrings.php:528
 msgid "Work Description"
 msgstr ""
 
@@ -2754,7 +2848,7 @@ msgstr ""
 msgid "WPManageNinja"
 msgstr ""
 
-#: app/Services/TransStrings.php:495
+#: app/Services/TransStrings.php:492
 msgid "Write a comment"
 msgstr ""
 
@@ -2762,7 +2856,7 @@ msgstr ""
 msgid "Year to Date"
 msgstr ""
 
-#: app/Services/TransStrings.php:514
+#: app/Services/TransStrings.php:510
 msgid "Yearly"
 msgstr ""
 
@@ -2782,7 +2876,7 @@ msgstr ""
 msgid "You are removed from a task."
 msgstr ""
 
-#: app/Services/TransStrings.php:539
+#: app/Services/TransStrings.php:548
 msgid "You can only upload a maximum of 10 images for a comment."
 msgstr ""
 
@@ -2794,11 +2888,15 @@ msgstr ""
 msgid "You do not have permission to access this route"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:848
+#: app/Http/Controllers/BoardController.php:857
 msgid "You do not have permission to duplicate board"
 msgstr ""
 
-#: app/Services/TransStrings.php:502
+#: app/Services/TransStrings.php:536
+msgid "You don't have permission to change status"
+msgstr ""
+
+#: app/Services/TransStrings.php:499
 msgid "Your board description goes here"
 msgstr ""
 
@@ -2810,6 +2908,6 @@ msgstr ""
 msgid "Your browser does not support the video tag."
 msgstr ""
 
-#: app/Services/TransStrings.php:497
+#: app/Services/TransStrings.php:494
 msgid "Your Task Title"
 msgstr ""

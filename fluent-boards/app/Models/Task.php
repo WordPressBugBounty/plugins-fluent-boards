@@ -589,13 +589,22 @@ class Task extends Model
     public static function mappables()
     {
         return [
-            'title'          => __('Title', 'fluent-boards'),
+            'task_title'     => __('Task Title', 'fluent-boards'),
+            'slug'           => __('Slug', 'fluent-boards'),
+            'board_title'    => __('Board Title', 'fluent-boards'),
+            'status'         => __('Status', 'fluent-boards'),
+            'type'           => __('Type', 'fluent-boards'),
             'description'    => __('Description', 'fluent-boards'),
             'priority'       => __('Priority', 'fluent-boards'),
             'due_at'         => __('Due Date', 'fluent-boards'),
+            'started_at'     => __('Start Date', 'fluent-boards'),
+            'archived_at'    => __('Archive Date', 'fluent-boards'),
             'stage'          => __('Stage', 'fluent-boards'),
             'board'          => __('Board', 'fluent-boards'),
             'source'         => __('Source', 'fluent-boards'),
+            'position'       => __('Position', 'fluent-boards'),
+            'subtasks'       => __('Subtasks', 'fluent-boards'),
+            'completion'     => __('Completion', 'fluent-boards'),
         ];
     }
     public static function mappableFields()

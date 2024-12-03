@@ -2,9 +2,9 @@
 Contributors: techjewel,adreastrian,wpmanageninja
 Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
-Tested up to: 6.6
+Tested up to: 6.7
 Requires PHP: 7.3
-Stable tag: 1.32
+Stable tag: 1.35
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,23 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v1.35 (Date: December 03, 2024) =
+- New: Default Stage Assignee.
+- New: View-only member Role.
+- Improvement: Board-specific layout settings — assign list, Kanban, or calendar view per board.
+- Improvement: Board managers can now access timesheets.
+- Improvement: Task description editor updated for better usability.
+- Improvement: External storage supported for comment and description images.
+- Improvement: Calendar week start now follows WordPress settings; updated week, month, and date pickers accordingly.
+- Improvement: Better visibility in  All  Activities.
+- Improvement: Refreshed media storage design.
+- Improvement: Added automatic cleanup of scheduler logs older than 7 days.
+- Fixed: Tasks count issue while archive/restore.
+- Fixed: Task create input bug in List view
+- Fixed: Notification count not clearing after "Mark All as Read."
+- Fixed: Task description image issues.
+- Other Improvements & Bug Fixes.
 
 = v1.32 (Date: October 23, 2024) =
 - Improvement: Task Performance Optimization

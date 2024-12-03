@@ -272,8 +272,15 @@ class CommentController extends Controller
         $uploadInfo = UploadService::handleFileUpload( $files, $board_id);
 
         $imageData = $uploadInfo[0];
-//        $attachmentService = new AttachmentService();
         $attachment = $this->commentService->createCommentImage($imageData, $board_id);
+        if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
+            $mediaData = (new AttachmentService())->processMediaData($imageData, $files['file']);
+            $attachment['driver'] = $mediaData['driver'];
+            $attachment['file_path'] = $mediaData['file_path'];
+            $attachment['full_url'] = $mediaData['full_url'];
+            $attachment->save();
+        }
+        $attachment->public_url = $this->commentService->createPublicUrl($attachment, $board_id);
 
         return $this->sendSuccess([
             'message'    => __('attachment has been added', 'fluent-boards'),

@@ -89,30 +89,19 @@ class StageController extends Controller
         $updatedStage = $this->stageSanitizeAndValidate($request->stage, [
             'title'    => 'required|string'
         ]);
-        /*
-         * TODO: Check if the stage is empty or not. Let's allow duplicate stage
-         */
         try {
             $oldStage = Stage::findOrFail($stage_id);
             $board = $oldStage->board;
             $stages = $board->stages()->where('id', '!=', $stage_id)->get();
-            $stageEditable = $this->stageService->checkStageEditable($stages, $updatedStage);
 
-            if ($stageEditable) {
-                $updatedStage = $this->stageService->updateStage($updatedStage, $board->id, $oldStage);
+            $updatedStage = $this->stageService->updateStage($updatedStage, $board->id, $oldStage);
 
-                return $this->sendSuccess([
-                    'success'      => true,
-                    'stages'       => $board->stages()->get(),
-                    'updatedStage' => $updatedStage,
-                    'message'      => __('Stage has been updated', 'fluent-boards'),
-                ], 200);
-            } else {
-                return $this->sendError([
-                    'success' => false,
-                    'message' => __('Duplicate or empty stage', 'fluent-boards'),
-                ], 422);
-            }
+            return $this->sendSuccess([
+                'success'      => true,
+                'stages'       => $board->stages()->get(),
+                'updatedStage' => $updatedStage,
+                'message'      => __('Stage has been updated', 'fluent-boards'),
+            ], 200);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
         }

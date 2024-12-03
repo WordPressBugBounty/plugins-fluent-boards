@@ -155,6 +155,12 @@ class BoardHandler
         $this->createLogActivity($boardId,'added', 'member', $boardMember->dispaly_name, null, '');
     }
 
+    public function boardViewerAdded($boardId, $boardMember)
+    {
+        $this->createLogActivity($boardId,'added', 'viewer', $boardMember->dispaly_name, null, '');
+
+    }
+
     public function boardMemberRemoved($boardId, $memberName)
     {
         $this->createLogActivity($boardId,'removed', 'member', $memberName, 'from board');
@@ -254,6 +260,20 @@ class BoardHandler
             null,
             null,
             $settings
+        );
+    }
+
+    public function defaultAssigneesUpdated($stage, $assignees)
+    {
+        $column = 'default assignees of stage';
+
+        $this->createLogActivity(
+            $stage->board_id,
+            'updated',
+            $column,
+            null,
+            null,
+            $stage->title
         );
     }
 
@@ -425,14 +445,12 @@ class BoardHandler
                     Constant::TASK_ASSIGNEE
                 ])->delete();
         }catch (\Exception $e){}
-
     }
     private function updateBoardTaskCount($boardId, $count)
     {
         $board = Board::find($boardId);
         $settings = $board->settings ?? [];
-
-        $settings['tasks_count'] = $board->tasks->where('parent_id', null)->count();
+        $settings['tasks_count'] = $board->tasks->where('parent_id', null)->whereNull('archived_at')->count();
         $board->settings = $settings;
         $board->save();
     }
