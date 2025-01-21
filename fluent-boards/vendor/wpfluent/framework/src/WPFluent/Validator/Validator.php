@@ -92,8 +92,9 @@ class Validator
      *
      * @return void
      */
-    public function __construct(array $data = [], array $rules = [], array $messages = [])
-    {
+    public function __construct(
+        array $data = [], array $rules = [], array $messages = []
+    ) {
         $this->data = $data;
 
         $this->messages = [];
@@ -190,8 +191,9 @@ class Validator
      *
      * @return void
      */
-    protected function validateAttribute($attribute, $rule, $key = null, $originalRuleKey = null)
-    {
+    protected function validateAttribute(
+        $attribute, $rule, $key = null, $originalRuleKey = null
+    ) {
         $this->currentRule = $rule;
 
         list($rule, $parameters) = ValidationRuleParser::parse($rule);

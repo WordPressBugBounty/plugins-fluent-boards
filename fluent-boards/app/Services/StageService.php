@@ -127,16 +127,13 @@ class StageService
             'default_task_status' => Arr::get($stageData, 'status') ?? 'open',
             'default_task_assignees' => []
         ];
-        if (!Arr::get($stageData, 'position')) {
-            $lastStagePosition = $this->getLastPositionOfStagesOfBoard($boardId);
-            $stage->position = $lastStagePosition ? $lastStagePosition->position + 1 : 1;
-            $stage->save();
-        } else {
-            $stage->position = (int)$stageData['position'];
-            $stage->save();
-            $this->moveOtherStages($stage);
+        $providerPosition = Arr::get($stageData, 'position');
+        $lastStagePosition = $this->getLastPositionOfStagesOfBoard($boardId);
+        $stage->position = $lastStagePosition ? $lastStagePosition->position + 1 : 1;
+        $stage->save();
+        if($providerPosition){
+            $stage->moveToNewPosition($providerPosition);
         }
-
         return $stage;
     }
 
@@ -184,13 +181,12 @@ class StageService
         return $stageMapForCopyingTask;
     }
 
-    public function importStagesFromBoard($board_id, $selectedStages)
+    public function importStagesFromBoard($board_id, $selectedStages, $position = null)
     {
         $targetStages = Stage::whereIn('id', $selectedStages)->get();
         $stageMapForCopyingTask = array();
         $stageIdsToCopy = array();
 
-        //need to define position of stage
         $numberOfStages = Stage::where('board_id', $board_id)->whereNull('archived_at')->count();
 
         foreach($targetStages as $key => $stage)
@@ -205,6 +201,9 @@ class StageService
                 'default_task_status' => $stage->settings['default_task_status']
             ];
             $newStage = Stage::create($stageToSave);
+            if($position) {
+                $newStage->moveToNewPosition( (int) $position + $key );
+            }
             $stageMapForCopyingTask[$stage['id']] = $newStage->id;
             $stageIdsToCopy[] = $stage['id'];
         }

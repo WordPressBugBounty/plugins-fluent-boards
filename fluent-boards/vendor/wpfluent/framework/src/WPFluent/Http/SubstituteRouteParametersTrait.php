@@ -20,21 +20,22 @@ trait SubstituteRouteParametersTrait
 
         if ($signatureParameters) {
 
-            foreach ($signatureParameters as $signatureParameter) {
+            foreach ($signatureParameters as $signatureParam) {
 
-                $name = $signatureParameter->getName();
+                $name = $signatureParam->getName();
                 
-                if ($this->boundModel($name, $signatureParameter, $routeParameters)) {
+                if ($this->boundModel($name, $signatureParam, $routeParameters)) {
                     
-                    $class = Util::getParameterClassName($signatureParameter);
+                    $class = Util::getParameterClassName($signatureParam);
                     
-                    $resolved[$name] = $this->app->make($class)->findOrFail(
+                    $instance = $this->app->make($class);
+
+                    $resolved[$name] = $instance->resolveRouteBinding(
                         $routeParameters[$name]
                     );
 
                     unset($routeParameters[$name]);
                 }
-
             }
         }
 
@@ -44,15 +45,15 @@ trait SubstituteRouteParametersTrait
             return !class_exists(Reflector::getParameterClassName($param) ?: '');
         });
 
+        $params = count($signatureParameters);
 
-        if (($params = count($signatureParameters)) && $params != count($routeParameters)) {
+        if ($params && $params != count($routeParameters)) {
             throw new InvalidArgumentException(
-                'Invalid route action, route parameters doesn\'t match with method signature.'
+                'Route parameters doesn\'t match with method signature.'
             );
         }
 
         foreach ($routeParameters as $param) {
-            
             if ($dep = array_shift($signatureParameters)) {
                 $remainingParams[$dep->getName()] = $param;
             }
@@ -64,7 +65,9 @@ trait SubstituteRouteParametersTrait
     protected function boundModel($name, $parameter, $routeParameters)
     {
         if (array_key_exists($name, $routeParameters)) {
-            return Reflector::isParameterSubclassOf($parameter, UrlRoutable::class);
+            return Reflector::isParameterSubclassOf(
+                $parameter, UrlRoutable::class
+            );
         }
     }
 

@@ -4,58 +4,72 @@ namespace FluentBoards\Framework\Foundation;
 
 use InvalidArgumentException;
 use FluentBoards\Framework\Support\Arr;
+use FluentBoards\Framework\Support\Env;
+use FluentBoards\Framework\Http\Client;
 use FluentBoards\Framework\Foundation\Config;
 use FluentBoards\Framework\Container\Container;
 use FluentBoards\Framework\Foundation\ComponentBinder;
 use FluentBoards\Framework\Foundation\FoundationTrait;
-use FluentBoards\Framework\Foundation\AsyncRequestTrait;
 
 class Application extends Container
 {
-    use FoundationTrait,
-        AsyncRequestTrait;
+    use FoundationTrait;
 
     /**
      * Main plugin file's absolute path
+     * 
      * @var string
      */
     protected $file = null;
 
     /**
      * Plugin's base url
+     * 
      * @var string
      */
     protected $baseUrl = null;
 
     /**
      * Plugin's base path
+     * 
      * @var string
      */
     protected $basePath = null;
 
     /**
      * Default namespace for hook's handlers
+     * 
      * @var string
      */
     protected $handlerNamespace = null;
 
     /**
      * Default namespace for controllers
+     * 
      * @var string
      */
     protected $controllerNamespace = null;
 
     /**
      * Default namespace for policy handlers
+     * 
      * @var string
      */
     protected $permissionNamespace = null;
 
     /**
      * Composer JSON
+     * 
      * @var null|array
      */
     protected static $composer = null;
+
+    /**
+     * Ready event handlers
+     * 
+     * @var array
+     */
+    protected $onReady = [];
 
     /**
      * Construct the application instance
@@ -66,8 +80,10 @@ class Application extends Container
     public function __construct($file = null)
     {
         $this->init($file);
+        $this->loadEnvironmentVars();
         $this->setAppLevelNamespace();
         $this->bootstrapApplication();
+        $this->callPluginReadyCallbacks();
     }
 
     /**
@@ -82,6 +98,13 @@ class Application extends Container
         $this['__pluginfile__'] = $this->file = $file;
         $this->basePath = plugin_dir_path($this->file);
         $this->baseUrl = plugin_dir_url($this->file);
+    }
+
+    protected function loadEnvironmentVars($path = null)
+    {
+        $path = $path ?: $this->basePath . '.env';
+
+        is_readable($path) && Env::load($path);
     }
 
     /**
@@ -120,7 +143,9 @@ class Application extends Container
             );
         }
 
-        return $section ? Arr::get(static::$composer, $section) : static::$composer;
+        return $section ? Arr::get(
+            static::$composer, $section
+        ) : static::$composer;
     }
 
     /**
@@ -135,8 +160,8 @@ class Application extends Container
         $this->loadConfigIfExists();
         $this->registerTextdomain();
         $this->bindCoreComponents();
-        $this->requireCommonFiles($this);
         $this->registerAsyncActions();
+        $this->requireCommonFiles($this);
         $this->addRestApiInitAction($this);
     }
 
@@ -212,6 +237,27 @@ class Application extends Container
     }
 
     /**
+     * Resolve the given type from the container.
+     *
+     * @param  string  $abstract
+     * @param  array   $parameters
+     * @return mixed
+     */
+    public function make($abstract, $parameters = [])
+    {
+        if (str_starts_with($abstract, '_NS')) {
+            
+            $namespace = $this->getComposer(
+                'extra.wpfluent.namespace.current'
+            );
+
+            $abstract = str_replace('_NS', $namespace, $abstract);
+        }
+        
+        return parent::make($abstract, $parameters);
+    }
+
+    /**
      * Register plugin's text domain
      * 
      * @return null
@@ -220,7 +266,9 @@ class Application extends Container
     {
         $this->addAction('init', function() {
             load_plugin_textdomain(
-                $this->config->get('app.text_domain'), false, $this->textDomainPath()
+                $this->config->get(
+                    'app.text_domain'
+                ), false, $this->textDomainPath()
             );
         });
     }
@@ -309,10 +357,33 @@ class Application extends Container
      */
     public function isRequestOfPlugin($route = '', $slug = '')
     {
-        return str_contains(
-            $route ?: $this->request->url(),
-            $slug ?: $this->config->get('app.slug')
-        );
+        $slug = $slug ?: $this->config->get('app.slug');
+
+        if (!$route) {
+            if (get_option('permalink_structure')) {
+                $route = $this->request->url();
+            } else {
+                $route = $this->request->query('rest_route');
+            }
+        }
+
+        // For web routing (If web-routing is installed)
+        if (!$route && !$this->request->isRest()) {
+            $route = $this->request->url();
+        }
+
+        $parsedUrl = parse_url($route ?? '');
+        
+        $path = str_replace('/wp-json', '', $parsedUrl['path'] ?? '');
+
+        if (is_admin()) {
+            $page = $this->request->query('page');
+            if ($slug === $page) {
+                $path = $page;
+            }
+        } 
+
+        return str_starts_with(ltrim($path, '/'), $slug);
     }
 
     /**
@@ -357,6 +428,15 @@ class Application extends Container
         return $response;
     }
 
+    /**
+     * Check if running unit test.
+     * 
+     * @return boolean
+     */
+    public function isUnitTesting()
+    {
+        return getenv('ENV') === 'testing';
+    }
 
     /**
      * Register the rest api init actions and routes
@@ -399,5 +479,39 @@ class Application extends Container
     protected function requireRouteFile($router)
     {
         require_once $this['path.http'] . 'Routes/routes.php';
+    }
+
+    /**
+     * Register plugin booted callbacks.
+     * 
+     * @param  callable $callback
+     * @return void
+     */
+    protected function ready(callable $callback)
+    {
+        $this->onReady[] = $callback;
+    }
+
+    /**
+     * Register Async Actions.
+     * 
+     * @return void
+     */
+    protected function registerAsyncActions()
+    {
+        Client::registerAsyncRequestHandler();
+    }
+
+    /**
+     * Execute plugin booted callbacks.
+     * 
+     * @param  callable $callback
+     * @return void
+     */
+    protected function callPluginReadyCallbacks()
+    {
+        while ($callback = array_shift($this->onReady)) {
+            $callback($this);
+        }
     }
 }

@@ -3,6 +3,8 @@
 namespace FluentBoards\Framework\Database\Orm;
 
 use FluentBoards\Framework\Support\Helper;
+use FluentBoards\Framework\Support\Collection as BaseCollection;
+use FluentBoards\Framework\Database\Orm\Collection as OrmCollection;
 
 /**
  * @method static static|\FluentBoards\Framework\Database\Orm\Builder|\FluentBoards\Framework\Database\Query\Builder withTrashed(bool $withTrashed = true)
@@ -56,6 +58,57 @@ trait SoftDeletes
                 $this->fireModelEvent('forceDeleted', false);
             }
         });
+    }
+
+    /**
+     * Force a hard delete on a soft deleted model without raising any events.
+     *
+     * @return bool|null
+     */
+    public function forceDeleteQuietly()
+    {
+        return static::withoutEvents(function() {
+            $this->forceDelete();
+        });
+    }
+
+    /**
+     * Destroy the models for the given IDs.
+     *
+     * @param  \FluentBoards\Framework\Support\Collection|array|int|string  $ids
+     * @return int
+     */
+    public static function forceDestroy($ids)
+    {
+        if ($ids instanceof OrmCollection) {
+            $ids = $ids->modelKeys();
+        }
+
+        if ($ids instanceof BaseCollection) {
+            $ids = $ids->all();
+        }
+
+        $ids = is_array($ids) ? $ids : func_get_args();
+
+        if (count($ids) === 0) {
+            return 0;
+        }
+
+        // We will actually pull the models from the database table and call
+        // delete on each of them individually so that their events get fired 
+        // properly with a correct set of attributes in case the developers
+        // wants to check these.
+        $key = ($instance = new static)->getKeyName();
+
+        $count = 0;
+
+        foreach ($instance->withTrashed()->whereIn($key, $ids)->get() as $model) {
+            if ($model->forceDelete()) {
+                $count++;
+            }
+        }
+
+        return $count;
     }
 
     /**

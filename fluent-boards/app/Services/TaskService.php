@@ -134,7 +134,7 @@ class TaskService
         $oldTask = clone $task;  // normal assigning won't work here. because objects are passed by reference in php
         $validColumns = [
             'board_id',
-            'task_type',
+            'type',
             'reminder_type',
             'remind_at',
             'log_minutes',
@@ -142,6 +142,12 @@ class TaskService
         ];
 
         if (in_array($col, $validColumns) && $task->{$col} != $value) {
+            if($col == 'settings' && $value['cover']['backgroundColor']) {
+                $settings = $task->settings;
+                $this->deleteTaskCoverImage($settings);
+                unset($value['cover']['imageId']);
+                unset($value['cover']['backgroundImage']);
+            }
             $task->{$col} = $value;
             $task->save();
             //            do_action('fluent_boards/task_prop_changed', $col, $task, $oldTask);
@@ -380,10 +386,13 @@ class TaskService
             return null;
         }
 
-        $settings = unserialize($task->settings);
+        $settings = $task->settings;
+        if (!is_array($settings)) {
+            $settings = [];
+        }
 
         $settings['logo'] = $imagePath;
-        $task->settings = serialize($settings);
+        $task->settings = $settings;
         $task->save();
 
         return $task;
@@ -398,7 +407,7 @@ class TaskService
 
         $settings = $task->settings;
         $settings['integration_type'] = $integrationType;
-        $task->settings = serialize($settings);
+        $task->settings = $settings;
         $task->save();
 
         return $task;
@@ -420,6 +429,7 @@ class TaskService
         $task->watchers()->syncWithoutDetaching([$authUserId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
 
         $task->load('assignees');
+        do_action('fluent_boards/task_assignee_added', $task, $authUserId);
 
         return $task;
     }
@@ -427,11 +437,10 @@ class TaskService
     public function detachYourselfFromTask($boardId, $taskId)
     {
         $task = Task::find($taskId);
-        $authUser = get_current_user_id();
-        $task->addOrRemoveAssignee($authUser);
-        do_action('fluent_boards/task_assignee_removed', $task, $authUser);
-
+        $currentUserId = get_current_user_id();
+        $task->addOrRemoveAssignee($currentUserId);
         $task->load('assignees');
+        do_action('fluent_boards/task_assignee_removed', $task, $currentUserId);
 
         return $task;
     }
@@ -500,33 +509,10 @@ class TaskService
 
     public function getIdeaVoteStatistics($taskId)
     {
-        $reactionTypes = [
-            [
-                'label' => 'Upvote',
-                'type'  => 'upvote'
-            ],
-            [
-                'label' => 'Downvote',
-                'type'  => 'downvote'
-            ]
-        ];
-
-        $reactionCounts = [];
-
-        foreach ($reactionTypes as $reactionType) {
-            $count = IdeaReaction::where('object_id', $taskId)
-                ->where('object_type', 'idea')
-                ->where('type', $reactionType['type'])
-                ->count();
-
-            $reactionCounts[] = [
-                'label' => $reactionType['label'],
-                'type'  => $reactionType['type'],
-                'count' => $count
-            ];
-        }
-
-        return $reactionCounts;
+        return IdeaReaction::where('object_id', $taskId)
+            ->where('object_type', 'idea')
+            ->where('type', 'upvote')
+            ->count();
     }
 
 
@@ -919,4 +905,17 @@ class TaskService
             $this->manageDefaultAssignees($task, $stage->id);
         }
     }
+
+    public function deleteTaskCoverImage($settings)
+    {
+        if (isset($settings['cover']['imageId']) && $settings['cover']['imageId']) {
+            $image = TaskImage::find($settings['cover']['imageId']);
+            $deletedImage = clone $image;
+            $deletedImage->delete();
+
+            do_action('fluent_boards/task_attachment_deleted', $deletedImage);
+        }
+
+    }
+
 }

@@ -69,6 +69,20 @@ abstract class MorphOneOrMany extends HasOneOrMany
     }
 
     /**
+     * Create a new instance of the related model. Allow mass-assignment.
+     *
+     * @param  array  $attributes
+     * @return TRelatedModel
+     */
+    public function forceCreate(array $attributes = [])
+    {
+        $attributes[$this->getForeignKeyName()] = $this->getParentKey();
+        $attributes[$this->getMorphType()] = $this->morphClass;
+
+        return $this->related->forceCreate($attributes);
+    }
+
+    /**
      * Set the foreign ID and type for creating a related model.
      *
      * @param  \FluentBoards\Framework\Database\Orm\Model  $model
@@ -79,6 +93,27 @@ abstract class MorphOneOrMany extends HasOneOrMany
         $model->{$this->getForeignKeyName()} = $this->getParentKey();
 
         $model->{$this->getMorphType()} = $this->morphClass;
+    }
+
+    /**
+     * Insert new records or update the existing ones.
+     *
+     * @param  array  $values
+     * @param  array|string  $uniqueBy
+     * @param  array|null  $update
+     * @return int
+     */
+    public function upsert(array $values, $uniqueBy, $update = null)
+    {
+        if (! empty($values) && ! is_array(reset($values))) {
+            $values = [$values];
+        }
+
+        foreach ($values as $key => $value) {
+            $values[$key][$this->getMorphType()] = $this->getMorphClass();
+        }
+
+        return parent::upsert($values, $uniqueBy, $update);
     }
 
     /**

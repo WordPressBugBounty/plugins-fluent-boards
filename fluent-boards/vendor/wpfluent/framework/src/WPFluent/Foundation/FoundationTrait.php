@@ -2,6 +2,8 @@
 
 namespace FluentBoards\Framework\Foundation;
 
+use FluentBoards\Framework\Http\Request\WPUserProxy;
+
 trait FoundationTrait
 {
     use HooksRemovalTrait;
@@ -33,7 +35,11 @@ trait FoundationTrait
      */
     public function env()
     {
-        $env = $this->isDebugOn() ? 'dev' : '';
+        if (php_sapi_name() === 'cli' && isset($_ENV['WPF_ENV'])) {
+            $env = $_ENV['WPF_ENV'];
+        } else {
+            $env = $this->isDebugOn() ? 'dev' : '';
+        }
         
         return $env ?: $this->config->get('app.env', 'prod');
     }
@@ -245,19 +251,6 @@ trait FoundationTrait
     }
 
     /**
-     * Register a short code
-     * @param string $action
-     * @param null
-     */
-    public function addShortcode($action, $handler)
-    {
-        return add_shortcode(
-            $action,
-            $this->parseHookHandler($handler)
-        );
-    }
-
-    /**
      * Checks if any action has been fired.
      * 
      * @param  string $action
@@ -355,6 +348,18 @@ trait FoundationTrait
         $prefix = $this->config->get('app.hook_prefix');
         
         return has_filter($prefix.$action, $callback);
+    }
+
+    /**
+     * Register a short code
+     * @param string $action
+     * @param null
+     */
+    public function addShortcode($action, $handler)
+    {
+        return add_shortcode(
+            $action, $this->parseHookHandler($handler)
+        );
     }
 
     /**
@@ -468,6 +473,16 @@ trait FoundationTrait
     public function url($url = '')
     {
         return $this->baseUrl.ltrim($url, '/');
+    }
+
+    /**
+     * Get the current user.
+     * 
+     * @return \FluentBoards\Framework\Http\Request\WPUserProxy
+     */
+    public function user()
+    {
+        return new WPUserProxy(wp_get_current_user());
     }
 
     /**

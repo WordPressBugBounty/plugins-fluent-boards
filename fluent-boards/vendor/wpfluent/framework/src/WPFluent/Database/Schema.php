@@ -2,8 +2,12 @@
 
 namespace FluentBoards\Framework\Database;
 
+use FluentBoards\Framework\Database\Concerns\MaintainsDatabase;
+
 class Schema
 {
+	use MaintainsDatabase;
+
 	/**
 	 * Get the global $wpdb instance
 	 * 
@@ -150,6 +154,29 @@ class Schema
 		return isset($wpdb->{$table}) ? $wpdb->{$table} : ($wpdb->prefix.$table);
 	}
 
+
+    /**
+     * Resolves the sql prefix
+     *
+     * @param string $sql The file name or the raw sql
+     * @return string The resolved sql
+     */
+    public static function sql($sql = '')
+    {
+        $allowedSqlFileFormats = [
+            'sql'
+        ];
+
+        foreach ($allowedSqlFileFormats as $format) {
+            if (str_ends_with($sql, '.' . $format)) {
+                $sql = @file_exists($sql) ? file_get_contents($sql) : $sql;
+                break;
+            }
+        }
+        
+        return $sql;
+    }
+
 	/**
 	 * Creates a new table using dbDelta function or alters the table if exists.
 	 * 
@@ -163,16 +190,15 @@ class Schema
 	{
 		$table = static::table($table);
 
-		$sql = @file_exists($sql) ? file_get_contents($sql) : $sql;
+		$sql = static::sql($sql);
 
         $collate = static::db()->get_charset_collate();
 
-        if ($sql && !str_contains(basename($sql), '.')) {
-	        return static::callDBDelta(
-	        	$table,
-	        	"CREATE TABLE $table (".PHP_EOL.trim(trim($sql), ',').PHP_EOL.") $collate;"
-	        );
-        }
+        return static::callDBDelta(
+        	"CREATE TABLE $table (
+        		".PHP_EOL.trim(trim($sql), ',').PHP_EOL."
+        	) $collate;"
+        );
 	}
 
 	/**
@@ -204,29 +230,31 @@ class Schema
 	{
 		$table = static::table($table);
 
-		$sql = @file_exists($sql) ? file_get_contents($sql) : $sql;
+		$sql = static::sql($sql);
 
 		$sql = array_map(function($i) { return trim($i);}, explode(',', $sql));
         
-        $sql = "ALTER TABLE $table ".PHP_EOL.rtrim(trim(implode(','.PHP_EOL, $sql)), ';').";";
+        $sql = "ALTER TABLE $table ".PHP_EOL.rtrim(
+        	trim(implode(','.PHP_EOL, $sql)), ';'
+        ).";";
 
         return static::query($sql);
 	}
 
 	/**
-	 * Alters an existing table using dbDelta function if exists, otherwise creates it.
-	 * 
-	 * Alters an existing table but takes the table's creation column defination. This is 
-	 * because, the dbDelta functioin can create or update a table using the table same
-	 * creation defination. In this, case, if a table exists and columns are matched
-	 * then nothing happens but if there's any difference in the new sql then the
-	 * dbDelta alters the table using the new defination but doesn't delete any
-	 * columns. so, after the dbDelta finishes it's job, any non-existing
-	 * columns in the new defination will be deleted from the existing
-	 * table. if table is not there then the table gets created.
+	 * Alters an existing table using dbDelta function if exists, otherwise creates
+	 * it. Alters an existing table but takes the table creation column defination.
+	 * This is because, the dbDelta functioin can create or update a table using 
+	 * the table creation defination. In this, case, if a table exists and the
+	 * columns are matched then nothing happens but if there's any difference
+	 * in the new sql then the dbDelta alters the table using the new sql
+	 * defination but doesn't delete any columns. So, after the dbDelta
+	 * finishes it's job, any non-existing columns in the new sql
+	 * defination will be deleted from the existing table. if
+	 * table is not there then the table gets created.
 	 * 
 	 * @param  string $table The table name without the prefix
-	 * @param    string $sql   The sql to create table or an absolute path of a
+	 * @param  string $sql   The sql to create table or an absolute path of a
 	 * .sql file containing the column definations for creating the new table.
 	 * 
 	 * @return string message
@@ -256,18 +284,23 @@ class Schema
 		return $result;
 	}
 
-	/**
-	 * Drops/deletes an existing table if exists
-	 * 
-	 * @param  string $table The table name without the prefix
-	 * @return bool
-	 */
-	public static function dropTableIfExists($table)
-	{
-		if (static::hasTable($table)) {
-			return static::db()->query('DROP TABLE ' . static::table($table));
-		}
-	}
+    /**
+     * Drops/deletes an existing table if exists
+     *
+     * @param string $table The table name without the prefix
+     * @param bool $disableForeignKeyCheck Optional. Whether to disable foreign key checks before dropping the table. Default is true.     *
+     * @return bool
+     */
+
+    public static function dropTableIfExists($table, $disableForeignKeyCheck = true)
+    {
+        if (static::hasTable($table)) {
+            if ($disableForeignKeyCheck) {
+                static::db()->query("ALTER TABLE " . static::table($table) . " DISABLE KEYS;");
+            }
+            return static::db()->query('DROP TABLE ' . static::table($table));
+        }
+    }
 
 	/**
 	 * Truncate a table.
@@ -293,6 +326,32 @@ class Schema
 		if (static::hasTable($table)) {
 			return static::truncate($table);
 		}
+	}
+
+	/**
+	 * Adds a new  index to a column of given table.
+	 * 
+	 * @param string $table Table name
+	 * @param string $index Columns name
+	 * @return bool
+	 * @see https://developer.wordpress.org/reference/functions/add_clean_index
+	 */
+	public static function addIndex($table, $index)
+	{
+		return add_clean_index(static::table($table), $index);
+	}
+
+	/**
+	 * Drops an index from a column of given table.
+	 * 
+	 * @param  string $table Table name
+	 * @param  string $index Columns name
+	 * @return bool
+	 * @see https://developer.wordpress.org/reference/functions/drop_index
+	 */
+	public static function dropIndex($table, $index)
+	{
+		return drop_index(static::table($table), $index);
 	}
 
 	/**
@@ -367,6 +426,33 @@ class Schema
 	}
 
 	/**
+	 * Retrieves the list of all available built-in tables from
+	 * the database using WordPress' $wpdb->tables native method.
+	 * 
+	 * @param  string  $scope
+	 * @param  boolean $prefix
+	 * @param  integer $blogId
+	 * @return string[] WP Table names. When a prefix is requested,
+	 * the key is the unprefixed table name.
+	 * @see https://developer.wordpress.org/reference/classes/wpdb/tables/
+	 */
+	public static function tables($scope = 'all', $prefix = true, $blogId = 0)
+	{
+		return static::db()->tables($scope, $prefix, $blogId);
+	}
+
+	/**
+	 * Retrieves the list of all available tables from the database.
+	 * 
+	 * @param  string $dbname optional
+	 * @return array
+	 */
+	public static function getTables($dbname = null)
+	{
+		return static::getTableList($dbname);
+	}
+
+	/**
 	 * Retrieves the list of all available tables in the database.
 	 * 
 	 * @param  string $dbname optional
@@ -377,9 +463,45 @@ class Schema
 		$dbname = $dbname ?: static::db()->dbname;
 		$sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES";
 		$sql .= " WHERE TABLE_SCHEMA = '".$dbname."'";
+		
 		return array_map(function($i) {
 			return $i->TABLE_NAME;
 		}, static::db()->get_results($sql));
+	}
+
+	/**
+     * Determine if the connected database is a sqlite database.
+     *
+     * @return bool
+     */
+    public static function isSqlite()
+    {
+        return defined('DB_ENGINE') && DB_ENGINE === 'sqlite';
+    }
+
+    /**
+     * Determine if the connected database is a mariadb database.
+     *
+     * @return bool
+     */
+    public static function isMaria()
+    {
+        return str_contains(
+        	static::db()->get_var('SELECT VERSION()'), 'MariaDB'
+        );
+    }
+
+	/**
+	 * Retrieve the current database engine name.
+	 * 
+	 * @param  string $table
+	 * @return string
+	 */
+	public static function getEngine($table)
+	{
+		return static::db()->get_var(
+            'SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = "' . static::table($table) . '"'
+        );
 	}
 
 	/**
@@ -388,7 +510,7 @@ class Schema
 	 * @param  string $sql
 	 * @return mixed
 	 */
-	protected static function callDBDelta($table, $sql)
+	public static function callDBDelta($sql)
 	{
 		if (!function_exists('dbDelta')) {
 			require (ABSPATH . 'wp-admin/includes/upgrade.php');

@@ -12,15 +12,17 @@ use DateTimeInterface;
 use FluentBoards\Framework\Foundation\App;
 use FluentBoards\Framework\Database\Schema;
 use FluentBoards\Framework\Database\QueryException;
-use FluentBoards\Framework\Database\Query\Processor;
-use FluentBoards\Framework\Database\Query\Expression;
 use FluentBoards\Framework\Database\ConnectionInterface;
 use FluentBoards\Framework\Database\Events\QueryExecuted;
+use FluentBoards\Framework\Database\Query\Expression;
+use FluentBoards\Framework\Database\Query\Processors\MySqlProcessor;
+use FluentBoards\Framework\Database\Query\Processors\SQLiteProcessor;
 use FluentBoards\Framework\Database\Query\Builder as QueryBuilder;
-use FluentBoards\Framework\Database\Query\Grammar as QueryGrammar;
+use FluentBoards\Framework\Database\Query\Grammars\MySqlGrammar;
+use FluentBoards\Framework\Database\Query\Grammars\SQLiteGrammar;
 
 class WPDBConnection implements ConnectionInterface
-{ 
+{
     /**
      * $wpdb Global $wpdb instance
      * @var Object
@@ -51,23 +53,16 @@ class WPDBConnection implements ConnectionInterface
     /**
      * The query grammar implementation.
      *
-     * @var \FluentBoards\Framework\Database\Query\Grammar
+     * @var \FluentBoards\Framework\Database\Query\Grammars\Grammar
      */
     protected $queryGrammar;
 
     /**
      * The query post processor implementation.
      *
-     * @var \FluentBoards\Framework\Database\Query\Processor
+     * @var \FluentBoards\Framework\Database\Query\Processors\Processor
      */
     protected $postProcessor;
-
-    /**
-     * The number of active transactions.
-     *
-     * @var int
-     */
-    protected $transactions = 0;
 
     /**
      * The number of total transactions.
@@ -77,7 +72,7 @@ class WPDBConnection implements ConnectionInterface
     protected $transactionCount = 0;
 
     /**
-     * The number of total transactions.
+     * The event dispatcher.
      *
      * @var FluentBoards\Framework\Events
      */
@@ -87,9 +82,9 @@ class WPDBConnection implements ConnectionInterface
      * Create a new database connection instance.
      *
      * @param  $wpdb $pdo
-     * @param  string  $database
-     * @param  string  $tablePrefix
-     * @param  array  $config
+     * @param string $database
+     * @param string $tablePrefix
+     * @param array $config
      * @return void
      */
     public function __construct(
@@ -119,7 +114,7 @@ class WPDBConnection implements ConnectionInterface
 
     /**
      * Populate $wpdb instance & turn off db errors
-     * 
+     *
      * @param  $wpdb Global $wpdb instance
      * @return Null
      */
@@ -145,11 +140,11 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Get the default query grammar instance.
      *
-     * @return \FluentBoards\Framework\Database\Query\Grammar
+     * @return \FluentBoards\Framework\Database\Query\Grammars\Grammar
      */
     protected function getDefaultQueryGrammar()
     {
-        return new QueryGrammar;
+        return $this->isSqlite() ? new SQLiteGrammar : new MySqlGrammar;
     }
 
     /**
@@ -165,18 +160,18 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Get the default post processor instance.
      *
-     * @return \FluentBoards\Framework\Database\Query\Processor
+     * @return \FluentBoards\Framework\Database\Query\Processors\Processor
      */
     protected function getDefaultPostProcessor()
     {
-        return new Processor;
+        return $this->isSqlite() ? new SQLiteProcessor : new MySqlProcessor;
     }
 
     /**
      * Begin a fluent query against a database table.
      *
-     * @param  \Closure|\FluentBoards\Framework\Database\Query\Builder|string  $table
-     * @param  string|null  $as
+     * @param \Closure|\FluentBoards\Framework\Database\Query\Builder|string $table
+     * @param string|null $as
      * @return \FluentBoards\Framework\Database\Query\Builder
      */
     public function table($table, $as = null)
@@ -199,14 +194,14 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Run a select statement and return a single result.
      *
-     * @param  string  $query
-     * @param  array  $bindings
-     * @param  bool  $useReadPdo
+     * @param string $query
+     * @param array $bindings
+     * @param bool $useReadPdo
      * @return mixed
      */
     public function selectOne($query, $bindings = [], $useReadPdo = true)
     {
-        return $this->run($query, $bindings, function($query, $bindings) {
+        return $this->run($query, $bindings, function ($query, $bindings) {
             $query = $this->bindParams($query, $bindings);
 
             $result = $this->wpdb->get_row($query);
@@ -222,16 +217,45 @@ class WPDBConnection implements ConnectionInterface
     }
 
     /**
+     * Run a select statement and return the first column of the first row.
+     *
+     * @param string $query
+     * @param array $bindings
+     * @param bool $useReadPdo
+     * @return mixed
+     *
+     * @throws \FluentBoards\Framework\Database\MultipleColumnsSelectedException
+     */
+    public function scalar($query, $bindings = [], $useReadPdo = true)
+    {
+        $record = $this->selectOne($query, $bindings, $useReadPdo);
+
+        if (is_null($record)) {
+            return null;
+        }
+
+        $record = (array)$record;
+
+        if (count($record) > 1) {
+            throw new MultipleColumnsSelectedException(
+                'The query returned more than one column.'
+            );
+        }
+
+        return reset($record);
+    }
+
+    /**
      * Run a select statement against the database.
      *
-     * @param  string  $query
-     * @param  array  $bindings
-     * @param  bool  $useReadPdo
+     * @param string $query
+     * @param array $bindings
+     * @param bool $useReadPdo
      * @return array
      */
     public function select($query, $bindings = [], $useReadPdo = true)
     {
-        return $this->run($query, $bindings, function($query, $bindings) {
+        return $this->run($query, $bindings, function ($query, $bindings) {
             $query = $this->bindParams($query, $bindings);
 
             $result = $this->wpdb->get_results($query);
@@ -322,9 +346,9 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Run a select statement against the database and returns a generator.
      *
-     * @param  string  $query
-     * @param  array  $bindings
-     * @param  bool  $useReadPdo
+     * @param string $query
+     * @param array $bindings
+     * @param bool $useReadPdo
      * @return \Generator
      */
     public function cursor($query, $bindings = [], $useReadPdo = true)
@@ -401,10 +425,8 @@ class WPDBConnection implements ConnectionInterface
         }
 
         if ($statement->error || $statement->errno) {
-            
-            $this->wpdb->last_error = __(
-                $statement->error || 'Mysqli Error No: ' . $statement->errno
-            );
+
+            $this->wpdb->last_error = $statement->error || 'Mysqli Error No: ' . $statement->errno;
 
             throw new QueryException(
                 $query, $bindings, new Exception(
@@ -417,8 +439,8 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Run an insert statement against the database.
      *
-     * @param  string  $query
-     * @param  array  $bindings
+     * @param string $query
+     * @param array $bindings
      * @return bool
      */
     public function insert($query, $bindings = [])
@@ -429,8 +451,8 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Run an update statement against the database.
      *
-     * @param  string  $query
-     * @param  array  $bindings
+     * @param string $query
+     * @param array $bindings
      * @return int
      */
     public function update($query, $bindings = [])
@@ -441,8 +463,8 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Run a delete statement against the database.
      *
-     * @param  string  $query
-     * @param  array  $bindings
+     * @param string $query
+     * @param array $bindings
      * @return int
      */
     public function delete($query, $bindings = [])
@@ -453,13 +475,13 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Execute an SQL statement and return the boolean result.
      *
-     * @param  string  $query
-     * @param  array  $bindings
+     * @param string $query
+     * @param array $bindings
      * @return bool
      */
     public function statement($query, $bindings = [])
     {
-        return $this->run($query, $bindings, function($query, $bindings) {
+        return $this->run($query, $bindings, function ($query, $bindings) {
             $query = $this->bindParams($query, $bindings, true);
 
             $result = $this->unprepared($query);
@@ -477,13 +499,13 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Run an SQL statement and get the number of rows affected.
      *
-     * @param  string  $query
-     * @param  array  $bindings
+     * @param string $query
+     * @param array $bindings
      * @return int
      */
     public function affectingStatement($query, $bindings = [])
     {
-        return $this->run($query, $bindings, function($query, $bindings) {
+        return $this->run($query, $bindings, function ($query, $bindings) {
             $query = $this->bindParams($query, $bindings, true);
 
             $result = $this->wpdb->query($query);
@@ -501,7 +523,7 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Run a raw, unprepared query against the PDO connection.
      *
-     * @param  string  $query
+     * @param string $query
      * @return bool
      */
     public function unprepared($query)
@@ -512,7 +534,7 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Execute the given callback in "dry run" mode.
      *
-     * @param  \Closure  $callback
+     * @param \Closure $callback
      * @return array
      */
     public function pretend(Closure $callback)
@@ -523,7 +545,7 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Prepare the query bindings for execution.
      *
-     * @param  array  $bindings
+     * @param array $bindings
      * @return array
      */
     public function prepareBindings(array $bindings)
@@ -531,13 +553,14 @@ class WPDBConnection implements ConnectionInterface
         $grammar = $this->getQueryGrammar();
 
         foreach ($bindings as $key => $value) {
-            // We need to transform all instances of DateTimeInterface into the actual
-            // date string. Each query grammar maintains its own date string format
-            // so we'll just ask the grammar for the format to get from the date.
+            // We need to transform all instances of DateTimeInterface into
+            // the actual date string. Each query grammar maintains its
+            // own date string format so we'll just ask the grammar
+            // for the format to get from the date.
             if ($value instanceof DateTimeInterface) {
                 $bindings[$key] = $value->format($grammar->getDateFormat());
             } elseif (is_bool($value)) {
-                $bindings[$key] = (int) $value;
+                $bindings[$key] = (int)$value;
             }
         }
 
@@ -549,24 +572,19 @@ class WPDBConnection implements ConnectionInterface
         $start = microtime(true);
 
         try {
-            $result = $callback($query, $bindings);
-        } catch (Exception $e) {
-            $result = $e;
+            return $callback($query, $bindings);
+        } finally {
+            $time = $this->getElapsedTime($start);
+            $this->event->dispatch(
+                new QueryExecuted($query, $bindings, $time, $this)
+            );
         }
-
-        $time = $this->getElapsedTime($start);
-            
-        $this->event->dispatch(
-            new QueryExecuted($query, $bindings, $time, $this)
-        );
-
-        return $result;
     }
 
     /**
      * Get a new raw query expression.
      *
-     * @param  mixed  $value
+     * @param mixed $value
      * @return \FluentBoards\Framework\Database\Query\Expression
      */
     public function raw($value)
@@ -577,11 +595,11 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Get the query grammar used by the connection.
      *
-     * @return \FluentBoards\Framework\Database\Query\Grammar
+     * @return \FluentBoards\Framework\Database\Query\Grammars\Grammar
      */
     public function getQueryGrammar()
     {
-        $this->queryGrammar->setTablePrefix($this->wpdb->prefix);
+        $this->queryGrammar->setTablePrefix($this->wpdb);
 
         return $this->queryGrammar;
     }
@@ -589,7 +607,7 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Set the query grammar used by the connection.
      *
-     * @param  \FluentBoards\Framework\Database\Query\Grammar  $grammar
+     * @param \FluentBoards\Framework\Database\Query\Grammars\Grammar $grammar
      * @return $this
      */
     public function setQueryGrammar(Grammar $grammar)
@@ -602,7 +620,7 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Get the query post processor used by the connection.
      *
-     * @return \FluentBoards\Framework\Database\Query\Processor
+     * @return \FluentBoards\Framework\Database\Query\Processors\Processor
      */
     public function getPostProcessor()
     {
@@ -612,7 +630,7 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Set the query post processor used by the connection.
      *
-     * @param  \FluentBoards\Framework\Database\Query\Processor  $processor
+     * @param \FluentBoards\Framework\Database\Query\Processors\Processor $processor
      * @return $this
      */
     public function setPostProcessor(Processor $processor)
@@ -625,7 +643,7 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Return the last insert id
      *
-     * @param  string $args
+     * @param string $args
      *
      * @return int
      */
@@ -646,7 +664,7 @@ class WPDBConnection implements ConnectionInterface
 
     /**
      * Returns the $wpdb object.
-     * 
+     *
      * @return Object $wpdb
      */
     public function getWPDB()
@@ -675,10 +693,20 @@ class WPDBConnection implements ConnectionInterface
     }
 
     /**
+     * Get the server version for the connection.
+     *
+     * @return string
+     */
+    public function getServerVersion(): string
+    {
+        return $this->getWPDB()->db_version();
+    }
+
+    /**
      * Execute a Closure within a transaction.
      *
-     * @param  Closure $callback
-     * @param  int  $attempts
+     * @param Closure $callback
+     * @param int $attempts
      *
      * @return mixed
      *
@@ -723,7 +751,7 @@ class WPDBConnection implements ConnectionInterface
         }
 
         $transaction = $this->unprepared("COMMIT;");
-        
+
         if (false !== $transaction) {
             $this->transactionCount--;
         }
@@ -760,7 +788,7 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Get the column listing for a given table.
      *
-     * @param  string  $table
+     * @param string $table
      * @return array
      */
     public function getColumnListing($table)
@@ -770,7 +798,7 @@ class WPDBConnection implements ConnectionInterface
 
     /**
      * Alias for getColumnListing.
-     * 
+     *
      * @param  @param  string  $t
      * @return array
      */
@@ -779,20 +807,30 @@ class WPDBConnection implements ConnectionInterface
         return $this->getColumnListing($t);
     }
 
-    
     /**
-     * Try to guess the underlying db
-     * @return boolean
+     * Determine if the connected database is a sqlite database.
+     *
+     * @return bool
      */
     public function isSqlite()
     {
-        return defined('DB_ENGINE') && DB_ENGINE === 'sqlite';
+        return Schema::isSqlite();
+    }
+
+    /**
+     * Determine if the connected database is a mariadb database.
+     *
+     * @return bool
+     */
+    public function isMaria()
+    {
+        return Schema::isMaria();
     }
 
     /**
      * Register a database query listener with the connection.
      *
-     * @param  \Closure  $callback
+     * @param \Closure $callback
      * @return void
      */
     public function listen(Closure $callback)
@@ -803,7 +841,7 @@ class WPDBConnection implements ConnectionInterface
     /**
      * Get the elapsed time since a given starting point.
      *
-     * @param  int  $start
+     * @param int $start
      * @return float
      */
     protected function getElapsedTime($start)

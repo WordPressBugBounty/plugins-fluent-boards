@@ -152,8 +152,13 @@ class MorphToMany extends BelongsToMany
     {
         $using = $this->using;
 
-        $pivot = $using ? $using::fromRawAttributes($this->parent, $attributes, $this->table, $exists)
-                        : MorphPivot::fromAttributes($this->parent, $attributes, $this->table, $exists);
+        $attributes = array_merge([$this->morphType => $this->morphClass], $attributes);
+
+        $pivot = $using ? $using::fromRawAttributes(
+            $this->parent, $attributes, $this->table, $exists
+        ) : MorphPivot::fromAttributes(
+            $this->parent, $attributes, $this->table, $exists
+        );
 
         $pivot->setPivotKeys($this->foreignPivotKey, $this->relatedPivotKey)
               ->setMorphType($this->morphType)
@@ -186,6 +191,16 @@ class MorphToMany extends BelongsToMany
     public function getMorphType()
     {
         return $this->morphType;
+    }
+
+    /**
+     * Get the fully qualified morph type for the relation.
+     *
+     * @return string
+     */
+    public function getQualifiedMorphTypeName()
+    {
+        return $this->qualifyPivotColumn($this->morphType);
     }
 
     /**

@@ -3,15 +3,18 @@
 namespace FluentBoards\Framework\Http;
 
 use Exception;
+use FluentBoards\Framework\Support\Util;
+use FluentBoards\Framework\Foundation\App;
 use FluentBoards\Framework\Support\DateTime;
+use FluentBoards\Framework\Support\UriTemplate;
 
 class URL
 {
 	protected $encrypter = null;
 
-	public function __construct($encrypter)
+	public function __construct($encrypter = null)
 	{
-		$this->encrypter = $encrypter;
+		$this->encrypter = $encrypter ?: App::make('encrypter');
 	}
 
 	/**
@@ -33,16 +36,7 @@ class URL
 	 */
 	public function parse(string $url, array $params)
 	{
-		$pattern = '#\{[a-zA-Z0-9-_]+\}#';
-		
-	    return preg_replace_callback($pattern, function($matches) use ($params) {
-	        foreach ($matches as $match) {
-	            $match = str_replace(['{', '}'], ['', ''], $match);
-	            if (isset($params[$match])) {
-	                return $params[$match];
-	            }
-	        }
-	    }, $url);
+		return UriTemplate::expand($url, $params);
 	}
 
 	/**
@@ -64,6 +58,13 @@ class URL
 	 */
 	public function sign($url, $params = [])
 	{
+		if (!preg_match('#^(http|https)://#', $url)) {
+			$config = App::config();
+			$slug = $config->get('app.slug');
+			$version = $config->get('app.rest_version');
+	        $url = sprintf('%s%s/%s/%s',rest_url(), $slug, $version, $url);
+	    }
+
 		$parts = parse_url($url);
 
 		$url = $parts['scheme'] . '://' . $parts['host'] . $parts['path'];
@@ -87,19 +88,21 @@ class URL
 	 */
 	public function validateExpiryTime($params)
 	{
-		if (isset($params['expires_at'])) {
-			if (is_string($params['expires_at'])) {
-				$params['expires_at'] = strtotime($params['expires_at']);
-			} elseif ($params['expires_at'] instanceof DateTime) {
-				$params['expires_at'] = $params['expires_at']->getTimestamp();
-			}
+	    if (isset($params['expires_at'])) {
+	        if (is_string($params['expires_at'])) {
+	            $params['expires_at'] = strtotime($params['expires_at']);
+	        } elseif ($params['expires_at'] instanceof DateTime) {
+	            $params['expires_at'] = $params['expires_at']->getTimestamp();
+	        } elseif (is_numeric($params['expires_at'])) {
+	            if ($params['expires_at'] <= time()) {
+	                $params['expires_at'] = time() + (int) $params['expires_at'];
+	            }
+	        } else {
+                throw new Exception('The expiry time is invalid or has passed.');
+	        }
+	    }
 
-			if (!is_numeric($params['expires_at']) || $params['expires_at'] < time()) {
-				throw new Exception('The expiry time has passed or invalid.');
-			}
-		}
-
-		return $params;
+	    return $params;
 	}
 
 	/**
@@ -114,9 +117,9 @@ class URL
 			return false;
 		}
 
-        if (!$query['_data'] || !$query['_signature']) {
-            return false;
-        }
+		if (!isset($query['_data']) || !isset($query['_signature'])) {
+			return false;
+		}
 
         return $this->verifySignature($query['_data'], $query['_signature']);
 	}
@@ -145,7 +148,7 @@ class URL
 	 * 
 	 * @param  array $data
 	 * @param  string $signature
-	 * @return mixed (false or array)
+	 * @return mixed (bool or array)
 	 */
 	public function verifySignature($data, $signature)
 	{
@@ -153,13 +156,117 @@ class URL
 
         if (!hash_equals($expected, $signature)) return false;
 
-        parse_str($this->encrypter->decrypt(urldecode($data)), $params);
+        parse_str($this->encrypter->decrypt($data), $params);
 
         if (isset($params['expires_at']) && time() > $params['expires_at']) {
             return false;
         }
 
-        return $params;
+        return empty($params) ? true : $params;
+	}
+
+	/**
+	 * Helper method for home_url.
+	 * 
+	 * @return string
+	 */
+	public function wp($path = '')
+	{
+		$wp = get_option('siteUrl');
+
+		if ($path) {
+			$wp .= '/' . trim($path, '/');
+		}
+
+		return $wp;
+	}
+
+	/**
+	 * Retrieve the wp-content URL.
+	 *
+	 * Note: The wp-content directory is renamable by devs so it's not
+	 * guaranteed to be wp-content, so use this method for safety.
+	 * 
+	 * @param  string $path
+	 * @return string
+	 */
+	public function content($path = '')
+	{
+		return content_url($path);
+	}
+
+	/**
+	 * Retrieve the wp-content/plugins URL.
+	 * 
+	 * @param  string $path
+	 * @return string
+	 */
+	public function plugins($path = '')
+	{
+    	return $this->content('/plugins/' . ltrim($path, '/'));
+	}
+
+	/**
+	 * Retrieve the wp-content/plugins URL.
+	 * 
+	 * @param  string $path
+	 * @return string
+	 */
+	public function plugin($path = '')
+	{
+    	$pluginUrl = rtrim(plugin_dir_url(
+    		App::make('__pluginfile__')
+    	), '/');
+
+    	if ($path) {
+    		$pluginUrl .= '/' . trim($path, '/');
+    	}
+
+    	return $pluginUrl;
+	}
+
+	/**
+	 * Retrieve the wp-content/themes URL.
+	 * 
+	 * @param  string $path
+	 * @return string
+	 */
+	public function themes($path = '')
+	{
+		return $this->content('/themes/' . ltrim($path, '/'));
+	}
+
+	/**
+	 * Retrieve the wp-content/uploads URL.
+	 * 
+	 * @param  string $path
+	 * @return string
+	 */
+	public function uploads($path = '')
+	{
+		return $this->content('/uploads/' . ltrim($path, '/'));
+	}
+
+	/**
+	 * Retrieve the site/home URL.
+	 * 
+	 * @param  string $path
+	 * @return string
+	 */
+	public function home($path = '', $scheme = null)
+	{
+		return site_url($path, $scheme);
+	}
+
+	/**
+	 * Generate a URL from a file path.
+	 * 
+	 * @param  string $path
+	 * @return string
+	 */
+	public function fromFile($path)
+	{
+		return Util::pathToUrl($path);
 	}
 
 	/**

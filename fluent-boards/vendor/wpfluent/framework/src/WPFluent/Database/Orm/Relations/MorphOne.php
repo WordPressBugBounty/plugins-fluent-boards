@@ -15,11 +15,7 @@ class MorphOne extends MorphOneOrMany implements SupportsPartialRelations
 {
     use CanBeOneOfMany, ComparesRelatedModels, SupportsDefaultModels;
 
-    /**
-     * Get the results of the relationship.
-     *
-     * @return mixed
-     */
+    /** @inheritDoc */
     public function getResults()
     {
         if (is_null($this->getParentKey())) {
@@ -29,13 +25,7 @@ class MorphOne extends MorphOneOrMany implements SupportsPartialRelations
         return $this->query->first() ?: $this->getDefaultFor($this->parent);
     }
 
-    /**
-     * Initialize the relation on a set of models.
-     *
-     * @param  array  $models
-     * @param  string  $relation
-     * @return array
-     */
+    /** @inheritDoc */
     public function initRelation(array $models, $relation)
     {
         foreach ($models as $model) {
@@ -45,29 +35,16 @@ class MorphOne extends MorphOneOrMany implements SupportsPartialRelations
         return $models;
     }
 
-    /**
-     * Match the eagerly loaded results to their parents.
-     *
-     * @param  array  $models
-     * @param  \FluentBoards\Framework\Database\Orm\Collection  $results
-     * @param  string  $relation
-     * @return array
-     */
+    /** @inheritDoc */
     public function match(array $models, Collection $results, $relation)
     {
         return $this->matchOne($models, $results, $relation);
     }
 
-    /**
-     * Get the relationship query.
-     *
-     * @param  \FluentBoards\Framework\Database\Orm\Builder  $query
-     * @param  \FluentBoards\Framework\Database\Orm\Builder  $parentQuery
-     * @param  array|mixed  $columns
-     * @return \FluentBoards\Framework\Database\Orm\Builder
-     */
-    public function getRelationExistenceQuery(Builder $query, Builder $parentQuery, $columns = ['*'])
-    {
+    /** @inheritDoc */
+    public function getRelationExistenceQuery(
+        Builder $query, Builder $parentQuery, $columns = ['*']
+    ) {
         if ($this->isOneOfMany()) {
             $this->mergeOneOfManyJoinsTo($query);
         }
@@ -78,13 +55,14 @@ class MorphOne extends MorphOneOrMany implements SupportsPartialRelations
     /**
      * Add constraints for inner join subselect for one of many relationships.
      *
-     * @param  \FluentBoards\Framework\Database\Orm\Builder  $query
+     * @param  \Illuminate\Database\Eloquent\Builder<TRelatedModel>  $query
      * @param  string|null  $column
      * @param  string|null  $aggregate
      * @return void
      */
-    public function addOneOfManySubQueryConstraints(Builder $query, $column = null, $aggregate = null)
-    {
+    public function addOneOfManySubQueryConstraints(
+        Builder $query, $column = null, $aggregate = null
+    ) {
         $query->addSelect($this->foreignKey, $this->morphType);
     }
 
@@ -101,34 +79,42 @@ class MorphOne extends MorphOneOrMany implements SupportsPartialRelations
     /**
      * Add join query constraints for one of many relationships.
      *
-     * @param  \FluentBoards\Framework\Database\Query\JoinClause  $join
+     * @param  \Illuminate\Database\Query\JoinClause  $join
      * @return void
      */
     public function addOneOfManyJoinSubQueryConstraints(JoinClause $join)
     {
         $join
-            ->on($this->qualifySubSelectColumn($this->morphType), '=', $this->qualifyRelatedColumn($this->morphType))
-            ->on($this->qualifySubSelectColumn($this->foreignKey), '=', $this->qualifyRelatedColumn($this->foreignKey));
+            ->on(
+                $this->qualifySubSelectColumn($this->morphType),
+                '=',
+                $this->qualifyRelatedColumn($this->morphType))
+            ->on(
+                $this->qualifySubSelectColumn($this->foreignKey),
+                '=',
+                $this->qualifyRelatedColumn($this->foreignKey)
+            );
     }
 
     /**
      * Make a new related instance for the given model.
      *
-     * @param  \FluentBoards\Framework\Database\Orm\Model  $parent
-     * @return \FluentBoards\Framework\Database\Orm\Model
+     * @param  TDeclaringModel  $parent
+     * @return TRelatedModel
      */
     public function newRelatedInstanceFor(Model $parent)
     {
         return $this->related->newInstance()
-                    ->setAttribute($this->getForeignKeyName(), $parent->{$this->localKey})
-                    ->setAttribute($this->getMorphType(), $this->morphClass);
+            ->setAttribute(
+                $this->getForeignKeyName(), $parent->{$this->localKey}
+            )->setAttribute($this->getMorphType(), $this->morphClass);
     }
 
     /**
      * Get the value of the model's foreign key.
      *
-     * @param  \FluentBoards\Framework\Database\Orm\Model  $model
-     * @return mixed
+     * @param  TRelatedModel  $model
+     * @return int|string
      */
     protected function getRelatedKeyFrom(Model $model)
     {

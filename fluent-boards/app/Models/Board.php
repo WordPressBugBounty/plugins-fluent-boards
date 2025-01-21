@@ -282,6 +282,13 @@ class Board extends Model
 
     }
 
+
+    public function activities()
+    {
+        return $this->hasMany(Activity::class, 'object_id')
+                    ->where('object_type', Constant::ACTIVITY_BOARD);
+    }
+
     public function getisUserOnlyViewerAttribute()
     {
         $userId = get_current_user_id();

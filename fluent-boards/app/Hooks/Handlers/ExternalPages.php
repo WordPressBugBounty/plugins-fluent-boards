@@ -71,7 +71,7 @@ class ExternalPages
 
         // check signature hash
         if (!$this->validateAttachmentSignature($attachment)) {
-            $dieMessage = __('Sorry, Your secure sign is invalid, Please reload the previous page and get new signed url', 'fluent-support');
+            $dieMessage = __('Sorry, Your secure sign is invalid, Please reload the previous page and get new signed url', 'fluent-boards');
             die($dieMessage);
         }
 

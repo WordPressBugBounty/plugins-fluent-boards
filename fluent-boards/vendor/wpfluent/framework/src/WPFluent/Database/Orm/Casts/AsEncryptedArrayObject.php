@@ -21,7 +21,9 @@ class AsEncryptedArrayObject implements Castable
             public function get($model, $key, $value, $attributes)
             {
                 if (isset($attributes[$key])) {
-                    return new ArrayObject(json_decode(App::make('encrypter')->decryptString($attributes[$key]), true));
+                    return new ArrayObject(json_decode(
+                        App::make('encrypter')->decryptString($attributes[$key]), true
+                    ));
                 }
 
                 return null;
@@ -30,7 +32,11 @@ class AsEncryptedArrayObject implements Castable
             public function set($model, $key, $value, $attributes)
             {
                 if (! is_null($value)) {
-                    return [$key => App::make('encrypter')->encryptString(json_encode($value))];
+                    return [
+                        $key => App::make('encrypter')->encryptString(
+                            json_encode($value)
+                        )
+                    ];
                 }
 
                 return null;

@@ -42,6 +42,11 @@ class ActivityHandler
 
     public function logAssigneeAddedActivity($task, $newAssigneeId)
     {
+        $currentUserId = get_current_user_id();
+        if($newAssigneeId == $currentUserId) {
+            $this->taskAssigneeJoin($task->id);
+            return;
+        }
         $user = User::findOrFail($newAssigneeId);
         $currentUserId = get_current_user_id();
         if($currentUserId === $user->ID){
@@ -53,6 +58,11 @@ class ActivityHandler
 
     public function logAssigneeRemovedActivity($task, $newAssigneeId)
     {
+        $currentUserId = get_current_user_id();
+        if($newAssigneeId == $currentUserId) {
+            $this->taskAssigneeLeave($task->id);
+            return;
+        }
         $user = User::findOrFail($newAssigneeId);
         $currentUserId = get_current_user_id();
         if($currentUserId === $user->ID){

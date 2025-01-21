@@ -13,14 +13,15 @@ use FluentBoards\Framework\Support\Helper;
 use FluentBoards\Framework\Pagination\Paginator;
 use FluentBoards\Framework\Support\ForwardsCalls;
 use FluentBoards\Framework\Support\ArrayableInterface;
+use FluentBoards\Framework\Database\Query\Expression;
 use FluentBoards\Framework\Database\Concerns\BuildsQueries;
 use FluentBoards\Framework\Database\RecordsNotFoundException;
 use FluentBoards\Framework\Database\Orm\Relations\Relation;
 use FluentBoards\Framework\Database\Orm\Relations\BelongsToMany;
 use FluentBoards\Framework\Database\Orm\RelationNotFoundException;
 use FluentBoards\Framework\Database\Orm\Concerns\QueriesRelationships;
+use FluentBoards\Framework\Database\UniqueConstraintViolationException;
 use FluentBoards\Framework\Database\Query\Builder as QueryBuilder;
-
 
 /**
  * @property-read HigherOrderBuilderProxy $orWhere
@@ -29,9 +30,8 @@ use FluentBoards\Framework\Database\Query\Builder as QueryBuilder;
  */
 class Builder
 {
-    use QueriesRelationships, ForwardsCalls;
-    use BuildsQueries {
-        sole as baseSole;
+    use BuildsQueries, ForwardsCalls, QueriesRelationships {
+        BuildsQueries::sole as baseSole;
     }
 
     /**
@@ -96,22 +96,31 @@ class Builder
         'avg',
         'count',
         'dd',
-        'doesntExist',
+        'ddrawsql',
+        'doesntexist',
+        'doesntexistor',
         'dump',
+        'dumprawsql',
         'exists',
+        'existsor',
         'explain',
-        'getBindings',
-        'getConnection',
-        'getGrammar',
+        'getbindings',
+        'getconnection',
+        'getgrammar',
+        'getrawbindings',
+        'implode',
         'insert',
-        'insertGetId',
-        'insertOrIgnore',
-        'insertUsing',
+        'insertgetid',
+        'insertorignore',
+        'insertusing',
+        'insertorignoreusing',
         'max',
         'min',
         'raw',
+        'rawvalue',
         'sum',
-        'toSql',
+        'tosql',
+        'torawsql',
     ];
 
     /**
@@ -121,12 +130,34 @@ class Builder
      */
     protected $scopes = [];
 
+
+    /**
+     * Applied model appends.
+     *
+     * @var array
+     */
+    protected $appends = [];
+
+    /**
+     * Applied model hidden.
+     *
+     * @var array
+     */
+    protected $hidden = [];
+
     /**
      * Removed global scopes.
      *
      * @var array
      */
     protected $removedScopes = [];
+
+    /**
+     * The callbacks that should be invoked after retrieving data from the database.
+     *
+     * @var array
+     */
+    protected $afterQueryCallbacks = [];
 
     /**
      * Create a new Orm query builder instance.
@@ -207,6 +238,28 @@ class Builder
     }
 
     /**
+     * Register model appends.
+     * @param array $appends
+     * @return $this
+     */
+    public function addAppends(array $appends)
+    {
+        $this->appends = array_merge($this->appends, $appends);
+        return $this;
+    }
+
+    /**
+     * Register model hidden.
+     * @param array $hidden
+     * @return $this
+     */
+    public function addHidden(array $hidden)
+    {
+        $this->hidden = array_merge($this->hidden, $hidden);
+        return $this;
+    }
+
+    /**
      * Get an array of global scopes that were removed from the query.
      *
      * @return array
@@ -229,7 +282,11 @@ class Builder
         }
 
         if (is_array($id) || $id instanceof ArrayableInterface) {
-            $this->query->whereIn($this->model->getQualifiedKeyName(), $id);
+            if (in_array($this->model->getKeyType(), ['int', 'integer'])) {
+                $this->query->whereIntegerInRaw($this->model->getQualifiedKeyName(), $id);
+            } else {
+                $this->query->whereIn($this->model->getQualifiedKeyName(), $id);
+            }
 
             return $this;
         }
@@ -254,7 +311,11 @@ class Builder
         }
 
         if (is_array($id) || $id instanceof ArrayableInterface) {
-            $this->query->whereNotIn($this->model->getQualifiedKeyName(), $id);
+            if (in_array($this->model->getKeyType(), ['int', 'integer'])) {
+                $this->query->whereIntegerNotInRaw($this->model->getQualifiedKeyName(), $id);
+            } else {
+                $this->query->whereNotIn($this->model->getQualifiedKeyName(), $id);
+            }
 
             return $this;
         }
@@ -299,7 +360,7 @@ class Builder
      */
     public function firstWhere($column, $operator = null, $value = null, $boolean = 'and')
     {
-        return $this->where($column, $operator, $value, $boolean)->first();
+        return $this->where(...func_get_args())->first();
     }
 
     /**
@@ -317,6 +378,33 @@ class Builder
         );
 
         return $this->where($column, $operator, $value, 'or');
+    }
+
+    /**
+     * Add a basic "where not" clause to the query.
+     *
+     * @param  (\Closure(static): mixed)|string|array|\FluentBoards\Framework\Database\Query\Expression  $column
+     * @param  mixed  $operator
+     * @param  mixed  $value
+     * @param  string  $boolean
+     * @return $this
+     */
+    public function whereNot($column, $operator = null, $value = null, $boolean = 'and')
+    {
+        return $this->where($column, $operator, $value, $boolean.' not');
+    }
+
+    /**
+     * Add an "or where not" clause to the query.
+     *
+     * @param  (\Closure(static): mixed)|array|string|\FluentBoards\Framework\Database\Query\Expression  $column
+     * @param  mixed  $operator
+     * @param  mixed  $value
+     * @return $this
+     */
+    public function orWhereNot($column, $operator = null, $value = null)
+    {
+        return $this->whereNot($column, $operator, $value, 'or');
     }
 
     /**
@@ -359,12 +447,12 @@ class Builder
      * @param  array  $items
      * @return \FluentBoards\Framework\Database\Orm\Collection
      */
-    public function hydrate(array $items)
+    public function hydrate(array $items, $args = [])
     {
         $instance = $this->newModelInstance();
 
-        return $instance->newCollection(array_map(function ($item) use ($items, $instance) {
-            $model = $instance->newFromBuilder($item);
+        return $instance->newCollection(array_map(function ($item) use ($items, $instance, $args) {
+            $model = $instance->newFromBuilder($item, null, $args);
 
             if (count($items) > 1) {
                 $model->preventsLazyLoading = Model::preventsLazyLoading();
@@ -435,19 +523,25 @@ class Builder
     {
         $result = $this->find($id, $columns);
 
-        $id = $id instanceof ArrayableInterface ? $id->toArray() : $id;
+        $id = $id instanceof Arrayable ? $id->toArray() : $id;
 
         if (is_array($id)) {
-            if (count($result) === count(array_unique($id))) {
-                return $result;
+            if (count($result) !== count(array_unique($id))) {
+                throw (new ModelNotFoundException)->setModel(
+                    get_class($this->model), array_diff($id, $result->modelKeys())
+                );
             }
-        } elseif (! is_null($result)) {
+
             return $result;
         }
 
-        throw (new ModelNotFoundException)->setModel(
-            get_class($this->model), $id
-        );
+        if (is_null($result)) {
+            throw (new ModelNotFoundException)->setModel(
+                get_class($this->model), $id
+            );
+        }
+
+        return $result;
     }
 
     /**
@@ -464,6 +558,35 @@ class Builder
         }
 
         return $this->newModelInstance();
+    }
+
+    /**
+     * Find a model by its primary key or call a callback.
+     *
+     * @template TValue
+     *
+     * @param  mixed  $id
+     * @param  (\Closure(): TValue)|list<string>|string  $columns
+     * @param  (\Closure(): TValue)|null  $callback
+     * @return (
+     *     $id is (\FluentBoards\Framework\Support\ArrayableInterface<array-key, mixed>|array<mixed>)
+     *     ? \FluentBoards\Framework\Database\Orm\Collection<int, TModel>
+     *     : TModel|TValue
+     * )
+     */
+    public function findOr($id, $columns = ['*'], Closure $callback = null)
+    {
+        if ($columns instanceof Closure) {
+            $callback = $columns;
+
+            $columns = ['*'];
+        }
+
+        if (! is_null($model = $this->find($id, $columns))) {
+            return $model;
+        }
+
+        return $callback();
     }
 
     /**
@@ -491,13 +614,29 @@ class Builder
      */
     public function firstOrCreate(array $attributes = [], array $values = [])
     {
-        if (! is_null($instance = $this->where($attributes)->first())) {
+        if (! is_null($instance = (clone $this)->where($attributes)->first())) {
             return $instance;
         }
 
-        return Helper::tap($this->newModelInstance(array_merge($attributes, $values)), function ($instance) {
-            $instance->save();
-        });
+        return $this->createOrFirst($attributes, $values);
+    }
+
+    /**
+     * Attempt to create the record. If a unique constraint violation occurs, attempt to find the matching record.
+     *
+     * @param  array  $attributes
+     * @param  array  $values
+     * @return TModel
+     */
+    public function createOrFirst(array $attributes = [], array $values = [])
+    {
+        try {
+            return $this->withSavepointIfNeeded(fn () => $this->create(array_merge($attributes, $values)));
+        } catch (UniqueConstraintViolationException $e) {
+            if ($instance = $this->useWritePdo()->where($attributes)->first()) {
+                return $instance;
+            } throw $e;
+        }
     }
 
     /**
@@ -509,8 +648,10 @@ class Builder
      */
     public function updateOrCreate(array $attributes, array $values = [])
     {
-        return Helper::tap($this->firstOrNew($attributes), function ($instance) use ($values) {
-            $instance->fill($values)->save();
+        return Helper::tap($this->firstOrCreate($attributes, $values), function ($instance) use ($values) {
+            if (! $instance->wasRecentlyCreated) {
+                $instance->fill($values)->save();
+            }
         });
     }
 
@@ -580,8 +721,30 @@ class Builder
     public function value($column)
     {
         if ($result = $this->first([$column])) {
+            $column = $column instanceof Expression ? $column->getValue(
+                $this->getGrammar()
+            ) : $column;
+
             return $result->{Str::afterLast($column, '.')};
         }
+    }
+
+    /**
+     * Get a single column's value from the first result of a query if it's the sole matching record.
+     *
+     * @param  string|\FluentBoards\Framework\Database\Query\Expression  $column
+     * @return mixed
+     *
+     * @throws \FluentBoards\Framework\Database\Orm\ModelNotFoundException<TModel>
+     * @throws \FluentBoards\Framework\Database\MultipleRecordsFoundException
+     */
+    public function soleValue($column)
+    {
+        $column = $column instanceof Expression ? $column->getValue(
+            $this->getGrammar()
+        ) : $column;
+
+        return $this->sole([$column])->{Str::afterLast($column, '.')};
     }
 
     /**
@@ -594,6 +757,10 @@ class Builder
      */
     public function valueOrFail($column)
     {
+        $column = $column instanceof Expression ? $column->getValue(
+            $this->getGrammar()
+        ) : $column;
+
         return $this->firstOrFail([$column])->{Str::afterLast($column, '.')};
     }
 
@@ -614,7 +781,9 @@ class Builder
             $models = $builder->eagerLoadRelations($models);
         }
 
-        return $builder->getModel()->newCollection($models);
+        return $this->applyAfterQueryCallbacks(
+            $builder->getModel()->newCollection($models)
+        );
     }
 
     /**
@@ -626,7 +795,11 @@ class Builder
     public function getModels($columns = ['*'])
     {
         return $this->model->hydrate(
-            $this->query->get($columns)->all()
+            $this->query->get($columns)->all(),
+            [
+                'appends' => $this->appends,
+                'hidden' => $this->hidden,
+            ]
         )->all();
     }
 
@@ -639,10 +812,11 @@ class Builder
     public function eagerLoadRelations(array $models)
     {
         foreach ($this->eagerLoad as $name => $constraints) {
-            // For nested eager loads we'll skip loading them here and they will be set as an
-            // eager load on the query to retrieve the relation so that they will be eager
-            // loaded on that query, because that is where they get hydrated as models.
-            if (strpos($name, '.') === false) {
+            // For nested eager loads we'll skip loading them here and they will
+            // be set as an eager load on the query to retrieve the relation
+            // so that they will be eager loaded on that query, because
+            // that is where they get hydrated as models.
+            if (! str_contains($name, '.')) {
                 $models = $this->eagerLoadRelation($models, $name, $constraints);
             }
         }
@@ -744,6 +918,34 @@ class Builder
     }
 
     /**
+     * Register a closure to be invoked after the query is executed.
+     *
+     * @param  \Closure  $callback
+     * @return $this
+     */
+    public function afterQuery(Closure $callback)
+    {
+        $this->afterQueryCallbacks[] = $callback;
+
+        return $this;
+    }
+
+    /**
+     * Invoke the "after query" modification callbacks.
+     *
+     * @param  mixed  $result
+     * @return mixed
+     */
+    public function applyAfterQueryCallbacks($result)
+    {
+        foreach ($this->afterQueryCallbacks as $afterQueryCallback) {
+            $result = $afterQueryCallback($result) ?: $result;
+        }
+
+        return $result;
+    }
+
+    /**
      * Get a lazy collection for the given query.
      *
      * @return \FluentBoards\Framework\Support\LazyCollection
@@ -751,8 +953,10 @@ class Builder
     public function cursor()
     {
         return $this->applyScopes()->query->cursor()->map(function ($record) {
-            return $this->newModelInstance()->newFromBuilder($record);
-        });
+            $model = $this->newModelInstance()->newFromBuilder($record);
+
+            return $this->applyAfterQueryCallbacks($this->newModelInstance()->newCollection([$model]))->first();
+        })->reject(fn ($model) => is_null($model));
     }
 
     /**
@@ -778,40 +982,54 @@ class Builder
     {
         $results = $this->toBase()->pluck($column, $key);
 
+        $column = $column instanceof Expression ? $column->getValue(
+            $this->getGrammar()
+        ) : $column;
+
+        $column = Str::after($column, "{$this->model->getTable()}.");
+
         // If the model has a mutator for the requested column, we will spin through
         // the results and mutate the values so that the mutated version of these
-        // columns are returned as you would expect from these Orm models.
+        // columns are returned as you would expect from these Eloquent models.
         if (! $this->model->hasGetMutator($column) &&
             ! $this->model->hasCast($column) &&
             ! in_array($column, $this->model->getDates())) {
             return $results;
         }
 
-        return $results->map(function ($value) use ($column) {
-            return $this->model->newFromBuilder([$column => $value])->{$column};
-        });
+        return $this->applyAfterQueryCallbacks(
+            $results->map(function ($value) use ($column) {
+                return $this->model->newFromBuilder([$column => $value])->{$column};
+            })
+        );
     }
 
     /**
      * Paginate the given query.
      *
-     * @param  int|null  $perPage
-     * @param  array  $columns
+     * @param  int|null|\Closure  $perPage
+     * @param  array|string  $columns
      * @param  string  $pageName
      * @param  int|null  $page
-     * @return \FluentBoards\Framework\Pagination\LengthAwarePaginatorInterface
+     * @param  \Closure|int|null  $total
+     * @return \FluentBoards\Framework\Pagination\LengthAwarePaginator
      *
      * @throws \InvalidArgumentException
      */
-    public function paginate($perPage = null, $columns = ['*'], $pageName = 'page', $page = null)
+    public function paginate($perPage = null, $columns = ['*'], $pageName = 'page', $page = null, $total = null)
     {
         $page = $page ?: Paginator::resolveCurrentPage($pageName);
 
-        $perPage = $perPage ?: $this->model->getPerPage();
+        $total = Helper::value($total) ?? $this->toBase()->getCountForPagination();
 
-        $results = ($total = $this->toBase()->getCountForPagination())
-                                    ? $this->forPage($page, $perPage)->get($columns)
-                                    : $this->model->newCollection();
+        $perPage = ($perPage instanceof Closure
+            ? $perPage($total)
+            : $perPage
+        ) ?: $this->model->getPerPage();
+
+        $results = $total
+            ? $this->forPage($page, $perPage)->get($columns)
+            : $this->model->newCollection();
 
         return $this->paginator($results, $total, $perPage, $page, [
             'path' => Paginator::resolveCurrentPath(),
@@ -873,19 +1091,26 @@ class Builder
             $this->enforceOrderBy();
         }
 
-        if ($shouldReverse) {
-            $this->query->orders = Collection::make($this->query->orders)->map(function ($order) {
-                $order['direction'] = $order['direction'] === 'asc' ? 'desc' : 'asc';
-
+        $reverseDirection = function ($order) {
+            if (! isset($order['direction'])) {
                 return $order;
-            })->toArray();
+            }
+
+            $order['direction'] = $order['direction'] === 'asc' ? 'desc' : 'asc';
+
+            return $order;
+        };
+
+        if ($shouldReverse) {
+            $this->query->orders = Collection::make($this->query->orders)->map($reverseDirection)->toArray();
+            $this->query->unionOrders = Collection::make($this->query->unionOrders)->map($reverseDirection)->toArray();
         }
 
-        if ($this->query->unionOrders) {
-            return Collection::make($this->query->unionOrders);
-        }
+        $orders = ! empty($this->query->unionOrders) ? $this->query->unionOrders : $this->query->orders;
 
-        return Collection::make($this->query->orders);
+        return Collection::make($orders)
+            ->filter(fn ($order) => Arr::has($order, 'direction'))
+            ->values();
     }
 
     /**
@@ -896,7 +1121,9 @@ class Builder
      */
     public function create(array $attributes = [])
     {
-        return Helper::tap($this->newModelInstance($attributes), function ($instance) {
+        $instance = $this->newModelInstance($attributes);
+
+        return Helper::tap($instance, function ($instance) {
             $instance->save();
         });
     }
@@ -912,6 +1139,17 @@ class Builder
         return $this->model->unguarded(function () use ($attributes) {
             return $this->newModelInstance()->create($attributes);
         });
+    }
+
+    /**
+     * Save a new model instance with mass assignment without raising model events.
+     *
+     * @param  array  $attributes
+     * @return TModel
+     */
+    public function forceCreateQuietly(array $attributes = [])
+    {
+        return Model::withoutEvents(fn () => $this->forceCreate($attributes));
     }
 
     /**
@@ -948,10 +1186,33 @@ class Builder
         }
 
         return $this->toBase()->upsert(
-            $this->addTimestampsToUpsertValues($values),
+            $this->addTimestampsToUpsertValues($this->addUniqueIdsToUpsertValues($values)),
             $uniqueBy,
             $this->addUpdatedAtToUpsertColumns($update)
         );
+    }
+
+    /**
+     * Update the column's update timestamp.
+     *
+     * @param  string|null  $column
+     * @return int|false
+     */
+    public function touch($column = null)
+    {
+        $time = $this->model->freshTimestamp();
+
+        if ($column) {
+            return $this->toBase()->update([$column => $time]);
+        }
+
+        $column = $this->model->getUpdatedAtColumn();
+
+        if (! $this->model->usesTimestamps() || is_null($column)) {
+            return false;
+        }
+
+        return $this->toBase()->update([$column => $time]);
     }
 
     /**
@@ -1025,6 +1286,29 @@ class Builder
         );
 
         unset($values[$column]);
+
+        return $values;
+    }
+
+    /**
+     * Add unique IDs to the inserted values.
+     *
+     * @param  array  $values
+     * @return array
+     */
+    protected function addUniqueIdsToUpsertValues(array $values)
+    {
+        if (! $this->model->usesUniqueIds()) {
+            return $values;
+        }
+
+        foreach ($this->model->uniqueIds() as $uniqueIdAttribute) {
+            foreach ($values as &$row) {
+                if (! array_key_exists($uniqueIdAttribute, $row)) {
+                    $row = array_merge([$uniqueIdAttribute => $this->model->newUniqueId()], $row);
+                }
+            }
+        }
 
         return $values;
     }
@@ -1214,7 +1498,7 @@ class Builder
         $originalWhereCount = is_null($query->wheres)
                     ? 0 : count($query->wheres);
 
-        $result = $scope(...array_values($parameters)) ?? $this;
+        $result = $scope(...$parameters) ?? $this;
 
         if (count((array) $query->wheres) > $originalWhereCount) {
             $this->addNewWheresWithinGroup($query, $originalWhereCount);
@@ -1276,9 +1560,9 @@ class Builder
         // Here we'll check if the given subset of where clauses contains any "or"
         // booleans and in this case create a nested where expression. That way
         // we don't add any unnecessary nesting thus keeping the query clean.
-        if ($whereBooleans->contains('or')) {
+        if ($whereBooleans->contains(fn ($logicalOperator) => str_contains($logicalOperator, 'or'))) {
             $query->wheres[] = $this->createNestedWhere(
-                $whereSlice, $whereBooleans->first()
+                $whereSlice, str_replace(' not', '', $whereBooleans->first())
             );
         } else {
             $query->wheres = array_merge($query->wheres, $whereSlice);
@@ -1370,22 +1654,13 @@ class Builder
      */
     protected function parseWithRelations(array $relations)
     {
+        if ($relations === []) {
+            return [];
+        }
+
         $results = [];
 
-        foreach ($relations as $name => $constraints) {
-            // If the "name" value is a numeric key, we can assume that no constraints
-            // have been specified. We will just put an empty Closure there so that
-            // we can treat these all the same while we are looping through them.
-            if (is_numeric($name)) {
-                $name = $constraints;
-
-                [$name, $constraints] = Str::contains($name, ':')
-                            ? $this->createSelectWithConstraint($name)
-                            : [$name, static function () {
-                                //
-                            }];
-            }
-
+        foreach ($this->prepareNestedWithRelationships($relations) as $name => $constraints) {
             // We need to separate out any nested includes, which allows the developers
             // to load deep relationships using "dots" without stating each level of
             // the relationship with its own key in the array of eager-load names.
@@ -1395,6 +1670,84 @@ class Builder
         }
 
         return $results;
+    }
+
+    protected function prepareNestedWithRelationships($relations, $prefix = '')
+    {
+        $preparedRelationships = [];
+
+        if ($prefix !== '') {
+            $prefix .= '.';
+        }
+
+        // If any of the relationships are formatted with the [$attribute => array()]
+        // syntax, we shall loop over the nested relations and prepend each key of
+        // this array while flattening into the traditional dot notation format.
+        foreach ($relations as $key => $value) {
+            if (! is_string($key) || ! is_array($value)) {
+                continue;
+            }
+
+            [$attribute, $attributeSelectConstraint] = $this->parseNameAndAttributeSelectionConstraint($key);
+
+            $preparedRelationships = array_merge(
+                $preparedRelationships,
+                ["{$prefix}{$attribute}" => $attributeSelectConstraint],
+                $this->prepareNestedWithRelationships($value, "{$prefix}{$attribute}"),
+            );
+
+            unset($relations[$key]);
+        }
+
+        // We now know that the remaining relationships are in a dot notation format
+        // and may be a string or Closure. We'll loop over them and ensure all of
+        // the present Closures are merged + strings are made into constraints.
+        foreach ($relations as $key => $value) {
+            if (is_numeric($key) && is_string($value)) {
+                [$key, $value] = $this->parseNameAndAttributeSelectionConstraint($value);
+            }
+
+            $preparedRelationships[$prefix.$key] = $this->combineConstraints([
+                $value,
+                $preparedRelationships[$prefix.$key] ?? static function () {
+                    //
+                },
+            ]);
+        }
+
+        return $preparedRelationships;
+    }
+
+    /**
+     * Combine an array of constraints into a single constraint.
+     *
+     * @param  array  $constraints
+     * @return \Closure
+     */
+    protected function combineConstraints(array $constraints)
+    {
+        return function ($builder) use ($constraints) {
+            foreach ($constraints as $constraint) {
+                $builder = $constraint($builder) ?? $builder;
+            }
+
+            return $builder;
+        };
+    }
+
+    /**
+     * Parse the attribute select constraints from the name.
+     *
+     * @param  string  $name
+     * @return array
+     */
+    protected function parseNameAndAttributeSelectionConstraint($name)
+    {
+        return str_contains($name, ':')
+            ? $this->createSelectWithConstraint($name)
+            : [$name, static function () {
+                //
+            }];
     }
 
     /**
@@ -1459,6 +1812,33 @@ class Builder
     }
 
     /**
+     * Execute the given Closure within a transaction savepoint if needed.
+     *
+     * @template TModelValue
+     *
+     * @param  \Closure(): TModelValue  $scope
+     * @return TModelValue
+     */
+    public function withSavepointIfNeeded(Closure $scope)
+    {
+        return $this->getQuery()->getConnection()->transactionLevel() > 0
+            ? $this->getQuery()->getConnection()->transaction($scope)
+            : $scope();
+    }
+
+    /**
+     * Get the Eloquent builder instances that are used in the union of the query.
+     *
+     * @return \FluentBoards\Framework\Support\Collection
+     */
+    protected function getUnionBuilders()
+    {
+        return isset($this->query->unions)
+            ? Helper::collect($this->query->unions)->pluck('query')
+            : Helper::collect();
+    }
+
+    /**
      * Get the underlying query builder instance.
      *
      * @return \FluentBoards\Framework\Database\Query\Builder
@@ -1515,6 +1895,29 @@ class Builder
     }
 
     /**
+     * Indicate that the given relationships should not be eagerly loaded.
+     *
+     * @param  array  $relations
+     * @return $this
+     */
+    public function withoutEagerLoad(array $relations)
+    {
+        $relations = array_diff(array_keys($this->model->getRelations()), $relations);
+
+        return $this->with($relations);
+    }
+
+    /**
+     * Flush the relationships being eagerly loaded.
+     *
+     * @return $this
+     */
+    public function withoutEagerLoads()
+    {
+        return $this->setEagerLoads([]);
+    }
+
+    /**
      * Get the default key name of the table.
      *
      * @return string
@@ -1557,6 +1960,10 @@ class Builder
      */
     public function qualifyColumn($column)
     {
+        $column = $column instanceof Expression ? $column->getValue(
+            $this->getGrammar()
+        ) : $column;
+
         return $this->model->qualifyColumn($column);
     }
 
@@ -1625,7 +2032,7 @@ class Builder
      */
     public function __get($key)
     {
-        if ($key === 'orWhere') {
+        if (in_array($key, ['orWhere', 'whereNot', 'orWhereNot'])) {
             return new HigherOrderBuilderProxy($this, $key);
         }
 
@@ -1633,7 +2040,7 @@ class Builder
             return $this->toBase()->{$key};
         }
 
-        throw new Exception("Property [{$key}] does not exist on the Orm builder instance.");
+        throw new Exception("Property [{$key}] does not exist on the Eloquent builder instance.");
     }
 
     /**
@@ -1671,7 +2078,7 @@ class Builder
             return $this->callNamedScope($method, $parameters);
         }
 
-        if (in_array($method, $this->passthru)) {
+        if (in_array(strtolower($method), $this->passthru)) {
             return $this->toBase()->{$method}(...$parameters);
         }
 
@@ -1724,13 +2131,11 @@ class Builder
     protected static function registerMixin($mixin, $replace)
     {
         $methods = (new ReflectionClass($mixin))->getMethods(
-                ReflectionMethod::IS_PUBLIC | ReflectionMethod::IS_PROTECTED
-            );
+            ReflectionMethod::IS_PUBLIC | ReflectionMethod::IS_PROTECTED
+        );
 
         foreach ($methods as $method) {
             if ($replace || ! static::hasGlobalMacro($method->name)) {
-                $method->setAccessible(true);
-
                 static::macro($method->name, $method->invoke($mixin));
             }
         }

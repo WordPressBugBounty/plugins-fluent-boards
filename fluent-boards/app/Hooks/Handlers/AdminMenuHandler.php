@@ -11,6 +11,7 @@ use FluentBoards\App\Services\TransStrings;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Collection;
 use FluentBoards\App\Services\PermissionManager;
+use FluentBoards\Framework\Support\DateTime;
 
 class AdminMenuHandler
 {
@@ -240,7 +241,7 @@ class AdminMenuHandler
             $menuItems['get_pro'] = [
                 'key'       => 'get_pro',
                 'label'     => __('Get Pro', 'fluent-boards'),
-                'permalink' => 'https://fluentboards.com?utm_source=menu&utm_medium=plugin&utm_campaign=pro&utm_id=wp',
+                'permalink' => 'https://fluentboards.com?utm_source=plugin&utm_medium=menu&utm_campaign=pro&utm_id=wp',
                 'class'     => 'pro_link'
             ];
         }
@@ -402,7 +403,7 @@ class AdminMenuHandler
             ],
             'base_url'                        => fluent_boards_page_url(),
             'site_url'                        => site_url('/'),
-            'server_time'                     => current_time('mysql'),
+            'server_time'                     => (new DateTime('now', wp_timezone()))->format('Y-m-d H:i:s P'),
             'utc_offset'                      => current_time('timestamp') - strtotime(gmdate('Y-m-d H:i:s')),
             'trans'                           => TransStrings::getStrings(),
             'is_new'                          => Board::count() == 0 ? 'yes' : 'no',
@@ -413,6 +414,14 @@ class AdminMenuHandler
             'advanced_modules'                => fluent_boards_get_pref_settings(),
             'crm_base_url'                    => defined('FLUENTCRM') ? fluentcrm_menu_url_base() : '',
             'start_of_week'                   => intval(get_option('start_of_week', 0)),
+            'wpContentCss' => add_query_arg(
+                'ver', get_bloginfo('version'),
+                site_url('/wp-includes/js/tinymce/skins/wordpress/wp-content.css')
+            ),
+            'dashiconsCss' => add_query_arg(
+                'ver', get_bloginfo('version'),
+                site_url('/wp-includes/css/dashicons.css')
+            ),
         ]);
     }
 
@@ -561,4 +570,5 @@ class AdminMenuHandler
         }
         ";
     }
+
 }

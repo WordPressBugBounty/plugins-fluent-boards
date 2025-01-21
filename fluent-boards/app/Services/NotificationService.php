@@ -203,22 +203,17 @@ class NotificationService
     public function mentionInComment($comment, $mentionedUserIds)
     {
         $uniqueIds = array_unique($mentionedUserIds);
-        $currentUserId = get_current_user_id();
-        if (in_array($currentUserId, $uniqueIds))
-        {
-            $key = array_search($currentUserId, $uniqueIds);
-            if ($key !== false) {
-                unset($uniqueIds[$key]);
-            }
-            // Re-index the array (optional)
-            $uniqueIds = array_values($uniqueIds);
-        }
+
+        $uniqueIds = array_filter($uniqueIds, function($value) {
+            return (int)$value !== get_current_user_id();
+        });
+
         //sending emails to mentioned users
         $mentionedUserEmails = User::whereIn('ID', $uniqueIds)->pluck('user_email');
         $this->sendMailAfterMention($comment->id, $mentionedUserEmails);
 
         //sending desktop notifications
-        do_action('fluent_boards/mention_comment_notification', $comment, $mentionedUserIds);
+        do_action('fluent_boards/mention_comment_notification', $comment, $uniqueIds);
     }
 
     public function sendMailAfterMention($commentId, $usersToSendEmail)

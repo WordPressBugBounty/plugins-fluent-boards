@@ -26,14 +26,4 @@ interface UrlRoutable
      * @return \FluentBoards\Framework\Database\Orm\Model|null
      */
     public function resolveRouteBinding($value, $field = null);
-
-    /**
-     * Retrieve the child model for a bound value.
-     *
-     * @param  string  $childType
-     * @param  mixed  $value
-     * @param  string|null  $field
-     * @return \FluentBoards\Framework\Database\Orm\Model|null
-     */
-    public function resolveChildRouteBinding($childType, $value, $field);
 }

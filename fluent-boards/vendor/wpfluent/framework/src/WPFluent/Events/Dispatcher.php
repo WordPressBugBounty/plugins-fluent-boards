@@ -53,7 +53,7 @@ class Dispatcher implements DispatcherInterface
      * @param  \FluentBoards\Framework\Container\Contracts\Container|null  $container
      * @return void
      */
-    public function __construct(ContainerContract $container = null)
+    public function __construct(?ContainerContract $container = null)
     {
         $this->container = $container ?: new Container;
     }

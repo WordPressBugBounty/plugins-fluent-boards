@@ -515,7 +515,7 @@ class Tasks
      * @param $data
      * @return bool|Task
      */
-    public function createSubtask(int $boardId, int $taskId, $data): Task|bool
+    public function createSubtask(int $boardId, int $taskId, $data)
     {
         if (!$this->hasProAndBoardAccess($boardId)) {
             return false;

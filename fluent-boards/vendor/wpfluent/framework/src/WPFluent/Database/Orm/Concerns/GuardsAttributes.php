@@ -65,7 +65,11 @@ trait GuardsAttributes
      */
     public function mergeFillable(array $fillable)
     {
-        $this->fillable = array_merge($this->fillable, $fillable);
+        $this->fillable = array_values(
+            array_unique(
+                array_merge($this->fillable, $fillable)
+            )
+        );
 
         return $this;
     }
@@ -103,7 +107,11 @@ trait GuardsAttributes
      */
     public function mergeGuarded(array $guarded)
     {
-        $this->guarded = array_merge($this->guarded, $guarded);
+        $this->guarded = array_values(
+            array_unique(
+                array_merge($this->guarded, $guarded)
+            )
+        );
 
         return $this;
     }
@@ -187,8 +195,8 @@ trait GuardsAttributes
         }
 
         return empty($this->getFillable()) &&
-            strpos($key, '.') === false &&
-            ! Str::startsWith($key, '_');
+            ! str_contains($key, '.') &&
+            ! str_starts_with($key, '_');
     }
 
     /**
@@ -204,7 +212,7 @@ trait GuardsAttributes
         }
 
         return $this->getGuarded() == ['*'] ||
-               ! empty(preg_grep('/^'.preg_quote($key).'$/i', $this->getGuarded())) ||
+               ! empty(preg_grep('/^'.preg_quote($key, '/').'$/i', $this->getGuarded())) ||
                ! $this->isGuardableColumn($key);
     }
 
@@ -246,8 +254,10 @@ trait GuardsAttributes
      */
     protected function fillableFromArray(array $attributes)
     {
-        if (count($this->getFillable()) > 0 && ! static::$unguarded) {
-            return array_intersect_key($attributes, array_flip($this->getFillable()));
+        if (count($this->getFillable()) > 0 && !static::$unguarded) {
+            return array_intersect_key(
+                $attributes, array_flip($this->getFillable())
+            );
         }
 
         return $attributes;

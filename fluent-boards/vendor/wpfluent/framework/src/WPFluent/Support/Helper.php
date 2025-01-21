@@ -4,6 +4,7 @@ namespace FluentBoards\Framework\Support;
 
 use Closure;
 use Exception;
+use Throwable;
 use InvalidArgumentException;
 use FluentBoards\Framework\Foundation\App;
 use FluentBoards\Framework\Support\HigherOrderTapProxy;
@@ -13,7 +14,7 @@ class Helper
     /**
      * Create a collection from the given value.
      *
-     * @param  mixed                        $value
+     * @param  mixed $value
      * @return \FluentBoards\Framework\Support\Collection
      */
     public static function collect($value = null)
@@ -261,8 +262,7 @@ class Helper
     /**
      * Retrieves the list of allowed mime types and file extensions.
      *
-     * @param int|WP_User $user Optional. User to check. Defaults to current user.
-     * @return string[] Mime types keyed by the file extension regex corresponding types.
+     * @return string[] Mime types keyed by the file extension regex.
      */
     public static function getAllowedMimeTypes()
     {
@@ -285,7 +285,7 @@ class Helper
      * Gets the size of a directory.
      *
      * @param string $directory Full path of a directory. 
-     * @return int|false|null Size in bytes if valid directory or false. Null if timeout.
+     * @return int|false|null Size in bytes or false. Null if timeout.
      */
     public static function getSizeOf($dirPath)
     {
@@ -366,7 +366,27 @@ class Helper
         try {
             $callback();
             return ob_get_clean();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+    }
+
+    /**
+     * Executes an action and returns the captured output as a string.
+     *
+     * @param string $action
+     * @param array $params the data to passed in action
+     * @return string
+     * @throws Throwable
+     */
+    public static function captureAction($action, ...$params)
+    {
+        ob_start(null);
+        try {
+            do_action_ref_array($action, $params);
+            return ob_get_clean();
+        } catch (Throwable $e) {
             ob_end_clean();
             throw $e;
         }

@@ -131,6 +131,8 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->post('/{task_id}/detach-yourself', 'TaskController@detachYourselfFromTask')->int('board_id')->int('task_id');
         $router->get('/{task_id}/comments-and-activities', 'TaskController@getCommentsAndActivities')->int('board_id')->int('task_id');
         $router->post('/{task_id}/comment-image-upload', 'CommentController@handleImageUpload')->int('board_id')->int('task_id');
+        $router->post('/{task_id}/task-cover-image-upload', 'TaskController@handleTaskCoverImageUpload')->int('board_id')->int('task_id');
+        $router->post('/{task_id}/remove-task-cover', 'TaskController@removeTaskCover')->int('board_id')->int('task_id');
         $router->post('/{task_id}/wp-editor-media-file-upload', 'TaskController@uploadMediaFileFromWpEditor')->int('board_id')->int('task_id');
     });
 });

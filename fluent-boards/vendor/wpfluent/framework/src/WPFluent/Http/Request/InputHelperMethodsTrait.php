@@ -3,13 +3,14 @@
 namespace FluentBoards\Framework\Http\Request;
 
 use FluentBoards\Framework\Support\Arr;
+use FluentBoards\Framework\Support\DateTime;
 
 trait InputHelperMethodsTrait
 {
     /**
      * Get an item from the request filtering by the callback
-     * 
-     * @param  string|null $key
+     *
+     * @param  string|array|null $key
      * @param  callable $callback
      * @param  mixed $default
      * @return mixed
@@ -17,8 +18,13 @@ trait InputHelperMethodsTrait
     public function getSafe($key, $callback = null, $default = null)
     {
         $array = $result = [];
+        
+        $expectsArray = true;
 
-        $key = is_array($key) ? $key : [$key];
+        if(!is_array($key)) {
+            $key = [$key];
+            $expectsArray = false;
+        }
 
         // Normalize all to ['field' => ['cb1', 'cb2']] style array
         if ($callback) {
@@ -66,7 +72,7 @@ trait InputHelperMethodsTrait
 
         // Return the first item if only one item in the array
         // because some one asked for one field, otherwise all.
-        return count($result) > 1 ? $result : reset($result);
+        return $expectsArray ? $result : reset($result);
     }
 
     /**
@@ -215,4 +221,25 @@ trait InputHelperMethodsTrait
 			FILTER_NULL_ON_FAILURE
 		);
 	}
+
+    /**
+     * Returns a FluentBoards\Framework\Framework\Support\Date object.
+     * 
+     * @param  string $key 
+     * @param  string $format
+     * @param  string $tz
+     * @return FluentBoards\Framework\Framework\Support\Date
+     */
+    public function getDate($key, $format = null, $tz = null)
+    {
+        if (!$value = $this->get($key)) {
+            return null;
+        }
+
+        if (is_null($format)) {
+            return DateTime::parse($value, $tz);
+        }
+
+        return DateTime::createFromFormat($format, $value, $tz);
+    }
 }

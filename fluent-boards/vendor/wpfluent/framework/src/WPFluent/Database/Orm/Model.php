@@ -15,6 +15,7 @@ use FluentBoards\Framework\Support\ArrayableInterface;
 use FluentBoards\Framework\Support\HelperFunctionsTrait;
 use FluentBoards\Framework\Support\CanBeEscapedWhenCastToString;
 use FluentBoards\Framework\Support\Collection as BaseCollection;
+use FluentBoards\Framework\Database\Schema;
 use FluentBoards\Framework\Database\Orm\Relations\Pivot;
 use FluentBoards\Framework\Database\Orm\Relations\BelongsToMany;
 use FluentBoards\Framework\Database\Orm\Relations\HasManyThrough;
@@ -169,18 +170,20 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
     protected static $modelsShouldPreventLazyLoading = false;
 
     /**
-     * The callback that is responsible for handling lazy loading violations.
-     *
-     * @var callable|null
-     */
-    protected static $lazyLoadingViolationCallback;
-
-    /**
-     * Indicates if broadcasting is currently enabled.
+     * Indicates if an exception should be thrown instead of
+     * silently discarding non-fillable attributes.
      *
      * @var bool
      */
-    protected static $isBroadcasting = true;
+    protected static $modelsShouldPreventSilentlyDiscardingAttributes = false;
+
+    /**
+     * Indicates if an exception should be thrown when trying
+     * to access a missing attribute on a retrieved model.
+     *
+     * @var bool
+     */
+    protected static $modelsShouldPreventAccessingMissingAttributes = false;
 
     /**
      * The name of the "created at" column.
@@ -372,6 +375,19 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
     }
 
     /**
+     * Indicate that models should prevent lazy loading, silently discarding attributes, and accessing missing attributes.
+     *
+     * @param  bool  $shouldBeStrict
+     * @return void
+     */
+    public static function shouldBeStrict(bool $shouldBeStrict = true)
+    {
+        static::preventLazyLoading($shouldBeStrict);
+        static::preventSilentlyDiscardingAttributes($shouldBeStrict);
+        static::preventAccessingMissingAttributes($shouldBeStrict);
+    }
+
+    /**
      * Prevent model relationships from being lazy loaded.
      *
      * @param  bool  $value
@@ -383,33 +399,25 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
     }
 
     /**
-     * Register a callback that is responsible for handling lazy loading violations.
+     * Prevent non-fillable attributes from being silently discarded.
      *
-     * @param  callable|null  $callback
+     * @param  bool  $value
      * @return void
      */
-    public static function handleLazyLoadingViolationUsing(?callable $callback)
+    public static function preventSilentlyDiscardingAttributes($value = true)
     {
-        static::$lazyLoadingViolationCallback = $callback;
+        static::$modelsShouldPreventSilentlyDiscardingAttributes = $value;
     }
 
     /**
-     * Execute a callback without broadcasting any model events for all model types.
+     * Prevent accessing missing attributes on retrieved models.
      *
-     * @param  callable  $callback
-     * @return mixed
+     * @param  bool  $value
+     * @return void
      */
-    public static function withoutBroadcasting(callable $callback)
+    public static function preventAccessingMissingAttributes($value = true)
     {
-        $isBroadcasting = static::$isBroadcasting;
-
-        static::$isBroadcasting = false;
-
-        try {
-            return $callback();
-        } finally {
-            static::$isBroadcasting = $isBroadcasting;
-        }
+        static::$modelsShouldPreventAccessingMissingAttributes = $value;
     }
 
     /**
@@ -424,18 +432,38 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
     {
         $totallyGuarded = $this->totallyGuarded();
 
-        foreach ($this->fillableFromArray($attributes) as $key => $value) {
-            // The developers may choose to place some attributes in the "fillable" array
-            // which means only those attributes may be set through mass assignment to
-            // the model, and all others will just get ignored for security reasons.
+        $fillable = $this->fillableFromArray($attributes);
+
+        foreach ($fillable as $key => $value) {
+            // The developers may choose to place some attributes in the
+            // "fillable" array which means only those attributes may be
+            // set through mass assignment to the model, and all
+            // others will just get ignored for security reasons.
+
             if ($this->isFillable($key)) {
                 $this->setAttribute($key, $value);
-            } elseif ($totallyGuarded) {
+            } elseif (
+                $totallyGuarded ||
+                static::preventsSilentlyDiscardingAttributes()
+            ) {
                 throw new MassAssignmentException(sprintf(
                     'Add [%s] to fillable property to allow mass assignment on [%s].',
                     $key, get_class($this)
                 ));
             }
+        }
+
+        if (
+            count($attributes) !== count($fillable) &&
+            static::preventsSilentlyDiscardingAttributes()
+        ) {
+            $keys = array_diff(array_keys($attributes), array_keys($fillable));
+
+            throw new MassAssignmentException(sprintf(
+                'Add fillable property [%s] to allow mass assignment on [%s].',
+                implode(', ', $keys),
+                get_class($this)
+            ));
         }
 
         return $this;
@@ -491,10 +519,12 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
      */
     public function newInstance($attributes = [], $exists = false)
     {
-        // This method just provides a convenient way for us to generate fresh model
-        // instances of this current model. It is particularly useful during the
-        // hydration of new objects via the Orm query builder instances.
-        $model = new static((array) $attributes);
+        // This method just provides a convenient way for us to generate fresh
+        // model instances of this current model. It is particularly
+        // useful during the hydration of new objects via the
+        // Eloquent query builder instances.
+
+        $model = new static;
 
         $model->exists = $exists;
 
@@ -506,6 +536,8 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
 
         $model->mergeCasts($this->casts);
 
+        $model->fill((array) $attributes);
+
         return $model;
     }
 
@@ -516,9 +548,19 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
      * @param  string|null  $connection
      * @return static
      */
-    public function newFromBuilder($attributes = [], $connection = null)
+    public function newFromBuilder(
+        $attributes = [], $connection = null, $args = []
+    )
     {
         $model = $this->newInstance([], true);
+
+        if (!empty(Arr::get($args, 'appends'))) {
+            $model->append($args['appends']);
+        }
+
+        if (!empty(Arr::get($args, 'hidden'))) {
+            $model->makeHidden($args['hidden']);
+        }
 
         $model->setRawAttributes((array) $attributes, true);
 
@@ -537,9 +579,10 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
      */
     public static function on($connection = null)
     {
-        // First we will just create a fresh instance of this model, and then we can set the
-        // connection on the model so that it is used for the queries we execute, as well
-        // as being set on every relation we retrieve without a custom connection name.
+        // First we will just create a fresh instance of this model, and then
+        // we can set the connection on the model so that it is used for
+        // the queries we execute, as well as being set on every
+        // relation we retrieve without a custom connection name.
         $instance = new static;
 
         $instance->setConnection($connection);
@@ -731,7 +774,9 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
      * @param  string  $function
      * @return $this
      */
-    public function loadMorphAggregate($relation, $relations, $column, $function = null)
+    public function loadMorphAggregate(
+        $relation, $relations, $column, $function = null
+    )
     {
         if (! $this->{$relation}) {
             return $this;
@@ -1447,10 +1492,13 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
      * @param  string|null  $using
      * @return \FluentBoards\Framework\Database\Orm\Relations\Pivot
      */
-    public function newPivot(self $parent, array $attributes, $table, $exists, $using = null)
+    public function newPivot(
+        self $parent, array $attributes, $table, $exists, $using = null
+    )
     {
-        return $using ? $using::fromRawAttributes($parent, $attributes, $table, $exists)
-                      : Pivot::fromAttributes($parent, $attributes, $table, $exists);
+        return $using ? $using::fromRawAttributes(
+            $parent, $attributes, $table, $exists
+        ) : Pivot::fromAttributes($parent, $attributes, $table, $exists);
     }
 
     /**
@@ -1564,7 +1612,7 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
      * @param  array|null  $except
      * @return static
      */
-    public function replicate(array $except = null)
+    public function replicate(?array $except = null)
     {
         $defaults = [
             $this->getKeyName(),
@@ -1692,7 +1740,9 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
      */
     public function getTable()
     {
-        return $this->table ?? Str::snake(Str::pluralStudly(static::classBasename($this)));
+        return $this->table ?? Str::snake(
+            Str::pluralStudly(static::classBasename($this))
+        );
     }
 
     /**
@@ -1798,46 +1848,6 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
     }
 
     /**
-     * Get the queueable identity for the entity.
-     *
-     * @return mixed
-     */
-    public function getQueueableId()
-    {
-        return $this->getKey();
-    }
-
-    /**
-     * Get the queueable relationships for the entity.
-     *
-     * @return array
-     */
-    public function getQueueableRelations()
-    {
-        $relations = [];
-
-        foreach ($this->getRelations() as $key => $relation) {
-            if (! method_exists($this, $key)) {
-                continue;
-            }
-
-            $relations[] = $key;
-        }
-
-        return array_unique($relations);
-    }
-
-    /**
-     * Get the queueable connection for the entity.
-     *
-     * @return string|null
-     */
-    public function getQueueableConnection()
-    {
-        return $this->getConnectionName();
-    }
-
-    /**
      * Get the value of the model's route key.
      *
      * @return mixed
@@ -1866,78 +1876,18 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
      */
     public function resolveRouteBinding($value, $field = null)
     {
-        return $this->resolveRouteBindingQuery($this, $value, $field)->first();
+        return $this->resolveRouteBindingQuery(
+            $this, $value, $field
+        )->firstOrFail();
     }
 
     /**
      * Retrieve the model for a bound value.
      *
+     * @param  \FluentBoards\Framework\Database\Orm\Model  $query
      * @param  mixed  $value
      * @param  string|null  $field
-     * @return \FluentBoards\Framework\Database\Orm\Model|null
-     */
-    public function resolveSoftDeletableRouteBinding($value, $field = null)
-    {
-        return $this->resolveRouteBindingQuery($this, $value, $field)->withTrashed()->first();
-    }
-
-    /**
-     * Retrieve the child model for a bound value.
-     *
-     * @param  string  $childType
-     * @param  mixed  $value
-     * @param  string|null  $field
-     * @return \FluentBoards\Framework\Database\Orm\Model|null
-     */
-    public function resolveChildRouteBinding($childType, $value, $field)
-    {
-        return $this->resolveChildRouteBindingQuery($childType, $value, $field)->first();
-    }
-
-    /**
-     * Retrieve the child model for a bound value.
-     *
-     * @param  string  $childType
-     * @param  mixed  $value
-     * @param  string|null  $field
-     * @return \FluentBoards\Framework\Database\Orm\Model|null
-     */
-    public function resolveSoftDeletableChildRouteBinding($childType, $value, $field)
-    {
-        return $this->resolveChildRouteBindingQuery($childType, $value, $field)->withTrashed()->first();
-    }
-
-    /**
-     * Retrieve the child model query for a bound value.
-     *
-     * @param  string  $childType
-     * @param  mixed  $value
-     * @param  string|null  $field
-     * @return \FluentBoards\Framework\Database\Orm\Relations\Relation
-     */
-    protected function resolveChildRouteBindingQuery($childType, $value, $field)
-    {
-        $relationship = $this->{Str::plural(Str::camel($childType))}();
-
-        $field = $field ?: $relationship->getRelated()->getRouteKeyName();
-
-        if ($relationship instanceof HasManyThrough ||
-            $relationship instanceof BelongsToMany) {
-            $field = $relationship->getRelated()->getTable().'.'.$field;
-        }
-
-        return $relationship instanceof Model
-                ? $relationship->resolveRouteBindingQuery($relationship, $value, $field)
-                : $relationship->getRelated()->resolveRouteBindingQuery($relationship, $value, $field);
-    }
-
-    /**
-     * Retrieve the model for a bound value.
-     *
-     * @param  \FluentBoards\Framework\Database\Orm\Model|\FluentBoards\Framework\Database\Orm\Relations\Relation  $query
-     * @param  mixed  $value
-     * @param  string|null  $field
-     * @return \FluentBoards\Framework\Database\Orm\Relations\Relation
+     * @return \FluentBoards\Framework\Database\Orm\Builder
      */
     public function resolveRouteBindingQuery($query, $value, $field = null)
     {
@@ -1985,6 +1935,42 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
     public static function preventsLazyLoading()
     {
         return static::$modelsShouldPreventLazyLoading;
+    }
+
+    /**
+     * Determine if discarding guarded attribute fills is disabled.
+     *
+     * @return bool
+     */
+    public static function preventsSilentlyDiscardingAttributes()
+    {
+        return static::$modelsShouldPreventSilentlyDiscardingAttributes;
+    }
+
+    /**
+     * Determine if accessing missing attributes is disabled.
+     *
+     * @return bool
+     */
+    public static function preventsAccessingMissingAttributes()
+    {
+        return static::$modelsShouldPreventAccessingMissingAttributes;
+    }
+
+    /**
+     * Get the columns of the model (optionally with detail).
+     * 
+     * @return array
+     */
+    public static function getColumns($details = false)
+    {
+        $table = (new static)->getTable();
+
+        if (!$details) {
+            return Schema::getColumns($table);
+        }
+
+        return Schema::getColumnsWithTypes($table);
     }
 
     /**
@@ -2094,7 +2080,9 @@ abstract class Model implements ArrayableInterface, ArrayAccess, CanBeEscapedWhe
             return $this->$method(...$parameters);
         }
 
-        if ($resolver = (static::$relationResolvers[get_class($this)][$method] ?? null)) {
+        if ($resolver = (
+            static::$relationResolvers[get_class($this)][$method] ?? null
+        )) {
             return $resolver($this);
         }
 

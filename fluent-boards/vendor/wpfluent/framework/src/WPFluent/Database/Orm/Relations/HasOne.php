@@ -68,8 +68,11 @@ class HasOne extends HasOneOrMany implements SupportsPartialRelations
      * @param  array|mixed  $columns
      * @return \FluentBoards\Framework\Database\Orm\Builder
      */
-    public function getRelationExistenceQuery(Builder $query, Builder $parentQuery, $columns = ['*'])
-    {
+    public function getRelationExistenceQuery(
+        Builder $query,
+        Builder $parentQuery,
+        $columns = ['*']
+    ) {
         if ($this->isOneOfMany()) {
             $this->mergeOneOfManyJoinsTo($query);
         }
@@ -85,8 +88,9 @@ class HasOne extends HasOneOrMany implements SupportsPartialRelations
      * @param  string|null  $aggregate
      * @return void
      */
-    public function addOneOfManySubQueryConstraints(Builder $query, $column = null, $aggregate = null)
-    {
+    public function addOneOfManySubQueryConstraints(
+        Builder $query, $column = null, $aggregate = null
+    ) {
         $query->addSelect($this->foreignKey);
     }
 
@@ -108,7 +112,11 @@ class HasOne extends HasOneOrMany implements SupportsPartialRelations
      */
     public function addOneOfManyJoinSubQueryConstraints(JoinClause $join)
     {
-        $join->on($this->qualifySubSelectColumn($this->foreignKey), '=', $this->qualifyRelatedColumn($this->foreignKey));
+        $join->on(
+            $this->qualifySubSelectColumn($this->foreignKey),
+            '=',
+            $this->qualifyRelatedColumn($this->foreignKey)
+        );
     }
 
     /**

@@ -2,7 +2,6 @@
 
 namespace FluentBoards\Framework\Database\Orm\Relations;
 
-use FluentBoards\Framework\Support\Str;
 use FluentBoards\Framework\Support\Helper;
 
 class MorphPivot extends Pivot
@@ -71,6 +70,8 @@ class MorphPivot extends Pivot
         $query->where($this->morphType, $this->morphClass);
 
         return Helper::tap($query->delete(), function () {
+            $this->exists = false;
+
             $this->fireModelEvent('deleted', false);
         });
     }
@@ -112,25 +113,6 @@ class MorphPivot extends Pivot
     }
 
     /**
-     * Get the queueable identity for the entity.
-     *
-     * @return mixed
-     */
-    public function getQueueableId()
-    {
-        if (isset($this->attributes[$this->getKeyName()])) {
-            return $this->getKey();
-        }
-
-        return sprintf(
-            '%s:%s:%s:%s:%s:%s',
-            $this->foreignKey, $this->getAttribute($this->foreignKey),
-            $this->relatedKey, $this->getAttribute($this->relatedKey),
-            $this->morphType, $this->morphClass
-        );
-    }
-
-    /**
      * Get a new query to restore one or more models by their queueable IDs.
      *
      * @param  array|int  $ids
@@ -142,7 +124,7 @@ class MorphPivot extends Pivot
             return $this->newQueryForCollectionRestoration($ids);
         }
 
-        if (! Str::contains($ids, ':')) {
+        if (! str_contains($ids, ':')) {
             return parent::newQueryForRestoration($ids);
         }
 
@@ -164,7 +146,7 @@ class MorphPivot extends Pivot
     {
         $ids = array_values($ids);
 
-        if (! Str::contains($ids[0], ':')) {
+        if (! str_contains($ids[0], ':')) {
             return parent::newQueryForRestoration($ids);
         }
 

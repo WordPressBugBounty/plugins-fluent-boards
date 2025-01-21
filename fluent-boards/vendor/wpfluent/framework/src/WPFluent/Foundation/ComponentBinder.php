@@ -4,6 +4,7 @@ namespace FluentBoards\Framework\Foundation;
 
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\View\View;
+use FluentBoards\Framework\Cache\Cache;
 use FluentBoards\Framework\Http\URL;
 use FluentBoards\Framework\Http\Router;
 use FluentBoards\Framework\Support\Facade;
@@ -36,6 +37,7 @@ class ComponentBinder
      * @var array
      */
     protected $bindables = [
+        'Cache',
         'Request',
         'Response',
         'Validator',
@@ -164,12 +166,27 @@ class ComponentBinder
     }
 
     /**
+     * Bind the cache instance into the container.
+     * @return null
+     */
+    protected function bindCache()
+    {
+        $this->app->singleton(Cache::class, function ($app) {
+            return Cache::init();
+        });
+
+        $this->app->alias(Cache::class, 'cache');
+    }
+
+    /**
      * Bind the request instance into the container.
      * @return null
      */
     protected function bindRequest()
     {
-        $this->app->singleton(Request::class, function ($app) {
+        $method = $this->getBindingMethod('singleton');
+
+        $this->app->$method(Request::class, function ($app) {
             return new Request($app, $_GET, $_POST, $_FILES);
         });
 
@@ -184,13 +201,30 @@ class ComponentBinder
      */
     protected function bindResponse()
     {
-        $this->app->singleton(Response::class, function($app) {
+        $method = $this->getBindingMethod('singleton');
+
+        $this->app->$method(Response::class, function($app) {
             return new Response($app);
         });
 
         $this->app->alias(Response::class, 'response');
         
         $this->addBackwardCompatibleAlias(Response::class);
+    }
+
+    /**
+     * Get the binding method to bind a component.
+     * In the testing environment, we use bind
+     * method instead of singleton method.
+     * 
+     * @param  string $original
+     * @return string
+     */
+    protected function getBindingMethod($original)
+    {
+        return str_starts_with(
+            $this->app->env(), 'testing'
+        ) ? 'bind' : $original;
     }
 
     /**
@@ -362,7 +396,7 @@ class ComponentBinder
     }
 
     /**
-     * Adds new alias to maintain ther backward compatibility.
+     * Adds new alias to maintain the backward compatibility.
      *
      * @param string $class
      * @return void

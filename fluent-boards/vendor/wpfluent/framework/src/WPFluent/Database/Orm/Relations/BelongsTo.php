@@ -74,7 +74,7 @@ class BelongsTo extends Relation
      */
     public function getResults()
     {
-        if (is_null($this->child->{$this->foreignKey})) {
+        if (is_null($this->getForeignKeyFrom($this->child))) {
             return $this->getDefaultFor($this->parent);
         }
 
@@ -94,7 +94,7 @@ class BelongsTo extends Relation
             // of the related models matching on the foreign key that's on a parent.
             $table = $this->related->getTable();
 
-            $this->query->where($table.'.'.$this->ownerKey, '=', $this->child->{$this->foreignKey});
+            $this->query->where($table.'.'.$this->ownerKey, '=', $this->getForeignKeyFrom($this->child));
         }
     }
 
@@ -113,13 +113,13 @@ class BelongsTo extends Relation
 
         $whereIn = $this->whereInMethod($this->related, $this->ownerKey);
 
-        $this->query->{$whereIn}($key, $this->getEagerModelKeys($models));
+        $this->whereInEager($whereIn, $key, $this->getEagerModelKeys($models));
     }
 
     /**
      * Gather the keys from an array of related models.
      *
-     * @param  array  $models
+     * @param  array<int, TDeclaringModel>  $models
      * @return array
      */
     protected function getEagerModelKeys(array $models)
@@ -130,7 +130,7 @@ class BelongsTo extends Relation
         // to query for via the eager loading query. We will add them to an array then
         // execute a "where in" statement to gather up all of those related records.
         foreach ($models as $model) {
-            if (! is_null($value = $model->{$this->foreignKey})) {
+            if (! is_null($value = $this->getForeignKeyFrom($model))) {
                 $keys[] = $value;
             }
         }
@@ -140,13 +140,7 @@ class BelongsTo extends Relation
         return array_values(array_unique($keys));
     }
 
-    /**
-     * Initialize the relation on a set of models.
-     *
-     * @param  array  $models
-     * @param  string  $relation
-     * @return array
-     */
+    /** @inheritDoc */
     public function initRelation(array $models, $relation)
     {
         foreach ($models as $model) {
@@ -156,27 +150,16 @@ class BelongsTo extends Relation
         return $models;
     }
 
-    /**
-     * Match the eagerly loaded results to their parents.
-     *
-     * @param  array  $models
-     * @param  \FluentBoards\Framework\Database\Orm\Collection  $results
-     * @param  string  $relation
-     * @return array
-     */
+    /** @inheritDoc */
     public function match(array $models, Collection $results, $relation)
     {
-        $foreign = $this->foreignKey;
-
-        $owner = $this->ownerKey;
-
         // First we will get to build a dictionary of the child models by their primary
         // key of the relationship, then we can easily match the children back onto
         // the parents using that dictionary and the primary key of the children.
         $dictionary = [];
 
         foreach ($results as $result) {
-            $attribute = $this->getDictionaryKey($result->getAttribute($owner));
+            $attribute = $this->getDictionaryKey($this->getRelatedKeyFrom($result));
 
             $dictionary[$attribute] = $result;
         }
@@ -185,7 +168,7 @@ class BelongsTo extends Relation
         // and match back onto their children using these keys of the dictionary and
         // the primary key of the children to map them onto the correct instances.
         foreach ($models as $model) {
-            $attribute = $this->getDictionaryKey($model->{$foreign});
+            $attribute = $this->getDictionaryKey($this->getForeignKeyFrom($model));
 
             if (isset($dictionary[$attribute])) {
                 $model->setRelation($relation, $dictionary[$attribute]);
@@ -198,8 +181,8 @@ class BelongsTo extends Relation
     /**
      * Associate the model instance to the given parent.
      *
-     * @param  \FluentBoards\Framework\Database\Orm\Model|int|string|null  $model
-     * @return \FluentBoards\Framework\Database\Orm\Model
+     * @param  TRelatedModel|int|string|null  $model
+     * @return TDeclaringModel
      */
     public function associate($model)
     {
@@ -219,7 +202,7 @@ class BelongsTo extends Relation
     /**
      * Dissociate previously associated model from the given parent.
      *
-     * @return \FluentBoards\Framework\Database\Orm\Model
+     * @return TDeclaringModel
      */
     public function dissociate()
     {
@@ -231,21 +214,14 @@ class BelongsTo extends Relation
     /**
      * Alias of "dissociate" method.
      *
-     * @return \FluentBoards\Framework\Database\Orm\Model
+     * @return TDeclaringModel
      */
     public function disassociate()
     {
         return $this->dissociate();
     }
 
-    /**
-     * Add the constraints for a relationship query.
-     *
-     * @param  \FluentBoards\Framework\Database\Orm\Builder  $query
-     * @param  \FluentBoards\Framework\Database\Orm\Builder  $parentQuery
-     * @param  array|mixed  $columns
-     * @return \FluentBoards\Framework\Database\Orm\Builder
-     */
+    /** @inheritDoc */
     public function getRelationExistenceQuery(Builder $query, Builder $parentQuery, $columns = ['*'])
     {
         if ($parentQuery->getQuery()->from == $query->getQuery()->from) {
@@ -260,10 +236,10 @@ class BelongsTo extends Relation
     /**
      * Add the constraints for a relationship query on the same table.
      *
-     * @param  \FluentBoards\Framework\Database\Orm\Builder  $query
-     * @param  \FluentBoards\Framework\Database\Orm\Builder  $parentQuery
+     * @param  \Illuminate\Database\Eloquent\Builder<TRelatedModel>  $query
+     * @param  \Illuminate\Database\Eloquent\Builder<TDeclaringModel>  $parentQuery
      * @param  array|mixed  $columns
-     * @return \FluentBoards\Framework\Database\Orm\Builder
+     * @return \Illuminate\Database\Eloquent\Builder<TRelatedModel>
      */
     public function getRelationExistenceQueryForSelfRelation(Builder $query, Builder $parentQuery, $columns = ['*'])
     {
@@ -292,8 +268,8 @@ class BelongsTo extends Relation
     /**
      * Make a new related instance for the given model.
      *
-     * @param  \FluentBoards\Framework\Database\Orm\Model  $parent
-     * @return \FluentBoards\Framework\Database\Orm\Model
+     * @param  TDeclaringModel  $parent
+     * @return TRelatedModel
      */
     protected function newRelatedInstanceFor(Model $parent)
     {
@@ -303,7 +279,7 @@ class BelongsTo extends Relation
     /**
      * Get the child of the relationship.
      *
-     * @return \FluentBoards\Framework\Database\Orm\Model
+     * @return TDeclaringModel
      */
     public function getChild()
     {
@@ -337,7 +313,7 @@ class BelongsTo extends Relation
      */
     public function getParentKey()
     {
-        return $this->child->{$this->foreignKey};
+        return $this->getForeignKeyFrom($this->child);
     }
 
     /**
@@ -361,14 +337,33 @@ class BelongsTo extends Relation
     }
 
     /**
-     * Get the value of the model's associated key.
+     * Get the value of the model's foreign key.
      *
-     * @param  \FluentBoards\Framework\Database\Orm\Model  $model
-     * @return mixed
+     * @param  TRelatedModel  $model
+     * @return int|string
      */
     protected function getRelatedKeyFrom(Model $model)
     {
         return $model->{$this->ownerKey};
+    }
+
+    /**
+     * Get the value of the model's foreign key.
+     *
+     * @param  TDeclaringModel  $model
+     * @return mixed
+     */
+    protected function getForeignKeyFrom(Model $model)
+    {
+        $foreignKey = $model->{$this->foreignKey};
+
+        if (class_exists('BackedEnum')) {
+            if ($foreignKey instanceof \BackedEnum) {
+                return $foreignKey->value;
+            }
+        }
+
+        return $foreignKey;
     }
 
     /**

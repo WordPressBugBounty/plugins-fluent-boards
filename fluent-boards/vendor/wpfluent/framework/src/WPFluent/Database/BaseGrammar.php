@@ -2,6 +2,7 @@
 
 namespace FluentBoards\Framework\Database;
 
+use RuntimeException;
 use FluentBoards\Framework\Support\Helper;
 use FluentBoards\Framework\Support\MacroableTrait;
 use FluentBoards\Framework\Database\Query\Expression;
@@ -9,6 +10,20 @@ use FluentBoards\Framework\Database\Query\Expression;
 abstract class BaseGrammar
 {
     use MacroableTrait;
+
+    /**
+     * The connection used for escaping values.
+     *
+     * @var \FluentBoards\Framework\Database\ConnectionInterface
+     */
+    protected $connection;
+
+    /**
+     * The base prefix frpm $wpdb.
+     *
+     * @var string
+     */
+    protected $basePrefix = '';
 
     /**
      * The grammar table prefix.
@@ -36,38 +51,72 @@ abstract class BaseGrammar
      */
     public function wrapTable($table)
     {
-        if (! $this->isExpression($table)) {
-            return $this->wrap(
-                $this->getTableNameWithPrefix($table), true
-            );
+        if ($this->isExpression($table)) {
+            return $this->getValue($table);
         }
 
-        return $this->getValue($table);
+        // If the table being wrapped has an alias we'll need to separate the pieces
+        // so we can prefix the table and then wrap each of the segments on their
+        // own and then join these both back together using the "as" connector.
+        if (stripos($table, ' as ') !== false) {
+            return $this->wrapAliasedTable($table);
+        }
+
+        $tablePrefix = $this->resolveTablePrefix($table);
+
+        // If the table being wrapped has a custom schema name specified, we need to
+        // prefix the last segment as the table name then wrap each segment alone
+        // and eventually join them both back together using the dot connector.
+        if (str_contains($table, '.')) {
+            $table = substr_replace(
+                $table, '.'.$tablePrefix, strrpos($table, '.'), 1
+            );
+
+            return Helper::collect(explode('.', $table))
+                ->map(function($value) {
+                    return $this->wrapValue($value);
+                })
+                ->implode('.');
+        }
+
+        return $this->wrapValue($tablePrefix.$table);
     }
 
     /**
-     * Get the grammar's full table name.
+     * Resolve the table prefix based on the table name.
      * 
-     * Also Handles multisite table names.
-     *
-     * @param  string  $table
-     * @return string $tableName
+     * @param  string $table
+     * @return string
      */
-    public function getTableNameWithPrefix($table)
+    protected function resolveTablePrefix($table)
     {
-        global $wpdb;
+        if (!is_multisite()) {
+            return $this->tablePrefix;
+        }
 
-        return isset($wpdb->{$table}) ? $wpdb->{$table} : $this->tablePrefix.$table;
+        $sharedTables = [
+            'users',
+            'usermeta',
+            'site',
+            'sitemeta',
+            'blogs',
+            'blog_versions',
+            'registration_log',
+            'signups',
+        ];
+
+        return in_array(
+            $table, $sharedTables
+        ) ? $this->basePrefix : $this->tablePrefix;
     }
 
     /**
      * Wrap a value in keyword identifiers.
      *
      * @param  \FluentBoards\Framework\Database\Query\Expression|string  $value
-     * @param  bool  $prefixAlias
      * @return string
      */
-    public function wrap($value, $prefixAlias = false)
+    public function wrap($value)
     {
         if ($this->isExpression($value)) {
             return $this->getValue($value);
@@ -77,7 +126,14 @@ abstract class BaseGrammar
         // the pieces so we can wrap each of the segments of the expression on its
         // own, and then join these both back together using the "as" connector.
         if (stripos($value, ' as ') !== false) {
-            return $this->wrapAliasedValue($value, $prefixAlias);
+            return $this->wrapAliasedValue($value);
+        }
+
+        // If the given value is a JSON selector we will wrap it differently than a
+        // traditional value. We will need to split this path and wrap each part
+        // wrapped, etc. Otherwise, we will simply wrap the value as a string.
+        if ($this->isJsonSelector($value)) {
+            return $this->wrapJsonSelector($value);
         }
 
         return $this->wrapSegments(explode('.', $value));
@@ -87,21 +143,30 @@ abstract class BaseGrammar
      * Wrap a value that has an alias.
      *
      * @param  string  $value
-     * @param  bool  $prefixAlias
      * @return string
      */
-    protected function wrapAliasedValue($value, $prefixAlias = false)
+    protected function wrapAliasedValue($value)
     {
         $segments = preg_split('/\s+as\s+/i', $value);
 
-        // If we are wrapping a table we need to prefix the alias with the table prefix
-        // as well in order to generate proper syntax. If this is a column of course
-        // no prefix is necessary. The condition will be true when from wrapTable.
-        if ($prefixAlias) {
-            $segments[1] = $this->tablePrefix.$segments[1];
-        }
-
         return $this->wrap($segments[0]).' as '.$this->wrapValue($segments[1]);
+    }
+
+    /**
+     * Wrap a table that has an alias.
+     *
+     * @param  string  $value
+     * @return string
+     */
+    protected function wrapAliasedTable($value)
+    {
+        $segments = preg_split('/\s+as\s+/i', $value);
+
+        $tablePrefix = $this->resolveTablePrefix($segments[0]);
+
+        return $this->wrapTable(
+            $tablePrefix.$segments[0]
+        ).' as '.$this->wrapValue($segments[1]);
     }
 
     /**
@@ -132,6 +197,32 @@ abstract class BaseGrammar
         }
 
         return $value;
+    }
+
+    /**
+     * Wrap the given JSON selector.
+     *
+     * @param  string  $value
+     * @return string
+     *
+     * @throws \RuntimeException
+     */
+    protected function wrapJsonSelector($value)
+    {
+        throw new RuntimeException(
+            'This database engine does not support JSON operations.'
+        );
+    }
+
+    /**
+     * Determine if the given string is a JSON selector.
+     *
+     * @param  string  $value
+     * @return bool
+     */
+    protected function isJsonSelector($value)
+    {
+        return str_contains($value, '->');
     }
 
     /**
@@ -183,6 +274,24 @@ abstract class BaseGrammar
     }
 
     /**
+     * Escapes a value for safe SQL embedding.
+     *
+     * @param  string|float|int|bool|null  $value
+     * @param  bool  $binary
+     * @return string
+     */
+    public function escape($value, $binary = false)
+    {
+        if (is_null($this->connection)) {
+            throw new RuntimeException(
+                "The database driver's grammar implementation does not support escaping values."
+            );
+        }
+
+        return $this->connection->escape($value, $binary);
+    }
+
+    /**
      * Determine if the given value is a raw expression.
      *
      * @param  mixed  $value
@@ -194,14 +303,18 @@ abstract class BaseGrammar
     }
 
     /**
-     * Get the value of a raw expression.
+     * Transforms expressions to their scalar types.
      *
-     * @param  \FluentBoards\Framework\Database\Query\Expression  $expression
-     * @return mixed
+     * @param  \FluentBoards\Framework\Database\Query\Expression|string|int|float  $expression
+     * @return string|int|float
      */
     public function getValue($expression)
     {
-        return $expression->getValue();
+        if ($this->isExpression($expression)) {
+            return $this->getValue($expression->getValue($this));
+        }
+
+        return $expression;
     }
 
     /**
@@ -230,9 +343,24 @@ abstract class BaseGrammar
      * @param  string  $prefix
      * @return $this
      */
-    public function setTablePrefix($prefix)
+    public function setTablePrefix($wpdb)
     {
-        $this->tablePrefix = $prefix;
+        $this->basePrefix = $wpdb->base_prefix;
+
+        $this->tablePrefix = $wpdb->prefix;
+
+        return $this;
+    }
+
+    /**
+     * Set the grammar's database connection.
+     *
+     * @param  \FluentBoards\Framework\Database\ConnectionInterface  $connection
+     * @return $this
+     */
+    public function setConnection($connection)
+    {
+        $this->connection = $connection;
 
         return $this;
     }

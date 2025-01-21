@@ -24,6 +24,7 @@ use FluentBoards\Framework\Database\Orm\JsonEncodingException;
 use FluentBoards\Framework\Database\LazyLoadingViolationException;
 use FluentBoards\Framework\Database\Orm\CastsInboundAttributes;
 use FluentBoards\Framework\Support\Collection as BaseCollection;
+use FluentBoards\Framework\Database\Orm\MissingAttributeException;
 
 trait HasAttributes
 {
@@ -406,6 +407,25 @@ trait HasAttributes
     }
 
     /**
+     * Determine whether an attribute exists on the model.
+     *
+     * @param  string  $key
+     * @return bool
+     */
+    public function hasAttribute($key)
+    {
+        if (! $key) {
+            return false;
+        }
+
+        return array_key_exists($key, $this->attributes) ||
+            array_key_exists($key, $this->casts) ||
+            $this->hasGetMutator($key) ||
+            $this->hasAttributeMutator($key) ||
+            $this->isClassCastable($key);
+    }
+
+    /**
      * Get an attribute from the model.
      *
      * @param  string  $key
@@ -413,29 +433,53 @@ trait HasAttributes
      */
     public function getAttribute($key)
     {
-        if (! $key) {
+        if (!$key) {
             return;
         }
 
-        // If the attribute exists in the attribute array or has a "get" mutator we will
-        // get the attribute's value. Otherwise, we will proceed as if the developers
-        // are asking for a relationship's value. This covers both types of values.
-        if (array_key_exists($key, $this->attributes) ||
-            array_key_exists($key, $this->casts) ||
-            $this->hasGetMutator($key) ||
-            $this->hasAttributeMutator($key) ||
-            $this->isClassCastable($key)) {
+        // If the attribute exists in the attribute array or has a "get" mutator
+        // we will get the attribute's value. Otherwise, we will proceed
+        // as if the developers are asking for a relationship's
+        // value. This covers both types of values.
+
+        if ($this->hasAttribute($key)) {
             return $this->getAttributeValue($key);
         }
 
-        // Here we will determine if the model base class itself contains this given key
-        // since we don't want to treat any of those methods as relationships because
-        // they are all intended as helper methods and none of these are relations.
+        // Here we will determine if the model base class itself contains this
+        // given key since we don't want to treat any of those methods as
+        // relationships because they are all intended as helper
+        // methods and none of these are relations.
+
         if (method_exists(self::class, $key)) {
-            return;
+            return $this->throwMissingAttributeExceptionIfApplicable($key);
         }
 
-        return $this->getRelationValue($key);
+        return $this->isRelation($key) || $this->relationLoaded($key)
+                    ? $this->getRelationValue($key)
+                    : $this->throwMissingAttributeExceptionIfApplicable($key);
+    }
+
+    /**
+     * Either throw a missing attribute exception or
+     * return null depending on Orm's configuration.
+     *
+     * @param  string  $key
+     * @return null
+     *
+     * @throws \FluentBoards\Framework\Database\Orm\MissingAttributeException
+     */
+    protected function throwMissingAttributeExceptionIfApplicable($key)
+    {
+        if (
+            $this->exists &&
+            ! $this->wasRecentlyCreated &&
+            static::preventsAccessingMissingAttributes()
+        ) {
+            throw new MissingAttributeException($this, $key);
+        }
+
+        return null;
     }
 
     /**
@@ -446,7 +490,9 @@ trait HasAttributes
      */
     public function getAttributeValue($key)
     {
-        return $this->transformModelValue($key, $this->getAttributeFromArray($key));
+        return $this->transformModelValue(
+            $key, $this->getAttributeFromArray($key)
+        );
     }
 
     /**
@@ -479,7 +525,7 @@ trait HasAttributes
             return;
         }
 
-        if ($this->preventsLazyLoading) {
+        if ($this->preventsLazyLoading()) {
             $this->handleLazyLoadingViolation($key);
         }
 
@@ -513,11 +559,7 @@ trait HasAttributes
      */
     protected function handleLazyLoadingViolation($key)
     {
-        if (isset(static::$lazyLoadingViolationCallback)) {
-            return call_user_func(static::$lazyLoadingViolationCallback, $this, $key);
-        }
-
-        if (! $this->exists || $this->wasRecentlyCreated) {
+        if (!$this->exists || $this->wasRecentlyCreated) {
             return;
         }
 
@@ -536,7 +578,7 @@ trait HasAttributes
     {
         $relation = $this->$method();
 
-        if (! $relation instanceof Relation) {
+        if (!$relation instanceof Relation) {
             if (is_null($relation)) {
                 throw new LogicException(sprintf(
                     '%s::%s must return a relationship instance, but "null" was returned. Was the "return" keyword used?', static::class, $method

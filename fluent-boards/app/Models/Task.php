@@ -82,7 +82,7 @@ class Task extends Model
             }
         });
 
-        /* global scope for task type which means only task_type = task will be fetched from everywhere in  */
+        /* global scope for task type which means only type = task will be fetched from everywhere in  */
         static::addGlobalScope('type', function (Builder $builder) {
             $builder->where('type', '=', 'task')
                     ->orWhere('type', '=', 'roadmap');

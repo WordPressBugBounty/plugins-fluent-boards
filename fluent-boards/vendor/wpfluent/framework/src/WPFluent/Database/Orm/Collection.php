@@ -7,9 +7,12 @@ use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Str;
 use FluentBoards\Framework\Support\ArrayableInterface;
 use FluentBoards\Framework\Support\Collection as BaseCollection;
+use FluentBoards\Framework\Database\Orm\Relations\Concerns\InteractsWithDictionary;
 
 class Collection extends BaseCollection
 {
+    use InteractsWithDictionary;
+
     /**
      * Find a model in the collection by key.
      *
@@ -35,9 +38,7 @@ class Collection extends BaseCollection
             return $this->whereIn($this->first()->getKeyName(), $key);
         }
 
-        return Arr::first($this->items, function ($model) use ($key) {
-            return $model->getKey() == $key;
-        }, $default);
+        return Arr::first($this->items, fn ($model) => $model->getKey() == $key, $default);
     }
 
     /**
@@ -331,7 +332,7 @@ class Collection extends BaseCollection
         $dictionary = $this->getDictionary();
 
         foreach ($items as $item) {
-            $dictionary[$item->getKey()] = $item;
+            $dictionary[$this->getDictionaryKey($item->getKey())] = $item;
         }
 
         return new static(array_values($dictionary));
@@ -410,7 +411,7 @@ class Collection extends BaseCollection
         $dictionary = $this->getDictionary($items);
 
         foreach ($this->items as $item) {
-            if (! isset($dictionary[$item->getKey()])) {
+            if (! isset($dictionary[$this->getDictionaryKey($item->getKey())])) {
                 $diff->add($item);
             }
         }
@@ -435,7 +436,7 @@ class Collection extends BaseCollection
         $dictionary = $this->getDictionary($items);
 
         foreach ($this->items as $item) {
-            if (isset($dictionary[$item->getKey()])) {
+            if (isset($dictionary[$this->getDictionaryKey($item->getKey())])) {
                 $intersect->add($item);
             }
         }
@@ -471,7 +472,10 @@ class Collection extends BaseCollection
             return new static($this->items);
         }
 
-        $dictionary = Arr::only($this->getDictionary(), $keys);
+        $dictionary = Arr::only($this->getDictionary(), array_map(
+            fn($value) => $this->getDictionaryKey($value),
+            (array) $keys)
+        );
 
         return new static(array_values($dictionary));
     }
@@ -484,7 +488,14 @@ class Collection extends BaseCollection
      */
     public function except($keys)
     {
-        $dictionary = Arr::except($this->getDictionary(), $keys);
+        if (is_null($keys)) {
+            return new static($this->items);
+        }
+
+        $dictionary = Arr::except($this->getDictionary(), array_map(
+            fn($value) => $this->getDictionaryKey($value),
+            (array) $keys)
+        );
 
         return new static(array_values($dictionary));
     }
@@ -512,6 +523,28 @@ class Collection extends BaseCollection
     }
 
     /**
+     * Set the visible attributes across the entire collection.
+     *
+     * @param  array<int, string>  $visible
+     * @return $this
+     */
+    public function setVisible($visible)
+    {
+        return $this->each->setVisible($visible);
+    }
+
+    /**
+     * Set the hidden attributes across the entire collection.
+     *
+     * @param  array<int, string>  $hidden
+     * @return $this
+     */
+    public function setHidden($hidden)
+    {
+        return $this->each->setHidden($hidden);
+    }
+
+    /**
      * Append an attribute across the entire collection.
      *
      * @param  array|string  $attributes
@@ -535,10 +568,21 @@ class Collection extends BaseCollection
         $dictionary = [];
 
         foreach ($items as $value) {
-            $dictionary[$value->getKey()] = $value;
+            $dictionary[$this->getDictionaryKey($value->getKey())] = $value;
         }
 
         return $dictionary;
+    }
+
+    /**
+     * Count the number of items in the collection by a field or using a callback.
+     *
+     * @param  (callable(TModel, TKey): array-key)|string|null  $countBy
+     * @return \FluentBoards\Framework\Support\Collection<array-key, int>
+     */
+    public function countBy($countBy = null)
+    {
+        return $this->toBase()->countBy($countBy);
     }
 
     /**
@@ -555,6 +599,17 @@ class Collection extends BaseCollection
     public function pluck($value, $key = null)
     {
         return $this->toBase()->pluck($value, $key);
+    }
+
+    /**
+     * Get the comparison function to detect duplicates.
+     *
+     * @param  bool  $strict
+     * @return callable(TModel, TModel): bool
+     */
+    protected function duplicateComparator($strict)
+    {
+        return fn ($a, $b) => $a->is($b);
     }
 
     /**
@@ -619,19 +674,6 @@ class Collection extends BaseCollection
     public function pad($size, $value)
     {
         return $this->toBase()->pad($size, $value);
-    }
-
-    /**
-     * Get the comparison function to detect duplicates.
-     *
-     * @param  bool  $strict
-     * @return \Closure
-     */
-    protected function duplicateComparator($strict)
-    {
-        return function ($a, $b) {
-            return $a->is($b);
-        };
     }
 
     /**

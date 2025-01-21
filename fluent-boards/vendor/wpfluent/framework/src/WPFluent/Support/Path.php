@@ -21,9 +21,9 @@ class Path
      * 
      * @return string Abs WP dir path
      */
-    public static function plugin()
+    public static function plugin($suffix = '')
     {
-        return App::make()['path'];
+        return App::make()['path'] . $suffix;
     }
 
     /**
@@ -73,6 +73,7 @@ class Path
      *
      * @param string $path The path to check.
      * @return bool True if the path is absolute, false otherwise.
+     * @see https://developer.wordpress.org/reference/functions/path_is_absolute
      */
     public static function isAbsolute($path)
     {
@@ -99,6 +100,7 @@ class Path
      * @param string $base Base path.
      * @param string $path Path relative to $base.
      * @return string The path with the base or absolute path.
+     * @see https://developer.wordpress.org/reference/functions/path_join
      */
     public static function join($base, $path)
     {
@@ -115,6 +117,7 @@ class Path
      *
      * @param string $path Path to normalize.
      * @return string Normalized path.
+     * @see https://developer.wordpress.org/reference/functions/wp_normalize_path
      */
     public static function normalize($path)
     {
@@ -193,7 +196,7 @@ class Path
      * @param  string $path
      * @return string|null
      */
-    public static function closest($path)
+    public static function closest($path, $limit = 25)
     {
         $count = 0;
 
@@ -203,30 +206,20 @@ class Path
 
             $cwd .= '../';
             
-            if (($count++) > 25) break;
+            if (($count++) > $limit) break;
         }
 
         return (string) realpath($target);
     }
 
     /**
-     * Breaks down a path into an an array like:
-     * root, dir, base, ext, and name.
+     * Breaks down a path into an an array.
      *
      * @param string $path The path to parse.
      * @return array An associative array with path information.
      */
     public static function parse($path)
     {
-        $info = pathinfo($path);
-
-        return [
-            'dir' => isset($info['dirname']) ? $info['dirname'] : null,
-            'root' => isset($info['dirname']) ? $info['dirname'] : null,
-            'base' => isset($info['basename']) ? $info['basename'] : null,
-            'name' => isset($info['filename']) ? $info['filename'] : null,
-            'ext' => isset($info['extension']) ? '.' . $info['extension'] : null,
-        ];
+        return pathinfo($path);
     }
 }
-

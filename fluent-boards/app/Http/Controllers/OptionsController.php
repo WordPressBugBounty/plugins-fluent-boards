@@ -506,7 +506,6 @@ class OptionsController extends Controller
                 'id'          => $board->id,
                 'title'       => $board->title,
                 'description' => $board->description,
-                'url'         => Helper::getBoardUrl($board->id)
             ];
         }
         foreach ($tasks as $task) {
@@ -523,7 +522,7 @@ class OptionsController extends Controller
                 'id'          => $task->id,
                 'title'       => $task->title,
                 'description' => $task->description,
-                'url'         => Helper::getTaskUrl($task->id, $board->id),
+                'board_id'    => $task->board_id,
                 'board'       => [
                     'id'    => $board->id,
                     'title' => $board->title,
@@ -675,7 +674,7 @@ class OptionsController extends Controller
     {
         if (!current_user_can('install_plugins')) {
             return $this->sendError([
-                'message' => __('Sorry! you do not have permission to install plugin', 'fluent-crm')
+                'message' => __('Sorry! you do not have permission to install plugin', 'fluent-boards')
             ]);
         }
 

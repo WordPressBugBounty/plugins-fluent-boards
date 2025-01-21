@@ -17,7 +17,20 @@ class Number
 	 */
 	public static function format($value, $dec = 0)
 	{
-		return number_format_i18n($value, $dec);
+		$locale = Locale::init();
+
+		if (isset($locale)) {
+			$formatted = number_format(
+				$value,
+				absint($dec),
+				$locale->number_format['decimal_point'],
+				$locale->number_format['thousands_sep']
+			);
+		} else {
+			$formatted = number_format($value, absint($dec));
+		}
+
+		return $formatted;
 	}
 
 	/**
@@ -28,7 +41,7 @@ class Number
 	 */
 	public static function toInt($val)
 	{
-		return intval(static::format($val));
+		return intval($val);
 	}
 
 	/**
@@ -40,7 +53,7 @@ class Number
 	 */
 	public static function toFloat($val, $dec = 2)
 	{
-		return static::format($val, $dec);
+	    return round((float) $val, $dec);
 	}
 
 	/**
@@ -63,30 +76,34 @@ class Number
 	 */
 	public static function toCurrency($value, $options = [])
 	{
-		$defaults = [
-			'locale' => get_locale(),
-			'currency_symbol' => '$',
-			'number_of_decimals' => 0,
-			'space_with_currency' => 0,
-			'currency_position' => 'left',
-		];
+		$locale = Locale::init();
 
-		$args = wp_parse_args($options, $defaults);
+	    $defaults = [
+	        'currency_symbol' => '$',
+	        'number_of_decimals' => 2,
+	        'space_with_currency' => 0,
+	        'currency_position' => 'left',
+	    ];
 
-		$originalLocale = get_locale();
-		switch_to_locale($args['locale']);
-		$formattedNumber = static::format($value, $args['number_of_decimals']);
-		switch_to_locale($originalLocale);
+	    $args = wp_parse_args($options, $defaults);
 
-		$symbol = $args['currency_symbol'];
-		
-		$space = $args['space_with_currency'] ? ' ' : '';
+	    // Format the number with the
+	    // specified number of decimals
+	    $formattedNumber = static::format(
+	    	$value, $args['number_of_decimals']
+	    );
 
-		if ($args['currency_position'] === 'left') {
-			return $symbol . $space . $formattedNumber;
-		} else {
-			return $formattedNumber . $space . $symbol;
-		}
+	    // Prepare the currency symbol and spacing
+	    $symbol = $args['currency_symbol'];
+	    $space = $args['space_with_currency'] ? ' ' : '';
+
+	    // Return the formatted currency string based
+	    // on the position of the currency symbol
+	    if ($args['currency_position'] === 'left') {
+	        return $symbol . $space . $formattedNumber;
+	    } else {
+	        return $formattedNumber . $space . $symbol;
+	    }
 	}
 
 	/**
@@ -101,28 +118,27 @@ class Number
 	public static function notationToNum($num)
 	{
 		$l = substr($num, -1);
+	    $ret = (int) substr($num, 0, -1);
 
-		$ret = (int) substr($num, 0, -1);
+	    switch (strtoupper($l)) {
+	        case 'P':
+	            $ret *= 1024;
+	            // No break.
+	        case 'T':
+	            $ret *= 1024;
+	            // No break.
+	        case 'G':
+	            $ret *= 1024;
+	            // No break.
+	        case 'M':
+	            $ret *= 1024;
+	            // No break.
+	        case 'K':
+	            $ret *= 1024;
+	            break; // Added for clarity
+	    }
 
-		switch (strtoupper($l)) {
-			case 'P':
-				$ret *= 1024;
-				// No break.
-			case 'T':
-				$ret *= 1024;
-				// No break.
-			case 'G':
-				$ret *= 1024;
-				// No break.
-			case 'M':
-				$ret *= 1024;
-				// No break.
-			case 'K':
-				$ret *= 1024;
-				// No break.
-		}
-
-		return $ret;
+	    return $ret;
 	}
 
 	/**
@@ -271,86 +287,7 @@ class Number
 	 */
 	public static function inWords($number, $options = [])
 	{
-		$defaults = [
-			'should_round' => false,
-			'thousand_seperator' => ',',
-			'decimal_seperator' => '.',
-			'use_cents_for_decimal' => true
-		];
-
-		$args = wp_parse_args($defaults, $options);
-
-		if (!is_numeric($number)) {
-			throw new TypeError('Not a number.');
-		}
-
-		if (is_int($number) && $number > strval(PHP_INT_MAX)) {
-			throw new RangeException('out of range', 500);
-		} elseif (is_float($number) && printf('%0.0f', $number) > PHP_FLOAT_MAX) {
-			throw new RangeException('out of range', 500);
-		}
-
-		$result = '';
-
-	    $numberWords = [
-	        'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 
-	        'nine','ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
-	        'sixteen','seventeen', 'eighteen', 'nineteen'
-	    ];
-
-	    $tensWords = [
-	        '', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'
-	    ];
-		
-		$decimalSeparator = $args['decimal_seperator'];
-
-		$thousandSeparator = $args['thousand_seperator'];
-
-		$number = str_replace($thousandSeparator, '', $number);
-
-	    if (!is_numeric($number) || $number < 0) {
-	        return 'Invalid number';
-	    }
-
-	    $precision = 0;
-
-	    if (str_contains($number, $decimalSeparator)) {
-	    	$precision = 2;
-	    }
-
-	    if ($args['should_round']) {
-	    	$precision = 0;
-	    }
-
-	    $numberStr = str_replace($thousandSeparator, '', static::format($number, $precision));
-
-	    $integerPart = strstr($numberStr, $decimalSeparator, true) ?: $numberStr;
-
-	    $decimalPart = strstr($numberStr, $decimalSeparator);
-
-	    if (intval($integerPart) > 0) {
-	        $result .= static::spellInteger($integerPart, $numberWords, $tensWords);
-	    } else {
-	        $result .= 'zero';
-	    }
-
-	    if ($decimalPart !== false && $precision) {
-	    	if (!$args['use_cents_for_decimal']) {
-	        	$result .= ' point ' . static::spellDecimal(
-	        		$decimalPart, $numberWords, $decimalSeparator
-	        	);
-	    	} else {
-	    		$decimalPart = (int) str_replace($decimalSeparator, '', $decimalPart);
-		        
-		        $cents = static::toCents($decimalPart, $numberWords, $tensWords);
-
-	    		if ($cents != 'zero') {
-	    			$result .= ' and ' . $cents . ' cents';
-	    		}
-	    	}
-	    }
-
-	    return $result;
+		return (new NumberToWords)->inWords($number, $options);
 	}
 
 	/**

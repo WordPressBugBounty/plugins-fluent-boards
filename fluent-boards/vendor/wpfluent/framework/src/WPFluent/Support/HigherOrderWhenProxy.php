@@ -2,19 +2,14 @@
 
 namespace FluentBoards\Framework\Support;
 
-Use FluentBoards\Framework\Support\Enumerable;
-
-/**
- * @mixin \FluentBoards\Framework\Support\Enumerable
- */
 class HigherOrderWhenProxy
 {
     /**
-     * The collection being operated on.
+     * The target being conditionally operated on.
      *
-     * @var \FluentBoards\Framework\Support\Enumerable
+     * @var mixed
      */
-    protected $collection;
+    protected $target;
 
     /**
      * The condition for proxying.
@@ -24,33 +19,78 @@ class HigherOrderWhenProxy
     protected $condition;
 
     /**
+     * Indicates whether the proxy has a condition.
+     *
+     * @var bool
+     */
+    protected $hasCondition = false;
+
+    /**
+     * Determine whether the condition should be negated.
+     *
+     * @var bool
+     */
+    protected $negateConditionOnCapture;
+
+    /**
      * Create a new proxy instance.
      *
-     * @param  \FluentBoards\Framework\Support\Enumerable  $collection
-     * @param  bool  $condition
+     * @param  mixed  $target
      * @return void
      */
-    public function __construct(Enumerable $collection, $condition)
+    public function __construct($target)
     {
-        $this->condition = $condition;
-        $this->collection = $collection;
+        $this->target = $target;
     }
 
     /**
-     * Proxy accessing an attribute onto the collection.
+     * Set the condition on the proxy.
+     *
+     * @param  bool  $condition
+     * @return $this
+     */
+    public function condition($condition)
+    {
+        [$this->condition, $this->hasCondition] = [$condition, true];
+
+        return $this;
+    }
+
+    /**
+     * Indicate that the condition should be negated.
+     *
+     * @return $this
+     */
+    public function negateConditionOnCapture()
+    {
+        $this->negateConditionOnCapture = true;
+
+        return $this;
+    }
+
+    /**
+     * Proxy accessing an attribute onto the target.
      *
      * @param  string  $key
      * @return mixed
      */
     public function __get($key)
     {
+        if (! $this->hasCondition) {
+            $condition = $this->target->{$key};
+
+            return $this->condition(
+                $this->negateConditionOnCapture ? ! $condition : $condition
+            );
+        }
+
         return $this->condition
-            ? $this->collection->{$key}
-            : $this->collection;
+            ? $this->target->{$key}
+            : $this->target;
     }
 
     /**
-     * Proxy a method call onto the collection.
+     * Proxy a method call on the target.
      *
      * @param  string  $method
      * @param  array  $parameters
@@ -58,8 +98,16 @@ class HigherOrderWhenProxy
      */
     public function __call($method, $parameters)
     {
+        if (! $this->hasCondition) {
+            $condition = $this->target->{$method}(...$parameters);
+
+            return $this->condition(
+                $this->negateConditionOnCapture ? ! $condition : $condition
+            );
+        }
+
         return $this->condition
-            ? $this->collection->{$method}(...$parameters)
-            : $this->collection;
+            ? $this->target->{$method}(...$parameters)
+            : $this->target;
     }
 }

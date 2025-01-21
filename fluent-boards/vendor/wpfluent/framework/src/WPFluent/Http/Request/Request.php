@@ -2,14 +2,22 @@
 
 namespace FluentBoards\Framework\Http\Request;
 
+use Closure;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Helper;
+use FluentBoards\Framework\Support\MacroableTrait;
 use FluentBoards\Framework\Foundation\Application;
 use FluentBoards\Framework\Validator\ValidationException;
 
 class Request
 {
-    use FileHandler, Cleaner, InputHelperMethodsTrait;
+    use InteractsWithCleaningTrait,
+        InteractsWithHeadersTrait,
+        InputHelperMethodsTrait,
+        InteractsWithFilesTrait,
+        MacroableTrait {
+            __call as macroCall;
+        }
 
     /**
      * The application instance
@@ -124,7 +132,9 @@ class Request
      */
     public function has($key)
     {
-        return $this->exists($key) && !empty(Arr::get($this->inputs(), $key));
+        return $this->exists($key) && !empty(
+            Arr::get($this->inputs(), $key)
+        );
     }
 
     /**
@@ -152,7 +162,7 @@ class Request
      * @param  \Closure|null $hasnot
      * @return mixed
      */
-    public function whenHas($key, \Closure $has, \Closure $hasnot = null)
+    public function whenHas($key, Closure $has, ?Closure $hasnot = null)
     {
         if ($this->has($key)) {
             return $has($key, $this->get($key));
@@ -179,7 +189,7 @@ class Request
      * @param  \Closure $callback
      * @return mixed
      */
-    public function whenMissing($key, \Closure $callback)
+    public function whenMissing($key, Closure $callback)
     {
         if ($this->missing($key)) {
             return $callback($key, $this);
@@ -227,7 +237,36 @@ class Request
      */
     public function isJson()
     {
-        return $this->is_json_content_type();
+        if (!($isJson = $this->is_json_content_type())) {
+            if (!$isJson) {
+                if ($body = $this->get_body()) {
+                    json_decode($body);
+                    if (json_last_error() === JSON_ERROR_NONE) {
+                        $isJson = true;
+                    }
+                } elseif ($this->isRest()) {
+                    $isJson = true;
+                }
+            }
+        }
+
+        return $isJson;
+    }
+
+    /**
+     * Check if current request wants JSON response.
+     * 
+     * @return boolean
+     */
+    public function wantsJson()
+    {
+        $wants = $this->header('accept');
+
+        if ($wants === '*/*') {
+            return $this->isJson();
+        }
+
+        return $wants === 'application/json';
     }
 
     /**
@@ -237,19 +276,50 @@ class Request
      */
     public function isRest()
     {
-        $isRest = (
-            defined('REST_REQUEST') && REST_REQUEST
-        ) || $this->query('rest_route');
+        $isRest = false;
 
-        return $isRest || (function() {
-            $currentUrl = wp_parse_url(add_query_arg([]));
-            $restUrl = wp_parse_url(trailingslashit(rest_url()));
-            return strpos($currentUrl['path'] ?? '/', $restUrl['path']);
-        })() !== false;
+        if ($this->app->isUnitTesting()) {
+            return $isRest;
+        }
+
+        $url = $this->url();
+
+        $niddle = $this->app->config->get(
+            'app.rest_namespace'
+        ).'/__endpoints';
+
+        if (str_contains($url, $niddle)) {
+            return $isRest;
+        }
+
+        $isRest = defined('REST_REQUEST') && REST_REQUEST;
+
+        if (!$isRest) {
+            if (!get_option('permalink_structure')) {
+                $isRest = $this->query('rest_route', false);
+            } else {
+                $parsed = parse_url($url);
+                $path = isset($parsed['path']) ? $parsed['path'] : '';
+                $isRest = str_starts_with($path, '/wp-json');
+            }
+        }
+
+        return $isRest;
     }
 
     /**
-     * Retrieve an item from the json payload of the request
+     * Determine if the request is initiated by WordPress.
+     * 
+     * @return boolean
+     */
+    public function isInternal()
+    {
+        return $GLOBALS['wp_rest_server']->is_dispatching();
+    }
+
+    /**
+     * Retrieve an item from the json payload of the request.
+     * 
      * @param  string $key
      * @param  string $default
      * @return mixed
@@ -283,21 +353,6 @@ class Request
     }
 
     /**
-     * Retrieve an item from the PHP headers
-     * @param  string $key
-     * @param  string $default
-     * @return mixed
-     */
-    public function header($key = null, $default = null)
-    {
-        if (!$this->headers) {
-            $this->headers = $this->setHeaders();
-        }
-
-        return $key ? Arr::get($this->headers, $key, $default) : $this->headers;
-    }
-
-    /**
      * Retrieve an item from the cookie
      * @param  string $key
      * @param  mixed $default
@@ -305,19 +360,11 @@ class Request
      */
     public function cookie($key = null, $default = null)
     {
-        $cookie = $key ? Arr::get($this->cookie, $key, $default) : $this->cookie;
+        $cookie = $key ? Arr::get(
+            $this->cookie, $key, $default
+        ) : $this->cookie;
 
         return json_decode(base64_decode($cookie, true));
-    }
-
-    /**
-     * Get the files from the request.
-     *
-     * @return array
-     */
-    public function files()
-    {
-        return $this->files;
     }
 
     /**
@@ -408,6 +455,12 @@ class Request
         return $this->content;
     }
 
+    /**
+     * Merges the input arrays from the WP_REST_Request.
+     * 
+     * @param  \WP_REST_Request $wpRestRequest
+     * @return void
+     */
     public function mergeInputsFromRestRequest($wpRestRequest)
     {
         $this->request = array_merge(
@@ -422,7 +475,36 @@ class Request
             $this->get, $wpRestRequest->get_query_params()
         );
 
+        $this->mergerHeaders($wpRestRequest);
+
         $this->wpRestRequest = true;
+    }
+
+    /**
+     * Merge the headers from the WP_REST_Request.
+     * 
+     * @param  WP_REST_Request $wpRestRequest
+     * @return void
+     */
+    protected function mergerHeaders($wpRestRequest)
+    {
+        $headers = [];
+
+        foreach ($wpRestRequest->get_headers() as $key => $header) {
+            $headers[strtoupper($key)] = reset($header);
+        }
+
+        $this->headers = array_merge($this->headers, $headers);
+
+        if (
+            !isset($this->headers['CONTENT_TYPE']) || (
+                isset($this->headers['CONTENT_TYPE']) && 
+                $this->headers['CONTENT_TYPE'] !== true
+        )) {
+            if ($this->isJson()) {
+                $this->headers['CONTENT_TYPE'] = 'application/json';
+            }
+        }
     }
 
     /**
@@ -500,83 +582,10 @@ class Request
     }
 
     /**
-     * Taken and modified from Symfony
+     * Get the request method.
+     * 
+     * @return string
      */
-    public function setHeaders()
-    {
-        $headers = array();
-        $parameters = $this->server;
-        $contentHeaders = array('CONTENT_LENGTH' => true, 'CONTENT_MD5' => true, 'CONTENT_TYPE' => true);
-        foreach ($parameters as $key => $value) {
-            if (0 === strpos($key, 'HTTP_')) {
-                $headers[substr($key, 5)] = $value;
-            } // CONTENT_* are not prefixed with HTTP_
-            elseif (isset($contentHeaders[$key])) {
-                $headers[$key] = $value;
-            }
-        }
-
-        if (isset($parameters['PHP_AUTH_USER'])) {
-            $headers['PHP_AUTH_USER'] = $parameters['PHP_AUTH_USER'];
-            $headers['PHP_AUTH_PW'] = isset($parameters['PHP_AUTH_PW']) ? $parameters['PHP_AUTH_PW'] : '';
-        } else {
-            /*
-             * php-cgi under Apache does not pass HTTP Basic user/pass to PHP by default
-             * For this workaround to work, add these lines to your .htaccess file:
-             * RewriteCond %{HTTP:Authorization} ^(.+)$
-             * RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-             *
-             * A sample .htaccess file:
-             * RewriteEngine On
-             * RewriteCond %{HTTP:Authorization} ^(.+)$
-             * RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-             * RewriteCond %{REQUEST_FILENAME} !-f
-             * RewriteRule ^(.*)$ app.php [QSA,L]
-             */
-
-            $authorizationHeader = null;
-            if (isset($parameters['HTTP_AUTHORIZATION'])) {
-                $authorizationHeader = $parameters['HTTP_AUTHORIZATION'];
-            } elseif (isset($parameters['REDIRECT_HTTP_AUTHORIZATION'])) {
-                $authorizationHeader = $parameters['REDIRECT_HTTP_AUTHORIZATION'];
-            }
-
-            if (null !== $authorizationHeader) {
-                if (0 === stripos($authorizationHeader, 'basic ')) {
-                    // Decode AUTHORIZATION header into PHP_AUTH_USER and PHP_AUTH_PW when authorization header is basic
-                    $exploded = explode(':', base64_decode(substr($authorizationHeader, 6)), 2);
-                    if (count($exploded) == 2) {
-                        list($headers['PHP_AUTH_USER'], $headers['PHP_AUTH_PW']) = $exploded;
-                    }
-                } elseif (empty($parameters['PHP_AUTH_DIGEST']) && (0 === stripos($authorizationHeader, 'digest '))) {
-                    // In some circumstances PHP_AUTH_DIGEST needs to be set
-                    $headers['PHP_AUTH_DIGEST'] = $authorizationHeader;
-                    $parameters['PHP_AUTH_DIGEST'] = $authorizationHeader;
-                } elseif (0 === stripos($authorizationHeader, 'bearer ')) {
-                    /*
-                     * XXX: Since there is no PHP_AUTH_BEARER in PHP predefined variables,
-                     *      I'll just set $headers['AUTHORIZATION'] here.
-                     *      http://php.net/manual/en/reserved.variables.server.php
-                     */
-                    $headers['AUTHORIZATION'] = $authorizationHeader;
-                }
-            }
-        }
-
-        if (isset($headers['AUTHORIZATION'])) {
-            return $headers;
-        }
-
-        // PHP_AUTH_USER/PHP_AUTH_PW
-        if (isset($headers['PHP_AUTH_USER'])) {
-            $headers['AUTHORIZATION'] = 'Basic '.base64_encode($headers['PHP_AUTH_USER'].':'.$headers['PHP_AUTH_PW']);
-        } elseif (isset($headers['PHP_AUTH_DIGEST'])) {
-            $headers['AUTHORIZATION'] = $headers['PHP_AUTH_DIGEST'];
-        }
-
-        return $headers;
-    }
-
     public function method()
     {
         return $_SERVER['REQUEST_METHOD'];
@@ -680,31 +689,48 @@ class Request
     }
 
     /**
+     * Retrieves the currently logged in user.
+     * 
+     * @return \FluentBoards\Framework\Http\Request\WPUserProxy
+     */
+    public function user()
+    {
+        return new WPUserProxy(
+            new \WP_User(get_current_user_id())
+        );
+    }
+
+    /**
      * Dynamyc method calls (specially for WP_rest_request)
      * @param  string $method
      * @param  array $params
      * @return mixed
      */
-    public function __call($method, $params)
+    public function __call($method, $params = [])
     {
+        if (static::hasMacro($method)) {
+            return $this->macroCall($method, $params);
+        }
+
         if ($method == 'route') {
-                
             if ($params) {
                 return $this->app->route->{$params[0]};
             }
-
             return $this->app->route;
         }
         
         if ($this->app->bound('wprestrequest')) {
-            
             if (!method_exists($this->app->wprestrequest, $method)) {
                 $method = strtolower(
-                    preg_replace(['/([a-z\d])([A-Z])/', '/([^_])([A-Z][a-z])/'], '$1_$2', $method)
+                    preg_replace([
+                        '/([a-z\d])([A-Z])/', '/([^_])([A-Z][a-z])/'
+                    ], '$1_$2', $method)
                 );
             }
 
-            return call_user_func_array([$this->app->wprestrequest, $method], $params);
+            return call_user_func_array([
+                $this->app->wprestrequest, $method], $params
+            );
         }
     }
 }

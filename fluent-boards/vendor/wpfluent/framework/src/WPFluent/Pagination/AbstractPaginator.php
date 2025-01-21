@@ -175,7 +175,7 @@ abstract class AbstractPaginator
         }
 
         return $this->path()
-                        .(Str::contains($this->path(), '?') ? '&' : '?')
+                        .(Str::contains($this->path(), '?') ? '&' : '/?')
                         .Arr::query($parameters)
                         .$this->buildFragment();
     }

@@ -2,8 +2,38 @@
 
 namespace FluentBoards\Framework\Http;
 
+use DateTime;
+use DateTimeInterface;
+use InvalidArgumentException;
+use FluentBoards\Framework\Foundation\App;
+
 class Cookie
-{    
+{
+    /**
+     * Cookie queue
+     * @var array
+     */
+    protected static $queue = [];
+
+    /**
+     * Action registered iindicator.
+     * 
+     * @var boolean
+     */
+    protected static $actionRegistered = false;
+
+    /**
+     * Sets the cookie.
+     * 
+     * @param string  $name
+     * @param mixed   $value
+     * @param integer $minutes
+     * @param string  $path
+     * @param string  $domain
+     * @param boolean $secure
+     * @param boolean $httponly
+     * @return void
+     */
     public static function set(
         $name,
         $value,
@@ -12,13 +42,23 @@ class Cookie
         $domain = '',
         $secure = false,
         $httponly = false
-    )
-    {
-        $time = ($minutes == 0) ? 0 : static::expiresAt($minutes * 60);
+    ) {
+        $time = static::expiresAt($minutes);
         
         setcookie($name, $value, $time, $path, $domain, $secure, $httponly);
     }
 
+    /**
+     * Sets the cookie forever (5 years).
+     * 
+     * @param string  $name
+     * @param mixed   $value
+     * @param string  $path
+     * @param string  $domain
+     * @param boolean $secure
+     * @param boolean $httponly
+     * @return void
+     */
     public static function setForever(
         $name,
         $value,
@@ -26,13 +66,81 @@ class Cookie
         $domain = '',
         $secure = false,
         $httponly = false
-    )
-    {
-        $fiveYears = static::expiresAt((365 * 24 * 60 * 60) * 5);
+    ) {
+        $fiveYears = time() + (5 * 365 * 24 * 60 * 60);
 
         setcookie($name, $value, $fiveYears, $path, $domain, $secure, $httponly);
     }
 
+    /**
+     * Add a cookie into the queue.
+     * 
+     * @param  string  $name
+     * @param  mixed   $value
+     * @param  integer $minutes
+     * @param  string  $path
+     * @param  string  $domain
+     * @param  boolean $secure
+     * @param  boolean $httponly
+     * @return void
+     */
+    public static function queue(
+        $name,
+        $value,
+        $minutes = 0,
+        $path = '',
+        $domain = '',
+        $secure = false,
+        $httponly = false
+    ) {
+        if (!static::$actionRegistered) {
+            static::$actionRegistered = true;
+            App::addAction(
+                'send_headers', [static::class, 'sendHeaders']
+            );
+        }
+
+        $time = static::expiresAt($minutes);
+        
+        static::$queue[] = [
+            'name' => $name, 
+            'value' => $value,
+            'expires' => $time,
+            'path' => $path,
+            'domain' => $domain,
+            'port' => $secure,
+            'host_only' => $httponly
+        ];
+    }
+
+    /**
+     * WordPress's send_headers action handler.
+     * 
+     * @param  WordPress Object $wp
+     * @return void
+     */
+    public static function sendHeaders($wp)
+    {
+        foreach (static::$queue as $cookie) {
+            static::set(
+                $cookie['name'],
+                $cookie['value'],
+                $cookie['expires'],
+                $cookie['path'],
+                $cookie['domain'],
+                $cookie['port'],
+                $cookie['host_only'],
+            );
+        }
+    }
+
+    /**
+     * Retrieve a cookie.
+     * 
+     * @param  string $name
+     * @param  mixed $default
+     * @return mixed
+     */
     public static function get($name, $default = null)
     {
         if (array_key_exists($name, $_COOKIE)) {
@@ -42,6 +150,14 @@ class Cookie
         return $default;
     }
 
+    /**
+     * Delete a cookie.
+     * 
+     * @param  string $name
+     * @param  string $path
+     * @param  string $domain
+     * @return void
+     */
     public static function delete($name, $path = '', $domain = '') {
         setcookie($name, '', time() - 3600, $path, $domain);
 
@@ -50,15 +166,28 @@ class Cookie
         }
     }
 
-    protected static function expiresAt($value = 0)
+    /**
+     * Prepares expiration time in minutes.
+     * 
+     * @param  int|DateTimeInterface $minutes
+     * @return int
+     */
+    protected static function expiresAt($minutes = 0)
     {
-        if (!$value instanceof \DateTimeInterface) {
+        if (is_int($minutes)) {
+            if ($minutes === 0) {
+                return $minutes;
+            }
 
-            $value = is_numeric($value) ? (int) $value : 0;
-
-            $value = new \DateTime('+' . $value . ' seconds');
+            $minutes = new DateTime('+' . $minutes . ' minutes');
         }
 
-        return $value->getTimestamp();
+        if (!($minutes instanceof DateTimeInterface)) {
+            throw new InvalidArgumentException(
+                'Invalid expiration time provided.'
+            );
+        }
+
+        return $minutes->getTimestamp();
     }
 }

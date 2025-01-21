@@ -6,6 +6,7 @@ use DateTimeImmutable;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
+use FluentBoards\App\Services\CommentService;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\StageService;
@@ -345,7 +346,7 @@ class TaskController extends Controller
             'board_id'          => 'required',
             'parent_id'         => 'required',
             'crm_contact_id'    => 'nullable',
-            'task_type'         => 'nullable|string',
+            'type'         => 'nullable|string',
             'status'            => 'nullable|string',
             'stage_id'          => 'required',
             'reminder_type'     => 'nullable|string',
@@ -568,9 +569,10 @@ class TaskController extends Controller
                 $fileUploadedData['full_url'] = $mediaData['full_url'];
                 $fileUploadedData->save();
             }
+            $fileUploadedData['public_url'] = (new CommentService())->createPublicUrl($fileUploadedData, $board_id);
 
             return $this->sendSuccess([
-                'message' => __('Image has been uploaded', 'fluent-boards-pro'),
+                'message' => __('Image has been uploaded', 'fluent-boards'),
                 'file' => $fileUploadedData
             ], 200);
 
@@ -580,4 +582,62 @@ class TaskController extends Controller
         }
     }
 
+
+    public function handleTaskCoverImageUpload(Request $request, $board_id, $task_id)
+    {
+        try {
+
+            $file = Arr::get($request->files(), 'file')->toArray();
+            (new \FluentBoards\App\Services\UploadService)->validateFile($file);
+
+            $uploadInfo = UploadService::handleFileUpload( $request->files(), $board_id);
+
+            $fileData = $uploadInfo[0];
+            $fileUploadedData = $this->taskService->uploadMediaFileFromWpEditor($task_id, $fileData, Constant::TASK_DESCRIPTION);
+            if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
+                $mediaData = (new AttachmentService())->processMediaData($fileData, $file);
+                $fileUploadedData['driver'] = $mediaData['driver'];
+                $fileUploadedData['file_path'] = $mediaData['file_path'];
+                $fileUploadedData['full_url'] = $mediaData['full_url'];
+                $fileUploadedData->save();
+            }
+
+            $task = Task::find($task_id);
+            $settings = $task->settings;
+            $this->taskService->deleteTaskCoverImage($settings);
+            $publicUrl = (new CommentService())->createPublicUrl($fileUploadedData, $board_id);
+            $settings['cover'] = [
+                'imageId' => $fileUploadedData['id'],
+                'backgroundImage' => $publicUrl,
+            ];
+            $task->settings = $settings;
+            $task->save();
+
+            return $this->sendSuccess([
+                'message' => __('Image has been uploaded', 'fluent-boards'),
+                'public_url' => $publicUrl
+            ], 200);
+
+
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 400);
+        }
+    }
+    public function removeTaskCover($board_id, $task_id)
+    {
+        try {
+            $task = Task::find($task_id);
+            $settings = $task->settings;
+            $this->taskService->deleteTaskCoverImage($settings);
+            unset($settings['cover']);
+            $task->settings = $settings;
+            $task->save();
+            return $this->sendSuccess([
+                'task' => $task,
+                'message' => __('Task Cover removed successfully', 'fluent-boards'),
+            ]);
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 400);
+        }
+    }
 }

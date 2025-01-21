@@ -65,11 +65,11 @@ trait MessageBag
     protected function generate($attribute, $rule, $parameters, $originalRuleKey = null)
     {
         $method = 'replace'.str_replace(
-            ' ', '', ucwords(str_replace(['-', '_'], ' ', $rule))
-        );
+                ' ', '', ucwords(str_replace(['-', '_'], ' ', $rule))
+            );
 
         $originalKey = '';
-        
+
         if (!empty($originalRuleKey)){
             $originalKey = $originalRuleKey.'.'.$rule;
         }
@@ -92,7 +92,7 @@ trait MessageBag
         $msg = "The {$attribute} field has been failed the validation";
 
         if ($parameters) {
-             $msg .= " with parameter \"{$parameters[0]}\"";
+            $msg .= " with parameter \"{$parameters[0]}\"";
         }
 
         return ($msg . '.');
@@ -189,6 +189,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -206,6 +207,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -223,6 +225,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -258,6 +261,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -266,11 +270,11 @@ trait MessageBag
         if (preg_match('/\.\d\./', $attribute, $matches)) {
             $parameters[0] = str_replace(['.*.'], $matches, $parameters[0]);
         }
-        
+
         $text = $this->getReplacementText($attribute.'.required_if', 'required_if', $originalKey);
 
         $value = end($parameters);
-        
+
         return str_replace([
             ':attribute', ':other', ':value'],
             [$attribute, $parameters[0], $value],
@@ -283,6 +287,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -300,6 +305,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -317,6 +323,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -334,6 +341,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -351,6 +359,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -368,6 +377,7 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
@@ -385,12 +395,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceUrl($attribute, $parameters)
+    protected function replaceUrl($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.url', 'url');
+        $text = $this->getReplacementText($attribute.'.url', 'url', $originalKey);
 
         return str_replace(':attribute', $attribute, $text);
     }
@@ -400,12 +411,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceNumeric($attribute, $parameters)
+    protected function replaceNumeric($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.numeric', 'numeric');
+        $text = $this->getReplacementText($attribute.'.numeric', 'numeric', $originalKey);
 
         return str_replace(':attribute', $attribute, $text);
     }
@@ -415,12 +427,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceMimes($attribute, $parameters)
+    protected function replaceMimes($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.mimes', 'mimes');
+        $text = $this->getReplacementText($attribute.'.mimes', 'mimes', $originalKey);
 
         return str_replace([':attribute', ':values'], [$attribute, implode(', ', $parameters)], $text);
     }
@@ -430,12 +443,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceMimetypes($attribute, $parameters)
+    protected function replaceMimetypes($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.mimetypes', 'mimetypes');
+        $text = $this->getReplacementText($attribute.'.mimetypes', 'mimetypes', $originalKey);
 
         return str_replace([':attribute', ':values'], [$attribute, implode(', ', $parameters)], $text);
     }
@@ -445,12 +459,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceUnique($attribute, $parameters)
+    protected function replaceUnique($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.unique', 'unique');
+        $text = $this->getReplacementText($attribute.'.unique', 'unique', $originalKey);
 
         return str_replace(':attribute', $attribute, $text);
     }
@@ -460,12 +475,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceDigits($attribute, $parameters)
+    protected function replaceDigits($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.digits', 'digits');
+        $text = $this->getReplacementText($attribute.'.digits', 'digits', $originalKey);
 
         return str_replace([':attribute', ':digits'], [$attribute, $parameters[0]], $text);
     }
@@ -475,12 +491,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceArray($attribute, $parameters)
+    protected function replaceArray($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.array', 'array');
+        $text = $this->getReplacementText($attribute.'.array', 'array', $originalKey);
 
         return str_replace([':attribute', ':array'], [$attribute], $text);
     }
@@ -490,12 +507,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceIn($attribute, $parameters)
+    protected function replaceIn($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.in', 'in');
+        $text = $this->getReplacementText($attribute.'.in', 'in', $originalKey);
 
         return str_replace([':attribute', ':in'], [$attribute], $text);
     }
@@ -505,12 +523,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceNotIn($attribute, $parameters)
+    protected function replaceNotIn($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.not_in', 'not_in');
+        $text = $this->getReplacementText($attribute.'.not_in', 'not_in', $originalKey);
 
         return str_replace([':attribute', ':not_in'], [$attribute], $text);
     }
@@ -520,12 +539,13 @@ trait MessageBag
      *
      * @param $attribute
      * @param $parameters
+     * @param $originalKey
      *
      * @return string
      */
-    protected function replaceExists($attribute, $parameters)
+    protected function replaceExists($attribute, $parameters, $originalKey)
     {
-        $text = $this->getReplacementText($attribute.'.exists', 'exists');
+        $text = $this->getReplacementText($attribute.'.exists', 'exists', $originalKey);
 
         return str_replace([':attribute', ':exists'], [$attribute], $text);
     }

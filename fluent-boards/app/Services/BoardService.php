@@ -36,6 +36,10 @@ class BoardService
         TaskMeta::whereIn('task_id', $allTaskIdsInBoard)->delete();
 
         Task::whereIn('id', $allTaskIdsInBoard)->delete();
+        
+        // delete all activities
+        Activity::whereIn('object_id', $allTaskIdsInBoard)->where('object_type', Constant::ACTIVITY_TASK)->delete();
+        $board->activities()->delete();
 
         //removing all Board Settings
         $board->boardUserEmailNotificationSettings()->detach();
@@ -64,9 +68,7 @@ class BoardService
         $this->deleteFromRecentlyViewed($boardId);
 
         $board->delete();
-        if(!defined('FLUENT_BOARDS_PRO')){
-            FileSystem::deleteDir('board_'.$boardId);
-        }
+        FileSystem::deleteDir('board_'.$boardId);
 //        do_action('fluent_boards/board_deleted', $board);
     }
 

@@ -423,7 +423,7 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
             return $this->items[$key];
         }
 
-        return Helper::value($default); // @need_fix
+        return Helper::value($default);
     }
 
     /**

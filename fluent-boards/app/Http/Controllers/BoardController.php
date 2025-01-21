@@ -179,7 +179,7 @@ class BoardController extends Controller
         $taskData = null;
         if ($request->get('task')) {
             $taskData = $this->taskSanitizeAndValidate($request->get('task'), [
-                'title' => 'required|string'
+                'title' => 'required|string',
             ]);
         }
 
@@ -479,6 +479,7 @@ class BoardController extends Controller
             $formattedUsers[] = [
                 'ID'           => $user->ID,
                 'display_name' => $name,
+                'user_login'   => $user->user_login,
                 'email'        => $user->user_email,
                 'photo'        => fluent_boards_user_avatar($user->user_email, $name),
                 'role'         => $this->boardUserRole($boardRelation),
@@ -798,6 +799,7 @@ class BoardController extends Controller
     {
         $stageData = $this->stageSanitizeAndValidate($request->all(), [
             'title' => 'required|string',
+            'position' => 'nullable|numeric'
         ]);
 
         $board = Board::find($board_id);
@@ -886,9 +888,10 @@ class BoardController extends Controller
     public function importFromBoard(Request $request, $board_id)
     {
         $selectedStages = $request->getSafe('selectedStages');
+        $position = $request->getSafe('position');
 
         try {
-            $this->stageService->importStagesFromBoard($board_id, $selectedStages);
+            $this->stageService->importStagesFromBoard($board_id, $selectedStages, $position);
 
             return $this->sendSuccess([
                 'message' => __('Import successfully', 'fluent-boards'),

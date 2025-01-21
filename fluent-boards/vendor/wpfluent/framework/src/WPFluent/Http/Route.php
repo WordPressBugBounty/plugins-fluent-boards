@@ -4,12 +4,15 @@ namespace FluentBoards\Framework\Http;
 
 use Closure;
 use Exception;
+use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use BadMethodCallException;
 use InvalidArgumentException;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Pipeline;
+use FluentBoards\Framework\Http\Request\Request;
+use FluentBoards\Framework\Http\Middleware\RateLimiter;
 use FluentBoards\Framework\Validator\ValidationException;
 use FluentBoards\Framework\Database\Orm\ModelNotFoundException;
 use FluentBoards\Framework\Response\Response as WPFluentResponse;
@@ -17,7 +20,7 @@ use FluentBoards\Framework\Response\Response as WPFluentResponse;
 class Route
 {
     use SubstituteRouteParametersTrait;
-    
+
     /**
      * Application Instance
      * @var \FluentBoards\Framework\Foundation\Application
@@ -35,7 +38,7 @@ class Route
      * @var string
      */
     protected $uri = null;
-    
+
     /**
      * Compiled rest endpoint
      * @var string
@@ -53,7 +56,7 @@ class Route
      * @var string
      */
     protected $handler = null;
-    
+
     /**
      * Rest Handler/Callback after parsing
      * @var callable|string
@@ -65,7 +68,7 @@ class Route
      * @var array
      */
     protected $actionInfo = [];
-    
+
     /**
      * Policy Handler/Callback after parsing
      * @var string
@@ -77,7 +80,7 @@ class Route
      * @var string
      */
     protected $method = null;
-    
+
     /**
      * Rest options
      * @var array
@@ -95,7 +98,7 @@ class Route
      * @var string
      */
     protected $namespace = null;
-    
+
     /**
      * Policy Handler/Callback after parsing
      * @var callable|string
@@ -113,7 +116,7 @@ class Route
 
     /**
      * Skips middlewar if true
-     * 
+     *
      * @var boolean
      */
     protected $skipMiddleware = false;
@@ -137,14 +140,21 @@ class Route
 
     /**
      * Route substituted parameters
-     * 
+     *
      * @var null|array
      */
     protected $substitutedParameters = [];
 
     /**
-     * Construct the route instance
+     * Is route signed
      * 
+     * @var boolean
+     */
+    protected $signed = false;
+
+    /**
+     * Construct the route instance
+     *
      * @param \FluentBoards\Framework\Foundation\Application $app
      * @param string $restNamespace
      * @param string $uri
@@ -164,15 +174,21 @@ class Route
 
     /**
      * Map the route to be used in front-end.
-     * 
-     * @param  mixed $handler
+     *
+     * @param mixed $handler
      * @return null
      */
     protected function preparefrontendHandlers($handler)
     {
         $endpointsUrl = $this->app->config->get('app.slug') . '/__endpoints';
-        
-        if (!str_contains($this->app->request->url(), $endpointsUrl)) {
+
+        if (get_option('permalink_structure')) {
+            $url = $this->app->request->url();
+        } else {
+            $url = $this->app->request->query('rest_route');
+        }
+
+        if (!str_contains($url ?? '', $endpointsUrl)) {
             return;
         }
 
@@ -181,13 +197,13 @@ class Route
         }
 
         $action = trim($this->app->parseRestHandler($handler), '\\');
-            
+
         [$controller, $cb] = explode('@', $action);
 
         $controller = str_replace('\\', '.', $controller);
 
         $endpoints = $this->app->endpoints;
-        
+
         $endpoints[$controller]["_{$cb}"] = [
             'uri' => $this->uri,
             'methods' => explode(',', $this->method)
@@ -198,7 +214,7 @@ class Route
 
     /**
      * Alternative constructor
-     * 
+     *
      * @param \FluentBoards\Framework\Foundation\Application $app
      * @param string $restNamespace
      * @param string $uri
@@ -213,9 +229,9 @@ class Route
 
     /**
      * Set route meta
-     * 
-     * @param  string $key
-     * @param  mixed $value
+     *
+     * @param string $key
+     * @param mixed $value
      * @return self
      */
     public function meta($key, $value = null)
@@ -229,8 +245,8 @@ class Route
 
     /**
      * Get route meta
-     * 
-     * @param  string $key
+     *
+     * @param string $key
      * @return mixed
      */
     public function getMeta($key = '')
@@ -238,13 +254,13 @@ class Route
         if (isset($this->meta[$key])) {
             return $this->meta[$key];
         }
-        
+
         return $this->meta;
     }
 
     /**
      * Get route options
-     * 
+     *
      * @return mixed
      */
     public function getOptions()
@@ -254,8 +270,8 @@ class Route
 
     /**
      * Get route options
-     * 
-     * @param  string $key
+     *
+     * @param string $key
      * @return mixed
      */
     public function getOption($key = null)
@@ -265,7 +281,7 @@ class Route
 
     /**
      * Get route action information
-     * @param  string $key
+     * @param string $key
      * @return mixed
      */
     public function getAction($key = '')
@@ -273,15 +289,15 @@ class Route
         if ($key && array_key_exists($key, $this->actionInfo)) {
             return $this->actionInfo[$key];
         }
-        
+
         return $this->actionInfo;
     }
 
     /**
      * Set a where constrain into the route
-     * 
-     * @param  string $identifier
-     * @param  string $value
+     *
+     * @param string $identifier
+     * @param string $value
      * @return self
      */
     public function where($identifier, $value = null)
@@ -299,8 +315,8 @@ class Route
 
     /**
      * Add an integer type route constraint
-     * 
-     * @param  string $identifiers
+     *
+     * @param string $identifiers
      * @return self
      */
     public function int($identifiers)
@@ -316,8 +332,8 @@ class Route
 
     /**
      * Add an alpha type route constraint
-     * 
-     * @param  string $identifiers
+     *
+     * @param string $identifiers
      * @return self
      */
     public function alpha($identifiers)
@@ -333,8 +349,8 @@ class Route
 
     /**
      * Add an alphanum type route constraint
-     * 
-     * @param  string $identifiers
+     *
+     * @param string $identifiers
      * @return self
      */
     public function alphaNum($identifiers)
@@ -350,8 +366,8 @@ class Route
 
     /**
      * Add an alphanumdash type route constraint
-     * 
-     * @param  string $identifiers
+     *
+     * @param string $identifiers
      * @return self
      */
     public function alphaNumDash($identifiers)
@@ -367,8 +383,8 @@ class Route
 
     /**
      * Set the route before middleware
-     * 
-     * @param  array|string $middleware
+     *
+     * @param array|string $middleware
      * @return self
      */
     public function before(...$middleware)
@@ -378,8 +394,8 @@ class Route
 
     /**
      * Set the route after middleware
-     * 
-     * @param  array|string $middleware
+     *
+     * @param array|string $middleware
      * @return self
      */
     public function after(...$middleware)
@@ -389,7 +405,7 @@ class Route
 
     /**
      * Set the route middleware
-     * @param  array $middleware
+     * @param array $middleware
      * @return self
      */
     public function middleware($type = 'before', ...$middleware)
@@ -407,9 +423,9 @@ class Route
 
     /**
      * Set the route policy
-     * 
-     * @param  mixed $handler
-     * @param  string|null $method
+     *
+     * @param mixed $handler
+     * @param string|null $method
      * @return self
      */
     public function withPolicy($handler, $method = null)
@@ -431,7 +447,7 @@ class Route
 
     /**
      * Resolve and set policy with namespace for add-ons
-     * 
+     *
      * @param null
      */
     protected function setPolicyHandlerWithNamespace($backTrace)
@@ -443,7 +459,7 @@ class Route
         $class = $last['class'];
 
         $namespace = substr(__NAMESPACE__, 0, strpos(__NAMESPACE__, '\\'));
-        
+
         $calledClassNamespace = substr($class, 0, strpos($class, '\\'));
 
         if ($namespace != $calledClassNamespace) {
@@ -454,7 +470,7 @@ class Route
 
     /**
      * Set the namespace for controller/action
-     * @param  string $ns
+     * @param string $ns
      * @return null
      */
     public function withNamespace($ns)
@@ -463,8 +479,74 @@ class Route
     }
 
     /**
+     *  Sign the route.
+     *  
+     * @return $this
+     */
+    public function signed()
+    {
+        $this->signed = true;
+
+        return $this;
+    }
+
+    /**
+     *  Apply rate limit to the route.
+     *  
+     *  @param int $limit Number of allowed requests.
+     *  @param int $interval Time interval in seconds.
+     *  
+     * @return $this
+     */
+    public function rateLimit($limit, $interval)
+    {
+        // Since the rate limiter is applied twice because
+        // WordPress sends an extra request for every
+        // request, so we need to double the limit.
+
+        $rateLimiter = new RateLimiter($limit * 2, $interval);
+
+        $this->middleware('before', $rateLimiter);
+
+        return $this;
+    }
+
+    /**
+     * Apply a rate limit to the route for per minute.
+     *
+     * @param int $limit The maximum number of requests allowed per minute.
+     * @return $this
+     */
+    public function rateLimitPerMinute($limit)
+    {
+        return $this->rateLimit($limit, MINUTE_IN_SECONDS);
+    }
+
+    /**
+     * Apply an hourly rate limit to the route.
+     *
+     * @param int $limit The maximum number of requests allowed per hour.
+     * @return $this
+     */
+    public function rateLimitHourly($limit)
+    {
+        return $this->rateLimit($limit, HOUR_IN_SECONDS);
+    }
+
+    /**
+     * Apply a daily basis (24 hours) rate limit to the route.
+     *
+     * @param int $limit The maximum number of requests allowed per day.
+     * @return $this
+     */
+    public function rateLimitDaily($limit)
+    {
+        return $this->rateLimit($limit, DAY_IN_SECONDS);
+    }
+
+    /**
      * Register the rest endpoint
-     * 
+     *
      * @return null
      */
     public function register()
@@ -480,22 +562,38 @@ class Route
 
     /**
      * Set route options
-     * 
+     *
      * @return null
      */
     protected function setOptions()
     {
         $this->options = [
-            'args' => [],
-            'methods' => $this->method,
-            'callback' => [$this, 'callback'],
-            'permission_callback' => [$this, 'permissionCallback']
+            [
+                'methods' => $this->method,
+                'callback' => [$this, 'callback'],
+                'permission_callback' => [$this, 'permissionCallback'],
+                'args' => [],
+            ],
+            'schema' => [$this, 'getSchema'],
         ];
     }
 
     /**
+     * Generate and return the schema for the route.
+     * 
+     * @return \Closure
+     * @see https://developer.wordpress.org/rest-api/extending-the-rest-api/schema
+     */
+    public function getSchema()
+    {
+        return function () {
+            return [];
+        };
+    }
+
+    /**
      * Get item from predefined regex
-     * @param  string $value
+     * @param string $value
      * @return string
      */
     protected function getValue($value)
@@ -509,18 +607,18 @@ class Route
 
     /**
      * Compikle the rest route to regex
-     * 
-     * @param  string $uri
+     *
+     * @param string $uri
      * @return string compiled rest endpoint
      */
     protected function compileRoute($uri)
     {
         $params = [];
 
-        $compiledUri = preg_replace_callback('#/{(.*?)}#', function($match) use (&$params, $uri) {
+        $compiledUri = preg_replace_callback('#/{(.*?)}#', function ($match) use (&$params, $uri) {
             // Default regx
             $regx = '[^\s(?!/)]+';
-            
+
             $param = trim($match[1]);
 
             if ($isOptional = strpos($param, '?')) {
@@ -532,7 +630,7 @@ class Route
                     "Duplicate parameter name '{$param}' found in {$uri}.", 500
                 );
             }
-            
+
             $params[] = $param;
 
             if (isset($this->wheres[$param])) {
@@ -544,9 +642,9 @@ class Route
             if ($isOptional) {
                 $pattern = "(?:" . $pattern . ")?";
             }
-            
+
             $this->options['args'][$param]['required'] = !$isOptional;
-            
+
             return $pattern;
 
         }, $uri);
@@ -556,52 +654,21 @@ class Route
 
     /**
      * Route handler
-     * 
+     *
      * @return mixed
      */
     public function callback()
     {
         try {
-
-            $response = $this->app->call(
-                $this->action, $this->getControllerParameters()
+            return $this->handleAfterMiddleware(
+                $response = $this->dispatchRouteAction()
             );
-
-            if ($response instanceof WPFluentResponse) {
-                $response = $response->toArray();
-            }
-
-            if (!($response instanceof WP_REST_Response)) {
-                if (is_wp_error($response)) {
-                    $response = $this->app->response->wpErrorToResponse($response);
-                } else {
-                    $response = $this->app->response->sendSuccess($response);
-                }
-            }
-            
-            if (!$this->skipMiddleware) {
-                $response = $this->app->make(Pipeline::class)
-                    ->send($response)
-                    ->through($this->collectMiddleWare('after'))
-                    ->then(function($response) {
-                        if (!$response instanceof WP_REST_Response) {
-                            $response = new WP_REST_Response($response);
-                        }
-                        return $response;
-                    });
-
-                if (!$response) {
-                    $response = $this->app->request->abort();
-                }
-            }
-
-            return $response;
 
         } catch (ValidationException $e) {
             return $this->app->response->sendError(
                 $e->errors(), $e->getCode()
             );
-        }  catch (ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return $this->app->response->sendError([
                 'message' => $e->getMessage()
             ], 404);
@@ -613,30 +680,78 @@ class Route
     }
 
     /**
+     * Dispatch the route action.
+     *
+     * @return mixed
+     */
+    protected function dispatchRouteAction()
+    {
+        $response = $this->app->call(
+            $this->action, $this->getControllerParameters()
+        );
+
+        if ($response instanceof WPFluentResponse) {
+            $response = $response->toArray();
+        } elseif (!($response instanceof WP_REST_Response)) {
+            $response = !is_wp_error($response) ?
+                $this->app->response->sendSuccess($response) :
+                $this->app->response->wpErrorToResponse($response);
+        }
+
+        return $response;
+    }
+
+    /**
+     * Handle after middleware if any.
+     *
+     * @param mixed $response
+     * @return mixed
+     */
+    protected function handleAfterMiddleware($response)
+    {
+        if (!$this->skipMiddleware) {
+            $response = $this->app->make(Pipeline::class)
+                ->send($response)
+                ->through($this->collectMiddleWare('after'))
+                ->then(function ($response) {
+                    if (!$response instanceof WP_REST_Response) {
+                        $response = new WP_REST_Response($response);
+                    }
+                    return $response;
+                });
+
+            if (!$response) {
+                $response = $this->app->request->abort();
+            }
+        }
+
+        return $response;
+    }
+
+    /**
      * Permission callback for route
-     * @param  \WP_REST_Request $wpRestRequest
+     * @param \WP_REST_Request $wpRestRequest
      * @return mixed
      */
     public function permissionCallback($wpRestRequest)
     {
         try {
-
             $this->app->instance('route', $this);
-        
-            if (!$this->app->bound('wprestrequest')) {
-                $this->app->instance('wprestrequest', $wpRestRequest);
-                $this->app->request->mergeInputsFromRestRequest($wpRestRequest);
+            $this->app->instance('wprestrequest', $wpRestRequest);
+            $this->app->request->mergeInputsFromRestRequest($wpRestRequest);
+            $this->prepareCallbacks($this->app->request);
 
-                if (method_exists($this, 'prepareCallbacks')) {
-                    $this->prepareCallbacks($this->app->request);
-                }
+            if (!$this->isThisValidSignedRoute()) {
+                throw new Exception('Invalid Signature', 403);
             }
 
             $response = $this->app->make(Pipeline::class)
                 ->send($this->app->request)
                 ->through($this->collectMiddleWare('before'))
-                ->then(function($request) {
-                    return $this->dispatchPermissionHandler();
+                ->then(function ($request) {
+                    if ($request && $request instanceof Request) {
+                        return $this->dispatchPermissionHandler();
+                    }
                 });
 
             if (is_wp_error($response)) {
@@ -650,25 +765,52 @@ class Route
                 $data = $response->get_data();
 
                 throw new Exception(
-                    $data['message'] ?? $response->get_status(), $response->get_status()
+                    $data['message'] ?? $response->get_status(),
+                    $response->get_status()
                 );
             }
 
             return $response;
 
         } catch (Exception $e) {
-            $this->skipMiddleware = true;
-            $this->action = function() use ($e) {
-                return $this->app->response->sendError(
-                    ['message' => $e->getMessage()], $e->getCode()
-                );
-            };
+            return new WP_Error(
+                'Permission Callback Error',
+                $e->getMessage(), [
+                    'status' => $e->getCode() ?: 403
+                ]
+            );
+        }
+    }
+
+    /**
+     * Checks if the route is signed and needs validation.
+     * 
+     * @return boolean [description]
+     */
+    protected function isThisValidSignedRoute()
+    {
+        if (!$this->signed) return true;
+
+        $request = $this->app->make('request');
+
+        if ($this->app->make('url')->validate($request->getFullUrl())) {
+            parse_str($this->app->make('encrypter')->decrypt(
+                $this->app->request->get('_data')
+            ), $query);
+
+            $this->app->request->merge(
+                Arr::except($query, ['expires_at'])
+            );
+
+            $this->app->request->forget('_data');
+
+            return true;
         }
     }
 
     /**
      * Dispatches the permission handler
-     * 
+     *
      * @return bool|null
      */
     protected function dispatchPermissionHandler()
@@ -683,7 +825,7 @@ class Route
 
     /**
      * Gether route params after substituted the params
-     * 
+     *
      * @return array
      */
     protected function getControllerParameters()
@@ -706,14 +848,14 @@ class Route
      * the request without modifying the source code again
      * and again. The middleware class will implement
      * the handle method as given below:
-     * 
+     *
      * public function handle($request, $next)
      *
      * And must return $next($request) to handle the request.
      * Otherwise return nothing to abort the request.
      * Optionally, you may call the abort method:
      * return $request->abort(code, message);
-     * 
+     *
      * @param string $type
      * @return array
      */
@@ -736,10 +878,11 @@ class Route
 
             if (is_object($routeMiddleware)) {
                 $handler = $routeMiddleware;
+            } elseif (class_exists($routeMiddleware)) {
+                $handler = $this->resolveMiddlewareFrom($routeMiddleware);
             } else {
                 $pieces = explode(':', $routeMiddleware);
                 $handler = Arr::get($routeArray, $key = reset($pieces));
-
                 if (isset($pieces[1])) {
                     $handler = $this->resolveMiddleware($handler, $pieces);
                 }
@@ -754,7 +897,7 @@ class Route
                 } else {
                     $msg = "Could't resolve middleware.";
                 }
-                
+
                 throw new InvalidArgumentException($msg);
             }
         }
@@ -763,10 +906,24 @@ class Route
     }
 
     /**
-     * Resolve the middleware
+     * Resolve a middleware from a class.
      * 
-     * @param  mixed $handler
-     * @param  aray $pieces
+     * @param  string $class
+     * @return \Closure
+     */
+    protected function resolveMiddlewareFrom($class)
+    {
+        return (new $class);
+        return static function ($r, $next, ...$params) use ($class) {
+            return (new $class)->handle($r, $next, ...$params);
+        };
+    }
+
+    /**
+     * Resolve the middleware
+     *
+     * @param mixed $handler
+     * @param aray $pieces
      * @return object
      */
     protected function resolveMiddleware($handler, $pieces)
@@ -776,36 +933,44 @@ class Route
         } elseif (is_string($handler)) {
             $handler = $handler . ':' . str_replace(' ', '', end($pieces));
         }
-        
+
         return $handler;
     }
 
     /**
      * Create a class to wrap the middleware
-     * 
-     * @param  mixed $handler
-     * @param  aray $pieces
+     *
+     * @param mixed $handler
+     * @param aray $pieces
      * @return object
      */
     protected function wrapMiddleware($handler, $pieces)
     {
         $params = str_replace(' ', '', end($pieces));
-        
+
         $params = explode(',', $params);
 
         return new class ($handler, $params) {
             protected $handler, $params = null;
-            public function __construct($handler, $params) {
+
+            public function __construct($handler, $params)
+            {
                 $this->handler = $handler;
                 $this->params = $params;
             }
-            public function handle($target, $next) {
+
+            public function handle($r, $next)
+            {
                 if (is_callable($this->handler)) {
-                    return ($this->handler)($target, $next, ...$this->params);
+                    return ($this->handler)($r, $next, ...$this->params);
                 } else {
-                    return $this->handler->handle(
-                        $target, $next, ...$this->params
-                    );
+                    if (!method_exists($this->handler, 'handle')) {
+                        $class = get_class($this->handler);
+                        throw new InvalidArgumentException(
+                            "The {$class} must implement the handle method."
+                        );
+                    }
+                    return $this->handler->handle($r, $next, ...$this->params);
                 }
             }
         };
@@ -813,7 +978,7 @@ class Route
 
     /**
      * Add the middleware in the stack
-     * 
+     *
      * @param array &$stack All callable middleware for the route
      * @param null
      */
@@ -826,8 +991,8 @@ class Route
 
     /**
      * Resolve the policy handler
-     * 
-     * @param  string $policyHandler
+     *
+     * @param string $policyHandler
      * @return mixed
      */
     protected function getPolicyHandler($policyHandler)
@@ -841,13 +1006,13 @@ class Route
         }
 
         if (is_string($policyHandler)) {
-            
+
             if (function_exists($policyHandler)) {
                 return $policyHandler;
             }
 
             $policyHandlerFunction = substr($policyHandler, strrpos($policyHandler, '\\') + 1);
-            
+
             if (function_exists($policyHandlerFunction)) {
                 return $policyHandlerFunction;
             }
@@ -860,13 +1025,13 @@ class Route
         if (is_string($policyHandler) && $this->handler instanceof Closure) {
 
             if (class_exists($policyHandler)) {
-                
+
                 $reflection = new \ReflectionClass($policyHandler);
-                
+
                 if ($reflection->hasMethod('verifyRequest')) {
-                    
+
                     $policyHandler = $policyHandler . '@' . 'verifyRequest';
-                    
+
                     return $policyHandler;
                 }
             } elseif (function_exists($policyHandler)) {
@@ -877,7 +1042,7 @@ class Route
                 'Explicit policy handler is required while using a closure as route callback.'
             );
         }
-        
+
         if ($policyHandler && !function_exists($policyHandler)) {
             if (is_string($this->handler) && strpos($this->handler, '@') !== false) {
                 list($_, $method) = explode('@', $this->handler);
@@ -893,12 +1058,12 @@ class Route
     protected function isPolicyHandlerParseable($policyHandler)
     {
         return (strpos($policyHandler, '@') === true
-        || strpos($policyHandler, '::') === true);
+            || strpos($policyHandler, '::') === true);
     }
 
     /**
      * Default/Fallback policy handler for the route
-     * 
+     *
      * @return bool
      */
     public function defaultPolicyHandler()
@@ -908,8 +1073,8 @@ class Route
 
     /**
      * Parse the rest and permission/policy handlers
-     * 
-     * @param  \WP_REST_Request $request
+     *
+     * @param \WP_REST_Request $request
      * @return null
      * @throws \BadMethodCallException
      */
@@ -933,7 +1098,7 @@ class Route
             $policyHandler = $this->app->parsePolicyHandler(
                 $this->getPolicyHandler($this->policyHandler)
             );
-            
+
             if ($policyHandler) {
                 $this->permissionHandler = $policyHandler;
 
@@ -957,8 +1122,8 @@ class Route
             $pHandler = $this->policyHandler;
             if (is_array($this->permissionHandler) && $this->permissionHandler) {
                 $pHandler = is_object($this->permissionHandler[0]) ?
-                get_class($this->permissionHandler[0]) . ':' . $this->permissionHandler[1] :
-                $this->permissionHandler[0]  . ':' . $this->permissionHandler[1];
+                    get_class($this->permissionHandler[0]) . ':' . $this->permissionHandler[1] :
+                    $this->permissionHandler[0] . ':' . $this->permissionHandler[1];
             }
 
             throw new BadMethodCallException(
@@ -995,9 +1160,9 @@ class Route
     }
 
     /**
-     * Get route one or more parameters
-     * @param  string $key
-     * 
+     * Get one or more route parameters
+     * @param string $key
+     *
      * @return mixed
      */
     public function getParameter($key = null)
@@ -1011,7 +1176,7 @@ class Route
 
     /**
      * Dynamically access a route parameter.
-     * 
+     *
      * @param string $key
      * @return mixed
      */

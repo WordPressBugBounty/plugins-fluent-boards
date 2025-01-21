@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.3
-Stable tag: 1.35
+Stable tag: 1.40
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,31 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v1.40 (Date: January 21, 2025) =
+- New : Backblaze storage integration
+- New: Digital Ocean storage integration
+- New: Create a new stage between existing stages.
+- New: Image and Custom color in task Cover
+- Improvement:  UX in settings feature module
+- Improvement: UI/UX in task comment and image
+- Improvement: Replaced pagination with infinite scroll for comments and activities
+- Improvement: Stage selection  in Recurring Task.
+- Improvement: Updated Roadmap task details with vote counter and improved task type handling
+- Improvement: Comment mentions system updated.
+- Improvement: Comment mentions notification updated.
+- Improvement: Quick Search in mobile view
+- Improvement: Automatic deletion of board activities upon board removal
+- Improvement: UI improvement in the frontend topbar
+- Fixed: Issue where @mentions would occasionally display as "undefined"
+- Fixed: Custom field error in the filter
+- Fixed: Comment created time issue
+- Fixed: Console error while editing webhook.
+- Fixed: Notification design-break issue solved.
+- Fixed: UI breaking with long activity history text
+- Fixed: Improved touch-screen drag icon and task title styling
+- Fixed: PHP 7.4 compatibility Issue
+- Other Improvements & Bug Fixes
 
 = v1.35 (Date: December 03, 2024) =
 - New: Default Stage Assignee.
