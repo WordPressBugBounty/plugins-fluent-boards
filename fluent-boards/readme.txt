@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.3
-Stable tag: 1.40
+Stable tag: 1.41
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,10 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v1.41 (Date: January 31, 2025) =
+- Fixed: Frontend UI compatibility issues affecting certain themes.
+- Fixed: Task creation errors in Webhook and API related to labels and assignees.
 
 = v1.40 (Date: January 21, 2025) =
 - New : Backblaze storage integration

@@ -164,7 +164,27 @@ class Tasks
             return false;
         }
 
-        $taskData = Helper::sanitizeTask($data);
+        $taskData = Helper::sanitizeTaskForWebHook($data);
+        if (is_string($data['assignees'])) {
+            $data['assignees'] = json_decode($data['assignees'], true);
+            if (!is_array($data['assignees'])) {
+                $data['assignees'] = [$data['assignees']]; // Wrap single value in an array
+            }
+        } elseif (is_int($data['assignees'])) {
+            $data['assignees'] = [$data['assignees']]; // Wrap integer in an array
+        }
+
+        if (is_string($data['labels'])) {
+            $data['labels'] = json_decode($data['labels'], true);
+            if (!is_array($data['labels'])) {
+                $data['labels'] = [$data['labels']]; // Wrap single value in an array
+            }
+        } elseif (is_int($data['labels'])) {
+            $data['labels'] = [$data['labels']]; // Wrap integer in an array
+        }
+
+
+
 
         if(!empty($taskData['priority']) && !in_array($taskData['priority'], ['low', 'medium', 'high'])) {
             $taskData['priority'] = 'low';

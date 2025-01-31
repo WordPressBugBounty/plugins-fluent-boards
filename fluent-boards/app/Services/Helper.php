@@ -461,4 +461,37 @@ class Helper
 
         return self::sanitizeData($data, $fieldMaps);
     }
+
+    public static function sanitizeTaskForWebHook($data)
+    {
+        $fieldMaps = [
+            'title'          => 'sanitize_text_field',
+            'board_id'       => 'intval',
+            'parent_id'      => 'intval',
+            'crm_contact_id' => 'intval',
+            'type'      => 'sanitize_text_field',
+            'stage'          => 'sanitize_text_field',
+            'reminder_type'  => 'sanitize_text_field',
+            'priority'       => 'sanitize_text_field',
+            'lead_value'     => 'doubleval',
+            'remind_at'      => 'sanitize_text_field',
+            'scope'          => 'sanitize_text_field',
+            'source'         => 'sanitize_text_field',
+            'description'    => 'wp_kses_post',
+            'due_date'       => 'sanitize_text_field',
+            'start_at'       => 'sanitize_text_field',
+            'log_minutes'    => 'sanitize_text_field',
+            'last_completed' => 'sanitize_text_field',
+            'is_archived'    => 'intval',
+            'previous_stage' => 'sanitize_text_field',
+            'new_stage'      => 'sanitize_text_field',
+            'new_index'      => 'intval',
+            'old_index'      => 'intval',
+            'new_board_id'   => 'intval',
+            'position'       => 'intval'
+
+        ];
+
+        return self::sanitizeData($data, $fieldMaps);
+    }
 }

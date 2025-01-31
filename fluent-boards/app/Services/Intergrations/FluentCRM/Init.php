@@ -37,7 +37,12 @@ class Init
 
             $slug = $app->config->get('app.slug');
             wp_enqueue_script( $slug . '_in_crm', FLUENT_BOARDS_PLUGIN_URL . 'assets/crm-contact-app.js', [], FLUENT_BOARDS_PLUGIN_VERSION);
-            wp_enqueue_style($slug . '_in_crm', FLUENT_BOARDS_PLUGIN_URL . 'assets/admin/crm-contact-app.css', [], FLUENT_BOARDS_PLUGIN_VERSION);
+            $isRtl = is_rtl();
+            $crmContactCss = 'assets/admin/crm-contact-app.css';
+            if($isRtl) {
+                $crmContactCss = 'assets/admin/crm-contact-app-rtl.css';
+            }
+            wp_enqueue_style($slug . '_in_crm', FLUENT_BOARDS_PLUGIN_URL . $crmContactCss, [], FLUENT_BOARDS_PLUGIN_VERSION);
             wp_localize_script($slug . '_in_crm', 'fluentAddonVars', [
                 'slug'                            => $slug = $app->config->get('app.slug'),
                 'nonce'                           => wp_create_nonce($slug),

@@ -336,9 +336,14 @@ class AdminMenuHandler
 
         $slug = $app->config->get('app.slug');
 
+//        $isRtl = is_rtl();
+        $adminAppCss = 'admin/admin.css';
+//        if($isRtl) {
+//            $adminAppCss = 'admin/admin-rtl.css';
+//        }
         wp_enqueue_style(
             $slug . '_admin_app',
-            $assets . 'admin/admin.css',
+            $assets . $adminAppCss,
             [],
             FLUENT_BOARDS_PLUGIN_VERSION
         );
@@ -422,6 +427,7 @@ class AdminMenuHandler
                 'ver', get_bloginfo('version'),
                 site_url('/wp-includes/css/dashicons.css')
             ),
+//            'is_rtl' => is_rtl(),
         ]);
     }
 
