@@ -54,4 +54,15 @@ class DBMigrator
         AttachmentMigrator::migrate($isForced);
         TeamMigrator::migrate($isForced);
 	}
+
+	public static function handle_new_site($new_site)
+	{
+		if (!is_plugin_active_for_network('fluent-boards/fluent-boards.php')) {
+			return;
+		}
+
+		switch_to_blog($new_site->blog_id);
+		self::migrate(false);
+		restore_current_blog();
+	}
 }

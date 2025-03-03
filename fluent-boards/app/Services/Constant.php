@@ -301,5 +301,6 @@ class Constant{
     const TASK_CUSTOM_FIELD = 'task_custom_field';
 
     const BOARD_CSV_EXPORT = 'csv_export';
+    const BOARD_ATTACHMENT = 'BOARD';
 
 }

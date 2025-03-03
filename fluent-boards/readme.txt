@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.3
-Stable tag: 1.41
+Stable tag: 1.45
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,26 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v1.45 (Date: March 03, 2025) =
+- New: CSV Export and Import
+- New: Custom color support in Labels
+- New: RTL(Right-to-Left) Support
+- New: FluentCRM integration in Roadmap 
+- New: Added Frontend Portal Link in admin bar for quick access
+- New: Easily transition ideas across stages
+- Improvement: More translation strings added
+- Improvement: Enabled 24-hour time format support
+- Improvement: Task link copy via the 'Copy Link' button
+- Improvement: Redesigned Features & Modules with improved UI/UX
+- Fixed: Multisite Issue
+- Fixed: Date diff discrepancy in activities
+- Fixed: External storage integration issues
+- Fixed: Width overflow issue in task description
+- Fixed: Margin issues in frontend portal report
+- Fixed: Logged time disappearing when moving tasks between boards
+- Fixed: Task created from FluentCRM automations default priority issue
+- Other Improvements & Bug Fixes
 
 = v1.41 (Date: January 31, 2025) =
 - Fixed: Frontend UI compatibility issues affecting certain themes.

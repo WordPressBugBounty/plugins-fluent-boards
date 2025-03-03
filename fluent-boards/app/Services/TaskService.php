@@ -502,7 +502,7 @@ class TaskService
         $task->labels()->detach();
 
         do_action('fluent_boards/task_moved_from_board', $task, $oldBoard, $newBoard);
-
+        do_action('fluent_boards/task_moved_update_time_tracking', $task);
         return $task;
     }
 

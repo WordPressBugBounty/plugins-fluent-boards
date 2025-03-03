@@ -34,4 +34,7 @@ return function ($file) {
         new \FluentBoards\App\Services\Intergrations\FluentFormIntegration\Bootstrap($app);
     });
 
+    // Add this new hook for multisite support
+    add_action('wp_initialize_site', ['\FluentBoards\Database\DBMigrator', 'handle_new_site']);
+
 };

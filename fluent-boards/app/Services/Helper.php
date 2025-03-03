@@ -136,8 +136,8 @@ class Helper
     public static function sanitizeLabel($data)
     {
         $fieldMaps = [
-            'bg_color'   => 'sanitize_hex_color',
-            'color'      => 'sanitize_hex_color',
+            'bg_color'   => 'sanitize_text_field',
+            'color'      => 'sanitize_text_field',
             'label'      => 'sanitize_text_field',
             'boardId'    => 'intval',
             'task_id'    => 'intval',

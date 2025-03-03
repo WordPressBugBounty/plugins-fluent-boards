@@ -143,7 +143,7 @@ class LabelController extends Controller
     {
         $labelData = $this->labelSanitizeAndValidate($request->all(), [
             'bg_color' => 'required|string',
-            'color' => 'required|string',
+            'color' => 'nullable|string',
             'label' => 'nullable|string',
         ]);
         try {

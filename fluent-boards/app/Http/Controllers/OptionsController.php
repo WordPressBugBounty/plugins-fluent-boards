@@ -583,7 +583,8 @@ class OptionsController extends Controller
                 'learn_more_url' => 'https://fluentcrm.com/',
                 'associate_doc'  => 'https://fluentboards.com/docs/fluentboards-integration-with-fluentcrm/',
                 'action_text'    => $this->isPluginInstalled('fluent-crm/fluent-crm.php') ? __('Activate FluentCRM', 'fluent-boards') : __('Install FluentCRM', 'fluent-boards'),
-                'description'    => __('FluentCRM is a Self Hosted Email Marketing Automation Plugin for WordPress. Manage your leads and customers, email campaigns, automated email sequencing and many more', 'fluent-boards')
+                'description'    => __('FluentCRM is a Self Hosted Email Marketing Automation Plugin for WordPress. Manage your leads and customers, email campaigns, automated email sequencing and many more', 'fluent-boards'),
+                'short_desc'     => __('Email marketing automation', 'fluent-boards')
             ],
             'fluentform'     => [
                 'title'          => __('Fluent Forms', 'fluent-boards'),
@@ -592,7 +593,8 @@ class OptionsController extends Controller
                 'learn_more_url' => 'https://wordpress.org/plugins/fluentform/',
                 'associate_doc'  => 'https://fluentboards.com/docs/fluentboards-integration-with-fluent-forms/',
                 'action_text'    => $this->isPluginInstalled('fluent-form/fluent-form.php') ? __('Activate Fluent Forms', 'fluent-boards') : __('Install Fluent Forms', 'fluent-boards'),
-                'description'    => __('Collect leads and build any type of forms, accept payments, connect with your CRM with the Fastest Contact Form Builder Plugin for WordPress', 'fluent-boards')
+                'description'    => __('Collect leads and build any type of forms, accept payments, connect with your CRM with the Fastest Contact Form Builder Plugin for WordPress', 'fluent-boards'),
+                'short_desc'     => __('Create forms and accept payments', 'fluent-boards')
             ],
             'fluent-support' => [
                 'title'          => __('Fluent Support', 'fluent-boards'),
@@ -602,7 +604,8 @@ class OptionsController extends Controller
                 'settings_url'   => admin_url('admin.php?page=fluent-support#/'),
                 'associate_doc'  => 'https://fluentboards.com/docs/fluentboards-integration-with-fluentsupport/',
                 'action_text'    => $this->isPluginInstalled('fluent-support/fluent-support.php') ? __('Activate Fluent Support', 'fluent-boards') : __('Install Fluent Support', 'fluent-boards'),
-                'description'    => __('WordPress Helpdesk and Customer Support Ticket Plugin. Provide awesome support and manage customer queries right from your WordPress dashboard.', 'fluent-boards')
+                'description'    => __('WordPress Helpdesk and Customer Support Ticket Plugin. Provide awesome support and manage customer queries right from your WordPress dashboard.', 'fluent-boards'),
+                'short_desc'     => __('Customer support ticketing', 'fluent-boards')
             ],
             'fluent-smtp'    => [
                 'title'          => __('Fluent SMTP', 'fluent-boards'),
@@ -611,7 +614,8 @@ class OptionsController extends Controller
                 'learn_more_url' => 'https://wordpress.org/plugins/fluent-smtp/',
                 'associate_doc'  => admin_url('options-general.php?page=fluent-mail#/'),
                 'action_text'    => $this->isPluginInstalled('fluent-smtp/fluent-smtp.php') ? __('Activate Fluent SMTP', 'fluent-boards') : __('Install Fluent SMTP', 'fluent-boards'),
-                'description'    => __('The Ultimate SMTP and SES Plugin for WordPress. Connect with any SMTP, SendGrid, Mailgun, SES, Sendinblue, PepiPost, Google, Microsoft and more.', 'fluent-boards')
+                'description'    => __('The Ultimate SMTP and SES Plugin for WordPress. Connect with any SMTP, SendGrid, Mailgun, SES, Sendinblue, PepiPost, Google, Microsoft and more.', 'fluent-boards'),
+                'short_desc'    => __('Reliable email delivery with SMTP', 'fluent-boards')
             ],
         ];
 

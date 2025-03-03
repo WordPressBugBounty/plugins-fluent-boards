@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Fluent Boards\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-01-21 11:13+0000\n"
+"POT-Creation-Date: 2025-02-27 08:59+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: \n"
@@ -16,7 +16,7 @@ msgstr ""
 "X-Loco-Version: 2.6.4; wp-6.3.1\n"
 "X-Domain: fluent-boards"
 
-#: app/Http/Controllers/OptionsController.php:868
+#: app/Http/Controllers/OptionsController.php:872
 msgid "(no title)"
 msgstr ""
 
@@ -56,15 +56,15 @@ msgstr ""
 msgid "Action"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:594
+#: app/Http/Controllers/OptionsController.php:595
 msgid "Activate Fluent Forms"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:613
+#: app/Http/Controllers/OptionsController.php:616
 msgid "Activate Fluent SMTP"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:604
+#: app/Http/Controllers/OptionsController.php:606
 msgid "Activate Fluent Support"
 msgstr ""
 
@@ -629,7 +629,7 @@ msgstr ""
 msgid "Closest Side"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:595
+#: app/Http/Controllers/OptionsController.php:596
 msgid ""
 "Collect leads and build any type of forms, accept payments, connect with "
 "your CRM with the Fastest Contact Form Builder Plugin for WordPress"
@@ -760,6 +760,10 @@ msgstr ""
 msgid "Create First Task"
 msgstr ""
 
+#: app/Http/Controllers/OptionsController.php:597
+msgid "Create forms and accept payments"
+msgstr ""
+
 #: app/Services/TransStrings.php:110
 msgid "Create new board"
 msgstr ""
@@ -832,6 +836,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:704
 msgid "Custom Color"
+msgstr ""
+
+#: app/Http/Controllers/OptionsController.php:608
+msgid "Customer support ticketing"
 msgstr ""
 
 #: app/Services/TransStrings.php:508
@@ -1001,6 +1009,10 @@ msgstr ""
 msgid "Ellipse"
 msgstr ""
 
+#: app/Http/Controllers/OptionsController.php:587
+msgid "Email marketing automation"
+msgstr ""
+
 #: app/Services/TransStrings.php:136
 msgid "Email Notification Preferences"
 msgstr ""
@@ -1023,6 +1035,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:479
 msgid "Enable comment submission"
+msgstr ""
+
+#: app/Services/TransStrings.php:706
+msgid "Enable Daily Reminder"
 msgstr ""
 
 #: app/Services/TransStrings.php:647
@@ -1067,6 +1083,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:390
 msgid "estimated"
+msgstr ""
+
+#: app/Services/TransStrings.php:705
+msgid "Export"
 msgstr ""
 
 #: app/Services/TransStrings.php:596
@@ -1162,20 +1182,20 @@ msgid ""
 "lists, projects, and tasks with kanban board and more.."
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:589
+#: app/Http/Controllers/OptionsController.php:590
 msgid "Fluent Forms"
 msgstr ""
 
 #: app/Services/InstallService.php:25
-#: app/Http/Controllers/OptionsController.php:699
+#: app/Http/Controllers/OptionsController.php:703
 msgid "Fluent Plugin"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:608
+#: app/Http/Controllers/OptionsController.php:611
 msgid "Fluent SMTP"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:598
+#: app/Http/Controllers/OptionsController.php:600
 msgid "Fluent Support"
 msgstr ""
 
@@ -1395,15 +1415,15 @@ msgstr ""
 msgid "Insert"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:594
+#: app/Http/Controllers/OptionsController.php:595
 msgid "Install Fluent Forms"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:613
+#: app/Http/Controllers/OptionsController.php:616
 msgid "Install Fluent SMTP"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:604
+#: app/Http/Controllers/OptionsController.php:606
 msgid "Install Fluent Support"
 msgstr ""
 
@@ -1423,7 +1443,7 @@ msgstr ""
 msgid "Invalid Board"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:694
+#: app/Http/Controllers/OptionsController.php:698
 msgid "Invalid plugin"
 msgstr ""
 
@@ -2087,7 +2107,7 @@ msgstr ""
 msgid "Please, Try again with a different term"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:712
+#: app/Http/Controllers/OptionsController.php:716
 msgid "Plugin is being installed"
 msgstr ""
 
@@ -2191,6 +2211,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:265
 msgid "Related Support Ticket"
+msgstr ""
+
+#: app/Http/Controllers/OptionsController.php:618
+msgid "Reliable email delivery with SMTP"
 msgstr ""
 
 #: app/Services/TransStrings.php:266
@@ -2499,8 +2523,20 @@ msgstr ""
 msgid "Send Invitation"
 msgstr ""
 
+#: app/Services/TransStrings.php:708
+msgid "Server Time:"
+msgstr ""
+
+#: app/Services/TransStrings.php:709
+msgid "Server Timezone:"
+msgstr ""
+
 #: app/Services/TransStrings.php:525
 msgid "Set"
+msgstr ""
+
+#: app/Services/TransStrings.php:707
+msgid "Set Daily Reminder Time"
 msgstr ""
 
 #: app/Services/TransStrings.php:298
@@ -2536,8 +2572,8 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:668
-#: app/Http/Controllers/OptionsController.php:913
+#: app/Http/Controllers/OptionsController.php:672
+#: app/Http/Controllers/OptionsController.php:917
 msgid "Settings are saved"
 msgstr ""
 
@@ -2629,7 +2665,7 @@ msgstr ""
 msgid "Something went wrong!!"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:677
+#: app/Http/Controllers/OptionsController.php:681
 msgid "Sorry! you do not have permission to install plugin"
 msgstr ""
 
@@ -2976,7 +3012,7 @@ msgstr ""
 msgid "Text to display"
 msgstr ""
 
-#: app/Hooks/Handlers/AdminMenuHandler.php:509
+#: app/Hooks/Handlers/AdminMenuHandler.php:516
 #, php-format
 msgid "Thank you for using <a href=\"%s\">FluentBoards</a>"
 msgstr ""
@@ -3039,7 +3075,7 @@ msgstr ""
 msgid "The status of the task (open | closed). Example: \"closed\""
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:614
+#: app/Http/Controllers/OptionsController.php:617
 msgid ""
 "The Ultimate SMTP and SES Plugin for WordPress. Connect with any SMTP, "
 "SendGrid, Mailgun, SES, Sendinblue, PepiPost, Google, Microsoft and more."
@@ -3049,11 +3085,11 @@ msgstr ""
 msgid "This Board has no stage"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:638
+#: app/Http/Controllers/OptionsController.php:642
 msgid "This feature is only available in Fluent Boards Pro"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:893
+#: app/Http/Controllers/OptionsController.php:897
 msgid "This feature is only available in Fluent Boards Pro. Please upgrade."
 msgstr ""
 
@@ -3431,7 +3467,7 @@ msgstr ""
 msgid "WordPress Admins"
 msgstr ""
 
-#: app/Http/Controllers/OptionsController.php:605
+#: app/Http/Controllers/OptionsController.php:607
 msgid ""
 "WordPress Helpdesk and Customer Support Ticket Plugin. Provide awesome "
 "support and manage customer queries right from your WordPress dashboard."

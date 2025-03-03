@@ -336,11 +336,11 @@ class AdminMenuHandler
 
         $slug = $app->config->get('app.slug');
 
-//        $isRtl = is_rtl();
+        $isRtl = is_rtl();
         $adminAppCss = 'admin/admin.css';
-//        if($isRtl) {
-//            $adminAppCss = 'admin/admin-rtl.css';
-//        }
+        if($isRtl) {
+            $adminAppCss = 'admin/admin-rtl.css';
+        }
         wp_enqueue_style(
             $slug . '_admin_app',
             $assets . $adminAppCss,
@@ -408,7 +408,7 @@ class AdminMenuHandler
             ],
             'base_url'                        => fluent_boards_page_url(),
             'site_url'                        => site_url('/'),
-            'server_time'                     => (new DateTime('now', wp_timezone()))->format('Y-m-d H:i:s P'),
+            'server_time_zone'                     => (new DateTime('now', wp_timezone()))->format( 'P'),
             'utc_offset'                      => current_time('timestamp') - strtotime(gmdate('Y-m-d H:i:s')),
             'trans'                           => TransStrings::getStrings(),
             'is_new'                          => Board::count() == 0 ? 'yes' : 'no',
@@ -419,6 +419,7 @@ class AdminMenuHandler
             'advanced_modules'                => fluent_boards_get_pref_settings(),
             'crm_base_url'                    => defined('FLUENTCRM') ? fluentcrm_menu_url_base() : '',
             'start_of_week'                   => intval(get_option('start_of_week', 0)),
+            'time_format'                     => get_option('time_format', 'g:i'),
             'wpContentCss' => add_query_arg(
                 'ver', get_bloginfo('version'),
                 site_url('/wp-includes/js/tinymce/skins/wordpress/wp-content.css')
@@ -427,7 +428,7 @@ class AdminMenuHandler
                 'ver', get_bloginfo('version'),
                 site_url('/wp-includes/css/dashicons.css')
             ),
-//            'is_rtl' => is_rtl(),
+            'is_rtl' => is_rtl(),
         ]);
     }
 

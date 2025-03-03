@@ -702,6 +702,11 @@ class TransStrings
             "File is preparing. Don't close or leave this page"                  => __("File is preparing. Don't close or leave this page", 'fluent-boards'),
             'No tasks found for export.'                                         => __('No tasks found for export.', 'fluent-boards'),
             'Custom Color'                                                       => __('Custom Color', 'fluent-boards'),
+            'Export'                                                             => __('Export', 'fluent-boards'),
+            'Enable Daily Reminder'                                              => __('Enable Daily Reminder', 'fluent-boards'),
+            'Set Daily Reminder Time'                                            => __('Set Daily Reminder Time', 'fluent-boards'),
+            'Server Time:'                                                       => __('Server Time:', 'fluent-boards'),
+            'Server Timezone:'                                                   => __('Server Timezone:', 'fluent-boards'),
             ];
     }
 }

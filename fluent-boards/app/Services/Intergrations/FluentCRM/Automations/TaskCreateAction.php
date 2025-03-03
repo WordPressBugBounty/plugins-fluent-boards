@@ -113,7 +113,7 @@ class TaskCreateAction extends BaseAction
             'stage_id'       => $stageId,
             'source'         => 'funnel',
             'description'    => $description,
-            'priority'       => $priority,
+            'priority'       => $priority ?? 'low',
             'due_at'         => $due_date ?? null,
             'position'       => (new TaskService())->getLastPositionOfTasks($stageId),
         ]);

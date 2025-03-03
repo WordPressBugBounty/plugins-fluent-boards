@@ -259,6 +259,18 @@ class Board extends Model
         return $formattedMeta;
     }
 
+   
+    
+    public function getMetaByKey($key) // get Board Meta only
+    {
+        $meta = Meta::where('object_id', $this->id)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD)
+            ->where('key', $key)
+            ->first();
+
+        return $meta->value ?? null;
+    }
+
     public function updateMeta($key, $value)
     {
         $meta = Meta::where('object_id', $this->id)
