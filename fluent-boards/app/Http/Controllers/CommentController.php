@@ -52,6 +52,7 @@ class CommentController extends Controller
     public function create(Request $request, $board_id, $task_id)
     {
         // TODO: Refactor the whole request and sanitize process here.. minimize the code in this functions.
+        
         $requestData = [
             'parent_id'     => $request->parent_id,
             'description'   => $request->comment,
@@ -76,12 +77,19 @@ class CommentController extends Controller
 
 
         try {
+
             $rawDescription = $commentData['description'];
             $commentData['settings'] = [ 'raw_description' => $rawDescription, 'mentioned_id' => $request->mentionData ];
+
+            // Ensure UTF-8 encoding for comment description 
+            $description = mb_convert_encoding($commentData['description'], 'UTF-8', 'auto');
+            
             if($request->mentionData) {
-                $commentData['description'] = $this->commentService->processMentionAndLink($commentData['description'], $request->mentionData);
+                // Process mentions and links with UTF-8 support
+                $commentData['description'] = $this->commentService->processMentionAndLink($description, $request->mentionData);
             } else {
-                $commentData['description'] = $this->commentService->checkIfCommentHaveLinks($commentData['description']);
+                // Process links with UTF-8 support
+                $commentData['description'] = $this->commentService->checkIfCommentHaveLinks($description);
             }
 
             $comment = $this->commentService->create($commentData, $task_id);

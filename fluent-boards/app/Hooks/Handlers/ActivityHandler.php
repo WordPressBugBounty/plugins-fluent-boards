@@ -207,7 +207,7 @@ class ActivityHandler
 
     public function logTaskCompletedOrReopenActivity($task, $status)
     {
-        if($status == 'completed'){
+        if($status == 'closed'){
             if($task->parent_id){
                 $this->createLogActivity($task->parent_id, 'completed', 'subtask', $task->title);
             }else{
@@ -327,5 +327,14 @@ class ActivityHandler
     public function taskAttachmentDeleted($attachment)
     {
         $this->createLogActivity($attachment->object_id , 'deleted', 'attachment', null, strlen($attachment->title) > 0 ? $attachment->title : $attachment->full_url);
+    }
+
+    public function taskArchived($task)
+    {
+        if(!$task->archived_at){
+            $this->createLogActivity($task->id, 'restored', 'task', $task->title);
+        }else{
+            $this->createLogActivity($task->id, 'archived', 'task', $task->title);
+        }
     }
 }

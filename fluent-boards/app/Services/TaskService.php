@@ -151,57 +151,88 @@ class TaskService
             $task->{$col} = $value;
             $task->save();
             //            do_action('fluent_boards/task_prop_changed', $col, $task, $oldTask);
-        } elseif ('assignees' == $col) {
-            if (is_array($value)) {
-                foreach ($value as $id) {
-                    $this->updateAssignee($id, $task);
-                }
-            } else {
-                $this->updateAssignee($value, $task);
-            }
+        } else {
+            switch ($col) {
+                case 'assignees':
+                    if (is_array($value)) {
+                        foreach ($value as $id) {
+                            $this->updateAssignee($id, $task);
+                        }
+                    } else {
+                        $this->updateAssignee($value, $task);
+                    }
+                    break;
 
-        } elseif ('crm_contact_id' == $col) {
-            $this->updateAssociate($value, $task);
-        } elseif ('archived_at' == $col) {
-            $this->updateArchive($value, $task);
-        } elseif ('status' == $col) {
-            $this->updateStatus($value, $task);
-        } elseif ('parent_id' == $col) {
-            $this->updateParent($value, $task);
-        } elseif ('title' == $col) {
-            $this->updateTitle($col, $value, $task, $oldTask);
-        } elseif ('description' == $col) {
-            $this->updateDescription($col, $value, $task, $oldTask);
-        } elseif ($col == 'due_at') {
-            $this->updateDueDate($value, $task);
-        } elseif ($col == 'started_at') {
-            $this->updateStartedDate($value, $task);
-        } elseif ($col == 'priority') {
-            $this->updatePriority($value, $task);
-        } elseif ($col == 'is_watching') {
-            $this->updateObservationOfCurrentUser($value, $task);
-        } elseif ($col == 'last_completed_at') {
-            $isClosed = $value == 'true' || $value === true;
-            if ($isClosed) {
-                $task = $task->close();
-            } else {
-                $task = $task->reopen();
-            }
-            $task->save();
-        } elseif ($col == 'attachment_count') {
-            $settings = $task->settings;
-            $settings['attachment_count'] = $task->attachments()->count();
-            $task->settings = $settings;
-            $task->save();
-        } elseif ($col == 'subtask_count') {
-            $settings = $task->settings;
-            $subtasksCount = Task::where('parent_id', $task->id)->count();
-            $settings['subtask_count'] = $subtasksCount;
-            $task->settings = $settings;
-            $task->save();
-        } elseif ($col == 'is_template') {
-            if (defined('FLUENT_BOARDS_PRO')) {
-                $task->updateMeta(Constant::IS_TASK_TEMPLATE, $value);
+                case 'crm_contact_id':
+                    $this->updateAssociate($value, $task);
+                    break;
+
+                case 'archived_at':
+                    $this->updateArchive($value, $task);
+                    break;
+
+                case 'status':
+                    $this->updateStatus($value, $task);
+                    break;
+
+                case 'parent_id':
+                    $this->updateParent($value, $task);
+                    break;
+
+                case 'title':
+                    $this->updateTitle($col, $value, $task, $oldTask);
+                    break;
+
+                case 'description':
+                    $this->updateDescription($col, $value, $task, $oldTask);
+                    break;
+
+                case 'due_at':
+                    $this->updateDueDate($value, $task);
+                    break;
+
+                case 'started_at':
+                    $this->updateStartedDate($value, $task);
+                    break;
+
+                case 'priority':
+                    $this->updatePriority($value, $task);
+                    break;
+
+                case 'is_watching':
+                    $this->updateObservationOfCurrentUser($value, $task);
+                    break;
+
+                case 'last_completed_at':
+                    $isClosed = $value == 'true' || $value === true;
+                    if ($isClosed) {
+                        $task = $task->close();
+                    } else {
+                        $task = $task->reopen();
+                    }
+                    $task->save();
+                    break;
+
+                case 'attachment_count':
+                    $settings = $task->settings;
+                    $settings['attachment_count'] = $task->attachments()->count();
+                    $task->settings = $settings;
+                    $task->save();
+                    break;
+
+                case 'subtask_count':
+                    $settings = $task->settings;
+                    $subtasksCount = Task::where('parent_id', $task->id)->count();
+                    $settings['subtask_count'] = $subtasksCount;
+                    $task->settings = $settings;
+                    $task->save();
+                    break;
+
+                case 'is_template':
+                    if (defined('FLUENT_BOARDS_PRO')) {
+                        $task->updateMeta(Constant::IS_TASK_TEMPLATE, $value);
+                    }
+                    break;
             }
         }
 
@@ -292,8 +323,8 @@ class TaskService
         $task->archived_at = $value == null ? null : current_time('mysql');
         $task->save();
         do_action('fluent_boards/task_archived', $task);
-        $wathersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_TASK_ARCHIVE);
-        $this->sendMailAfterTaskModify('task_archived', $wathersToSendEmail, $task->id);
+        $watchersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_TASK_ARCHIVE);
+        $this->sendMailAfterTaskModify('task_archived', $watchersToSendEmail, $task->id);
     }
 
     private function updateStatus($value, $task)
@@ -465,6 +496,7 @@ class TaskService
 
             //task custom field value
             $task->customFields()->detach();
+            $this->deleteTaskAttachments($task);
 
             do_action('fluent_boards/task_deleted', $task);
             TaskMeta::where('task_id', $task->id)->delete();
@@ -916,6 +948,17 @@ class TaskService
             do_action('fluent_boards/task_attachment_deleted', $deletedImage);
         }
 
+    }
+
+    private function deleteTaskAttachments($task)
+    {
+        $attachments = Attachment::where('object_id', $task->id)->get();
+        foreach ($attachments as $attachment) {
+            $deletedAttachment = clone $attachment;
+            $attachment->delete();
+
+            do_action('fluent_boards/task_attachment_deleted', $deletedAttachment);
+        }
     }
 
 }

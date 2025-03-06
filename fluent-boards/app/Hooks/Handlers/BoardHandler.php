@@ -195,7 +195,7 @@ class BoardHandler
         }
     }
 
-    public function taskarchivedOnBoard($task)
+    public function taskArchivedOnBoard($task)
     {
         if(!$task->archived_at){
             $this->createLogActivity($task->board_id, 'restored', 'task', $task->title);

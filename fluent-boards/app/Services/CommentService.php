@@ -61,74 +61,204 @@ class CommentService
     }
 
     private function startsWithAt($word) {
-        return strpos($word, '@') === 0;
+        return mb_strpos($word, '@') === 0;
     }
 
-    public function processMentionAndLink($commentDescription, $mentionData)
+    private function isValidUrl($url) 
     {
-        // Splitting a string by either a space (" ") or a new line ("\n")
-        $lines = preg_split('/\R/', $commentDescription); // \R matches any kind of line break
-
-        $mentionedUsernames = [];
-        foreach ($mentionData as $mentionedId) {
-            $user = get_userdata($mentionedId);
-            $mentionedUsernames[$user->user_login] = ['user_id' => $user->ID, 'display_name' => $user->display_name];
-        }
-
-        foreach ($lines as &$line) {
-            $words = preg_split('/[ ]+/', $line);
-            foreach ($words as $index => $word) {
-                if ($this->startsWithAt($word)) {
-                    $username = substr($word, 1);
-                    if (array_key_exists($username, $mentionedUsernames)) {
-                        $words[$index] = '<a class="fbs_mention" href="' . fluent_boards_page_url() . 'member/' . $mentionedUsernames[$username]['user_id'] . '/tasks">' . $mentionedUsernames[$username]['display_name'] . '</a>';
-                    }
-                } elseif ($this->isValidUrl(wp_kses_post($word))) {
-                    $words[$index] = '<a class="fbs_link" target="_blank" href="'. esc_url($word). '">'. esc_url($word). '</a>';
-                }
+        try {
+            if (empty($url)) {
+                error_log('Empty URL provided');
+                return false;
             }
-            // Rejoin the words in this line
-            $line = implode(' ', $words);
-        }
 
-// Rejoin the lines, adding back the new line character
-        return implode("\n", $lines);
+            $url = trim($url);
 
-    }
+            // Early return for obviously invalid formats
+            if ($url === 'http://' || $url === 'https://') {
+                error_log('Invalid URL format (just protocol)');
+                return false;
+            }
 
-    private function isValidUrl($url) {
-        if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+            // Handle www. URLs
+            if (strpos($url, 'www.') === 0) {
+                $url = 'http://' . $url;
+            }
+            // If it's not already a URL, make it one
+            elseif (!preg_match('~^(?:f|ht)tps?://~i', $url)) {
+                $url = 'https://' . $url;
+            }
+
+            $components = parse_url($url);
+            
+            if (empty($components) || !isset($components['host'])) {
+                return false;
+            }
+
+            // Additional validation with filter_var
+            $isValid = filter_var($url, FILTER_VALIDATE_URL) !== false;
+            return $isValid;
+
+        } catch (\Exception $e) {
             return false;
         }
+    }
 
-        // Additional validation with a regular expression
-        $regex = "/\b(?:https?|ftp):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|]/i";
+    private function extractUrls($text) {
+        try {
+            // More permissive URL pattern that handles international domains and various formats
+            $urlPattern = '%\b(?:(?:https?|ftp):\/\/|www\.)[^\s<>\[\]{}"\']+'
+                       . '(?:\([^\s<>\[\]{}"\')]*\)|[^\s<>\[\]{}"\'\)])*%iu';
+            
+            if (preg_match_all($urlPattern, $text, $matches)) {
+                $urls = array_filter($matches[0], function($url) {
+                    $trimmed = trim($url);
+                    error_log('Found URL candidate: ' . $trimmed);
+                    return !empty($trimmed);
+                });
+                return array_values($urls); // Re-index array
+            }
+            return [];
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
 
-        return preg_match($regex, $url);
+    private function extractMentions($text) {
+        try {
+            // More precise mention pattern that handles international usernames
+            $pattern = '%@([\p{L}\p{N}_.-]+)(?:\b|$)%u';
+            
+            if (preg_match_all($pattern, $text, $matches)) {
+                $mentions = array_filter($matches[1], function($mention) {
+                    $trimmed = trim($mention);
+                    return !empty($trimmed);
+                });
+                return array_values($mentions); // Re-index array
+            }
+            return [];
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    public function processMentionAndLink($commentDescription, $mentionData = [])
+    {
+        if (empty($commentDescription)) {
+            return '';
+        }
+
+        try {
+            // Ensure UTF-8 encoding with error handling
+            $commentDescription = mb_convert_encoding($commentDescription, 'UTF-8', 'auto');
+
+            // Extract all URLs from the text
+            $urls = $this->extractUrls($commentDescription);
+            $urlReplacements = [];
+            
+            if (!empty($urls)) {
+                foreach ($urls as $url) {
+                    if ($this->isValidUrl($url)) {
+                        $urlReplacements[$url] = sprintf(
+                            '<a class="fbs_link" target="_blank" rel="noopener noreferrer" href="%1$s">%1$s</a>',
+                            esc_url($url)
+                        );
+                    }
+                }
+            }
+
+            // Process mentions
+            $mentionedUsernames = [];
+            if (!empty($mentionData) && is_array($mentionData)) {
+                foreach ($mentionData as $mentionedId) {
+                    $user = get_userdata($mentionedId);
+                    if ($user) {
+                        $mentionedUsernames[$user->user_login] = [
+                            'user_id' => $user->ID,
+                            'display_name' => htmlspecialchars($user->display_name, ENT_QUOTES, 'UTF-8')
+                        ];
+                    }
+                }
+            }
+
+            // Extract all mentions from the text
+            $mentions = $this->extractMentions($commentDescription);
+            $mentionReplacements = [];
+            
+            if (!empty($mentions)) {
+                foreach ($mentions as $mention) {
+                    if (array_key_exists($mention, $mentionedUsernames)) {
+                        $mentionReplacements['@' . $mention] = sprintf(
+                            '<a class="fbs_mention" href="%smember/%d/tasks">%s</a>',
+                            esc_url(fluent_boards_page_url()),
+                            $mentionedUsernames[$mention]['user_id'],
+                            $mentionedUsernames[$mention]['display_name']
+                        );
+                    }
+                }
+            }
+
+            // Apply replacements
+            $originalText = $commentDescription;
+
+            // First replace URLs (longer strings first to avoid partial replacements)
+            if (!empty($urls)) {
+                usort($urls, function($a, $b) {
+                    return strlen($b) - strlen($a);
+                });
+                foreach ($urls as $url) {
+                    if (isset($urlReplacements[$url])) {
+                        $commentDescription = str_replace($url, $urlReplacements[$url], $commentDescription);
+                    }
+                }
+            }
+
+            // Then replace mentions
+            if (!empty($mentionReplacements)) {
+                foreach ($mentionReplacements as $mention => $replacement) {
+                    $commentDescription = str_replace($mention, $replacement, $commentDescription);
+                }
+            }
+
+            return $commentDescription;
+            
+        } catch (\Exception $e) {
+            return $commentDescription; // Return original text if processing fails
+        }
     }
 
     public function checkIfCommentHaveLinks($comment)
     {
-        $lines = preg_split('/\R/', $comment); // Split by any kind of line break
-        $commentHasLinks = false;
-
-        foreach ($lines as &$line) {
-            $words = preg_split('/[ ]+/', $line); // Split by spaces within each line
-            foreach ($words as $index => $word) {
-                $cleanWord = wp_kses_post($word);
-                if ($this->isValidUrl($cleanWord)) {
-                    $commentHasLinks = true;
-                    $words[$index] = '<a class="fbs_link" target="_blank" href="' . esc_url($cleanWord) . '">' . esc_url($cleanWord) . '</a>';
-                }
-            }
-            // Rejoin words in this line
-            $line = implode(' ', $words);
+        if (empty($comment)) {
+            return '';
         }
 
-        if ($commentHasLinks) {
-            return implode("\n", $lines); // Rejoin lines with new lines preserved
-        } else {
-            return $comment; // Return original comment if no links were found
+        try {
+            // Ensure UTF-8 encoding
+            $comment = mb_convert_encoding($comment, 'UTF-8', 'auto');
+
+            // Extract all URLs from the text
+            $urls = $this->extractUrls($comment);
+            $hasLinks = false;
+
+            // Replace URLs with links
+            if (!empty($urls)) {
+                foreach ($urls as $url) {
+                    if ($this->isValidUrl($url)) {
+                        $hasLinks = true;
+                        $replacement = sprintf(
+                            '<a class="fbs_link" target="_blank" rel="noopener noreferrer" href="%1$s">%1$s</a>',
+                            esc_url($url)
+                        );
+                        $comment = str_replace($url, $replacement, $comment);
+                    }
+                }
+            }
+
+            return $hasLinks ? $comment : $comment;
+            
+        } catch (\Exception $e) {
+            return $comment; // Return original text if processing fails
         }
     }
 
@@ -165,11 +295,11 @@ class CommentService
             return false;
         }
 
-        $allMentionedIds = array_merge($comment->settings['mentioned_id'] ?? [], $mentionData ?? []);
+        $allMentionedIds = array_unique(array_merge($comment->settings['mentioned_id'] ?? [], $mentionData ?? []));
 
         if ($allMentionedIds) {
             $processedDescription = $this->processMentionAndLink($commentData['description'], $allMentionedIds);
-        } else {
+        } elseif(!$allMentionedIds) {
             $processedDescription = $this->checkIfCommentHaveLinks($commentData['description']);
         }
 
@@ -184,7 +314,7 @@ class CommentService
             $comment->settings = $tempSettings;
         } else {
             $comment->settings = [
-                'raw_description' => $commentData['raw_description'],
+                'raw_description' => $commentData['description'],
                 'mentioned_id' => $allMentionedIds
             ];
         }

@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.3
-Stable tag: 1.45
+Stable tag: 1.47
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,16 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v1.47 (Date: March 06, 2025) =
+- New: Task View Drawer for List View & Calendar View
+- New: Global UTF-8 Support for Comments
+- Improvement: Navigate to Specific Comment from Notification
+- Fixed: Board Menu Translation Issue
+- Fixed: Admin Bar Disappearing Issue
+- Fixed: Double Logout Icon in Frontend Portal Issue
+- Fixed: Task Completion activity bug
+- Other Improvements & Bug Fixes
 
 = v1.45 (Date: March 03, 2025) =
 - New: CSV Export and Import

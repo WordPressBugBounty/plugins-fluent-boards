@@ -266,6 +266,18 @@ class TaskController extends Controller
 
         // A recent update to a task might impact other tasks on the board.
         $updatedTasks = $this->taskService->getLastOneMinuteUpdatedTasks($board_id);
+        $taskExists = false;
+        foreach ($updatedTasks as $index => $updatedTask) {
+            if ($updatedTask->id === $task->id) {
+                $updatedTasks[$index] = $task; // Replace the existing task
+                $taskExists = true;
+                break;
+            }
+        }
+
+        if (!$taskExists) {
+            $updatedTasks[] = $task;
+        }
 
         return [
             'message'      => __('Task has been updated', 'fluent-boards'),
