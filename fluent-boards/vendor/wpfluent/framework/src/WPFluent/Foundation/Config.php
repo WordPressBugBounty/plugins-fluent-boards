@@ -83,6 +83,8 @@ class Config
      */
     protected function resolveKey($key)
     {
+        if (!$key) return $key;
+        
         if (array_key_exists($key, $this->data)) {
             return $key;
         }

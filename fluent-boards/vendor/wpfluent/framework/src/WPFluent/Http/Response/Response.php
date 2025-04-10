@@ -85,6 +85,9 @@ class Response
      */
     public function send($data = null, $code = 200, $headers = [])
     {   
+        // disable litespeed cache
+        do_action( 'litespeed_control_set_nocache', 'fluent plugin api request' );
+
         $response = new WP_REST_Response($data, $code, $headers);
 
         return $this->maybeMergeHeaders(

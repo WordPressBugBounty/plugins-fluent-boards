@@ -1709,4 +1709,33 @@ class Arr
     {
         return static::find($array, $callback, true);
     }
+
+    /**
+     * Pass the items through a series of callbacks.
+     * 
+     * @param  array   $items
+     * @param  array   $callbacks
+     * @param  integer $mode
+     * @return array
+     */
+    public static function passThrough(array $items, array $callbacks, $mode = 0)
+    {
+        foreach ($items as $key => &$item) {
+            reset($callbacks);
+            foreach ($callbacks as $callback) {
+                switch ($mode) {
+                    case 1:
+                        $items[$key] = $callback($key);
+                        break;
+                    case 2:
+                        $items[$key] = $callback($key, $item);
+                        break;
+                    default:
+                        $items[$key] = $callback($item);
+                }
+            }
+        }
+
+        return $items;
+    }
 }

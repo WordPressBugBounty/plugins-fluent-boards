@@ -707,6 +707,25 @@ class TransStrings
             'Set Daily Reminder Time'                                            => __('Set Daily Reminder Time', 'fluent-boards'),
             'Server Time:'                                                       => __('Server Time:', 'fluent-boards'),
             'Server Timezone:'                                                   => __('Server Timezone:', 'fluent-boards'),
-            ];
+            'Keep Templates'                                                     => __('Keep Templates', 'fluent-boards'),
+            'Text'                                                               => __('Text', 'fluent-boards'),
+            'Number'                                                             => __('Number', 'fluent-boards'),
+            'Multi Select'                                                       => __('Multi Select', 'fluent-boards'),
+            'Checkbox'                                                           => __('Checkbox', 'fluent-boards'),
+            'Date'                                                               => __('Date', 'fluent-boards'),
+            'Please select type'                                                 => __('Please select type', 'fluent-boards'),
+            'Configure Task Tabs'                                                => __('Configure Task Tabs', 'fluent-boards'),
+            'Configure Tabs'                                                     => __('Configure Tabs', 'fluent-boards'),
+            'At least one tab should be visible'                                 => __('At least one tab should be visible', 'fluent-boards'),
+            'Saving'                                                             => __('Saving', 'fluent-boards'),
+            "File type is not supported."                                        => __("File type is not supported.", 'fluent-boards'),
+            "Please include a file"                                               => __("Please include a file", 'fluent-boards'),
+            'File upload is already in progress.'                                => __('File upload is already in progress.', 'fluent-boards'),
+            'File should not be greater than'                                    => __('File should not be greater than', 'fluent-boards'),
+            "File uploaded successfully."                                        => __("File uploaded successfully.", 'fluent-boards'),
+            "Are you sure to delete this log?"                                   => __("Are you sure to delete this log?", 'fluent-boards'),
+            'Log Time'                                                           => __('Log Time', 'fluent-boards'),
+
+        ];
     }
 }

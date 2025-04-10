@@ -14,6 +14,10 @@ $router->prefix('tasks')->withPolicy('AuthPolicy')->group(function ($router) {
     $router->post('/create-first-task', 'TaskController@createFirstTask');
     $router->get('/boards-by-type/{type}', 'BoardController@getBoardsByType');
     $router->get('/{task_id}/labels', 'TaskController@getLabelsByTask');
+
+    // Task tabs configuration
+    $router->get('/task-tabs/config', 'TaskController@getTaskTabsConfig');
+    $router->post('/task-tabs/config', 'TaskController@saveTaskTabsConfig');
 });
 
 $router->withPolicy('BoardUserPolicy')->group(function ($router) {

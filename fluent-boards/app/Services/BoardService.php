@@ -822,6 +822,8 @@ class BoardService
 
     public function copyBoard($boardData)
     {
+        $sourceBoard = Board::findOrFail($boardData['source_board_id']);
+        $boardData['background'] = $sourceBoard->background;
         $boardData = apply_filters('fluent_boards/before_create_board', $boardData);
 
         $board = Board::create($boardData);

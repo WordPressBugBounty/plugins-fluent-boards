@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.3
-Stable tag: 1.47
+Stable tag: 1.48
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,28 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+
+= v1.48 (Date: April 10, 2025) =
+- New: Customizable tabs in 'My Tasks' of Dashboard
+- New : Time Logs Now offer Date Selection Options
+- New: Multi-Select added in Custom Fields
+- New: Filter By Task Status
+- New: Task descriptions now support "Large Mode" View
+- Security: Updated Framework Library
+- Improvement: Board Duplication Includes Templates & background
+- Improvement: Copy task links directly from the task card
+- Improvement: Navbar UI Updateds for small screens
+- Improvement: Task attachments now support uploading multiple files at once.
+- Improvement: Added the ability to delete a time log
+- Fixed: Custom Login URL Redirect Issue in Roadmap Authentication Settings
+- Fixed: Task loading error in the CRM Contact Section when time tracking is disabled
+- Fixed: Issue where multiple clicks created duplicate boards
+- Fixed: Stages not appearing issue in global task add button
+- Fixed: Improved board and roadmap movement issues
+- Fixed: Media attachment functionality issue in task description drawers
+- Other Improvements & Bug Fixes
+
 
 = v1.47 (Date: March 06, 2025) =
 - New: Task View Drawer for List View & Calendar View

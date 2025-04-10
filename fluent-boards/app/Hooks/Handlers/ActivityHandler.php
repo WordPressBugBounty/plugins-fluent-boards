@@ -209,9 +209,9 @@ class ActivityHandler
     {
         if($status == 'closed'){
             if($task->parent_id){
-                $this->createLogActivity($task->parent_id, 'completed', 'subtask', $task->title);
+                $this->createLogActivity($task->parent_id, 'closed', 'subtask', $task->title);
             }else{
-                $this->createLogActivity($task->id, 'completed', 'task', $task->title);
+                $this->createLogActivity($task->id, 'closed', 'task', $task->title);
             }
         }else{
             if($task->parent_id){

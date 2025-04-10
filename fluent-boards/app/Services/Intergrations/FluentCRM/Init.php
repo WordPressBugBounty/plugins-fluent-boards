@@ -53,6 +53,7 @@ class Init
                 'base_url'                        => fluent_boards_page_url(),
                 'admin_url'                       => admin_url('admin.php'),
                 'render_in'                       => is_admin() ? 'admin' : 'front',
+                'advanced_modules'                => fluent_boards_get_pref_settings(),
             ]);
         });
     }

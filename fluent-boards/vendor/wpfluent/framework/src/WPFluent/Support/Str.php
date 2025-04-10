@@ -495,18 +495,20 @@ class Str
         foreach ($patterns as $pattern) {
             $pattern = (string) $pattern;
 
-            // If the given value is an exact match we can of course return true right
-            // from the beginning. Otherwise, we will translate asterisks and do an
-            // actual pattern match against the two strings to see if they match.
+            // If the given value is an exact match we can of course return
+            // true right from the beginning. Otherwise, we will translate
+            // asterisks and do an actual pattern match against the
+            // two strings to see if they match.
             if ($pattern == $value) {
                 return true;
             }
 
             $pattern = preg_quote($pattern, '#');
 
-            // Asterisks are translated into zero-or-more regular expression wildcards
-            // to make it convenient to check if the strings starts with the given
-            // pattern such as "library/*", making any string check convenient.
+            // Asterisks are translated into zero-or-more regular expression
+            // wildcards to make it convenient to check if the strings
+            // starts with the given pattern such as "library/*",
+            // making any string check convenient.
             $pattern = str_replace('\*', '.*', $pattern);
 
             if (preg_match('#^'.$pattern.'\z#u', $value) === 1) {
@@ -1142,6 +1144,29 @@ class Str
     }
 
     /**
+     * Replace the first occurrence of the given value if it appears at the start of the string.
+     *
+     * @param  string  $search
+     * @param  string  $replace
+     * @param  string  $subject
+     * @return string
+     */
+    public static function replaceStart($search, $replace, $subject)
+    {
+        $search = (string) $search;
+
+        if ($search === '') {
+            return $subject;
+        }
+
+        if (static::startsWith($subject, $search)) {
+            return static::replaceFirst($search, $replace, $subject);
+        }
+
+        return $subject;
+    }
+
+    /**
      * Replace the last occurrence of a given value in the string.
      *
      * @param  string  $search
@@ -1162,6 +1187,47 @@ class Str
         }
 
         return $subject;
+    }
+
+    /**
+     * Replace the last occurrence of a given value if it appears at the end of the string.
+     *
+     * @param  string  $search
+     * @param  string  $replace
+     * @param  string  $subject
+     * @return string
+     */
+    public static function replaceEnd($search, $replace, $subject)
+    {
+        $search = (string) $search;
+
+        if ($search === '') {
+            return $subject;
+        }
+
+        if (static::endsWith($subject, $search)) {
+            return static::replaceLast($search, $replace, $subject);
+        }
+
+        return $subject;
+    }
+
+    /**
+     * Replace the patterns matching the given regular expression.
+     *
+     * @param  array|string  $pattern
+     * @param  \Closure|string[]|string  $replace
+     * @param  array|string  $subject
+     * @param  int  $limit
+     * @return string|string[]|null
+     */
+    public static function replaceMatches($pattern, $replace, $subject, $limit = -1)
+    {
+        if ($replace instanceof Closure) {
+            return preg_replace_callback($pattern, $replace, $subject, $limit);
+        }
+
+        return preg_replace($pattern, $replace, $subject, $limit);
     }
 
     /**
@@ -1248,6 +1314,57 @@ class Str
     }
 
     /**
+     * Convert the given string to APA-style title case.
+     *
+     * See: https://apastyle.apa.org/style-grammar-guidelines/capitalization/title-case
+     *
+     * @param  string  $value
+     * @return string
+     */
+    public static function apa($value)
+    {
+        if (trim($value) === '') {
+            return $value;
+        }
+
+        $minorWords = [
+            'and', 'as', 'but', 'for', 'if', 'nor', 'or', 'so', 'yet', 'a', 'an',
+            'the', 'at', 'by', 'for', 'in', 'of', 'off', 'on', 'per', 'to', 'up', 'via',
+            'et', 'ou', 'un', 'une', 'la', 'le', 'les', 'de', 'du', 'des', 'par', 'à',
+        ];
+
+        $endPunctuation = ['.', '!', '?', ':', '—', ','];
+
+        $words = preg_split('/\s+/', $value, -1, PREG_SPLIT_NO_EMPTY);
+
+        for ($i = 0; $i < count($words); $i++) {
+            $lowercaseWord = mb_strtolower($words[$i]);
+
+            if (str_contains($lowercaseWord, '-')) {
+                $hyphenatedWords = explode('-', $lowercaseWord);
+
+                $hyphenatedWords = array_map(function ($part) use ($minorWords) {
+                    return (in_array($part, $minorWords) && mb_strlen($part) <= 3)
+                        ? $part
+                        : mb_strtoupper(mb_substr($part, 0, 1)).mb_substr($part, 1);
+                }, $hyphenatedWords);
+
+                $words[$i] = implode('-', $hyphenatedWords);
+            } else {
+                if (in_array($lowercaseWord, $minorWords) &&
+                    mb_strlen($lowercaseWord) <= 3 &&
+                    ! ($i === 0 || in_array(mb_substr($words[$i - 1], -1), $endPunctuation))) {
+                    $words[$i] = $lowercaseWord;
+                } else {
+                    $words[$i] = mb_strtoupper(mb_substr($lowercaseWord, 0, 1)).mb_substr($lowercaseWord, 1);
+                }
+            }
+        }
+
+        return implode(' ', $words);
+    }
+
+    /**
      * Get the singular form of an English word.
      *
      * @param  string  $value
@@ -1292,6 +1409,60 @@ class Str
         }
 
         return static::$snakeCache[$key][$delimiter] = $value;
+    }
+
+    /**
+     * Remove all whitespace from both ends of a string.
+     *
+     * @param  string  $value
+     * @param  string|null  $charlist
+     * @return string
+     */
+    public static function trim($value, $charlist = null)
+    {
+        if ($charlist === null) {
+            $trimDefaultCharacters = " \n\r\t\v\0";
+
+            return preg_replace('~^[\s\x{FEFF}\x{200B}\x{200E}'.$trimDefaultCharacters.']+|[\s\x{FEFF}\x{200B}\x{200E}'.$trimDefaultCharacters.']+$~u', '', $value) ?? trim($value);
+        }
+
+        return trim($value, $charlist);
+    }
+
+    /**
+     * Remove all whitespace from the beginning of a string.
+     *
+     * @param  string  $value
+     * @param  string|null  $charlist
+     * @return string
+     */
+    public static function ltrim($value, $charlist = null)
+    {
+        if ($charlist === null) {
+            $ltrimDefaultCharacters = " \n\r\t\v\0";
+
+            return preg_replace('~^[\s\x{FEFF}\x{200B}\x{200E}'.$ltrimDefaultCharacters.']+~u', '', $value) ?? ltrim($value);
+        }
+
+        return ltrim($value, $charlist);
+    }
+
+    /**
+     * Remove all whitespace from the end of a string.
+     *
+     * @param  string  $value
+     * @param  string|null  $charlist
+     * @return string
+     */
+    public static function rtrim($value, $charlist = null)
+    {
+        if ($charlist === null) {
+            $rtrimDefaultCharacters = " \n\r\t\v\0";
+
+            return preg_replace('~[\s\x{FEFF}\x{200B}\x{200E}'.$rtrimDefaultCharacters.']+$~u', '', $value) ?? rtrim($value);
+        }
+
+        return rtrim($value, $charlist);
     }
 
     /**
@@ -1344,6 +1515,17 @@ class Str
         }, $words);
 
         return static::$studlyCache[$key] = implode($studlyWords);
+    }
+
+    /**
+     * Convert a value to Pascal case.
+     *
+     * @param  string  $value
+     * @return string
+     */
+    public static function pascal($value)
+    {
+        return static::studly($value);
     }
 
     /**
@@ -1407,6 +1589,45 @@ class Str
     public static function swap(array $map, $subject)
     {
         return strtr($subject, $map);
+    }
+
+    /**
+     * Take the first or last {$limit} characters of a string.
+     *
+     * @param  string  $string
+     * @param  int  $limit
+     * @return string
+     */
+    public static function take($string, int $limit): string
+    {
+        if ($limit < 0) {
+            return static::substr($string, $limit);
+        }
+
+        return static::substr($string, 0, $limit);
+    }
+
+    /**
+     * Convert the given string to Base64 encoding.
+     *
+     * @param  string  $string
+     * @return string
+     */
+    public static function toBase64($string)
+    {
+        return base64_encode($string);
+    }
+
+    /**
+     * Decode the given Base64 encoded string.
+     *
+     * @param  string  $string
+     * @param  bool  $strict
+     * @return string|false
+     */
+    public static function fromBase64($string, $strict = false)
+    {
+        return base64_decode($string, $strict);
     }
 
     /**

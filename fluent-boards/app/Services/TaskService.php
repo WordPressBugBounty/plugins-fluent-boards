@@ -529,6 +529,7 @@ class TaskService
             throw new \Exception('Invalid board id', 400);
         }
         $task->board_id = $targetBoardId;
+        $task->type = $newBoard->type === 'roadmap' ? 'roadmap' : 'task';
         $task->save();
         //delete labels of that task because labels have board dependencies
         $task->labels()->detach();
@@ -711,11 +712,14 @@ class TaskService
             $task->assignees = Helper::sanitizeUserCollections($task->assignees);
             $task->watchers = Helper::sanitizeUserCollections($task->watchers);
 
-            if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
-                $task->time_tracks= [
-                    'tracks'            => (new ProTaskService())->getTaskTimeTrack($task->board_id, $task->id),
-                    'estimated_minutes' => TimeTrackingHelper::getTaskEstimation($task->id)
-                ];
+            if(defined('FLUENT_BOARDS_PRO')) {
+                $modules = fluent_boards_get_pref_settings();
+                if($modules['timeTracking']['enabled'] == 'yes') {
+                    $task->time_tracks= [
+                        'tracks'            => (new ProTaskService())->getTaskTimeTrack($task->board_id, $task->id),
+                        'estimated_minutes' => TimeTrackingHelper::getTaskEstimation($task->id)
+                    ];
+                }
             }
 
 
@@ -736,7 +740,7 @@ class TaskService
         return $tasks;
     }
 
-    public function copyTasks($boardId, $stageMap, $newBoard, $labelMap = [])
+    public function copyTasks($boardId, $stageMap, $newBoard, $labelMap = [],$isWithTemplates='no')
     {
         $allActiveTasks = Task::where('board_id', $boardId)->whereNull('archived_at')->get();
         $taskMap = [];
@@ -752,7 +756,28 @@ class TaskService
             $newTask['priority'] = $task->priority;
             $newTask['position'] = $task->position;
             $newTask['due_at'] = $task->due_at;
+            $backgroundColor = '';
+            $backgroundColor = $task->settings['cover']['backgroundColor'];
+            $newTask['settings'] = [
+                'cover' => [
+                    'backgroundColor' => $backgroundColor,
+                ]
+            ];
+            
             $newTask = Task::create($newTask);
+
+            if($isWithTemplates == 'yes') {
+                $isTemplate = TaskMeta::where('task_id', $task->id)
+                    ->where('key', 'is_template')
+                    ->first();
+                if($isTemplate) {
+                    TaskMeta::create([
+                        'task_id' => $newTask->id,
+                        'key' => 'is_template',
+                        'value' => $isTemplate->value
+                    ]);
+                }
+            }
             if(!$task->parent_id){
                 ++$parentTaskCount;
                 $taskMap[$task['id']] = $newTask->id;

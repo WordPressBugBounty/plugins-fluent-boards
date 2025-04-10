@@ -3,6 +3,7 @@
 namespace FluentBoards\App\Http\Controllers;
 
 use DateTimeImmutable;
+use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
@@ -471,9 +472,9 @@ class TaskController extends Controller
         if ((!is_numeric($newStageId) || $newStageId == 0)) {
             throw new \Exception(__('Invalid Stage', 'fluent-boards'));
         }
-        if ((!is_numeric($newIndex) || $newIndex == 0)) {
-            throw new \Exception(__('Invalid Value', 'fluent-boards'));
-        }
+//        if ((!is_numeric($newIndex) || $newIndex == 0)) {
+//            throw new \Exception(__('Invalid Value', 'fluent-boards'));
+//        }
         if ($newBoardId) {
             if ((!is_numeric($newBoardId) || $newBoardId == 0)) {
                 throw new \Exception(__('Invalid Board', 'fluent-boards'));
@@ -651,5 +652,90 @@ class TaskController extends Controller
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
         }
+    }
+
+    /**
+     * Get task tabs configuration
+     */
+    public function getTaskTabsConfig()
+    {
+        $default_config = [
+            [
+                'name'    => 'upcoming',
+                'label'   => __('Upcoming', 'fluent-boards'),
+                'visible' => 'true',
+                'order'   => 1
+            ],
+            [
+                'name'    => 'overdue',
+                'label'   => __('Overdue', 'fluent-boards'),
+                'visible' => 'true',
+                'order'   => 2
+            ],
+            [
+                'name'    => 'completed',
+                'label'   => __('Completed', 'fluent-boards'),
+                'visible' => 'true',
+                'order'   => 3
+            ],
+            [
+                'name'    => 'others',
+                'label'   => __('Others', 'fluent-boards'),
+                'visible' => 'true',
+                'order'   => 4
+            ]
+        ];
+
+        $existConfig = Meta::where('object_id', get_current_user_id())->where('key', Constant::FBS_TASK_TABS_CONFIG)->first();
+        $config = $default_config;
+
+        if (!empty($existConfig->value)) {
+            $config = $existConfig->value;
+        }
+
+        return $this->sendSuccess([
+            'data' => $config
+        ]);
+    }
+
+    /**
+     * Save task tabs configuration
+     */
+    public function saveTaskTabsConfig(Request $request)
+    {
+        $config = $request->get('tabs');
+
+        if (count(array_filter($config, fn($tab) => $tab['visible'] == 'true')) == 0) {
+            return $this->sendError([
+                'message' => __('At least one tab must be visible', 'fluent-boards')
+            ], 400);
+        }
+
+        if (empty($config) || !is_array($config)) {
+            return $this->sendError([
+                'message' => __('Invalid data format', 'fluent-boards')
+            ], 400);
+        }
+        $userId = get_current_user_id();
+
+        $exit = Meta::where('object_id', $userId)->where('key', 'fbs_task_tabs_config')->first();
+
+        if ($exit) {
+            $exit->value = $config;
+            $exit->save();
+        } else {
+            $exit = Meta::create([
+                'object_id'   => $userId,
+                'object_type' => 'option',
+                'key'         => Constant::FBS_TASK_TABS_CONFIG,
+                'value'       => $config
+            ]);
+        }
+        $config = $exit->value;
+
+        return $this->sendSuccess([
+            'message' => __('Configuration saved successfully', 'fluent-boards'),
+            'config' => $config
+        ]);
     }
 }

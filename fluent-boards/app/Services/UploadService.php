@@ -31,7 +31,7 @@ class UploadService
         if (!$this->isFileTypeSupported($file)) {
             throw new \Exception('File type not supported');
         }
-        if ($file['size'] > $this->getFileUploadLimit()) {
+        if ($file['size_in_bytes'] > $this->getFileUploadLimit()) {
             throw new \Exception('File size is too large');
         }
     }

@@ -2,12 +2,14 @@
 
 namespace FluentBoards\Framework\Http\Request;
 
+use SplFileInfo;
+use JsonSerializable;
 use RuntimeException;
 use FluentBoards\Framework\Support\Util;
 use FluentBoards\Framework\Foundation\App;
 use FluentBoards\Framework\Validator\Contracts\File as Contract;
 
-class File extends \SplFileInfo implements Contract
+class File extends SplFileInfo implements Contract, JsonSerializable
 {
     /**
      * Original file name.
@@ -85,12 +87,14 @@ class File extends \SplFileInfo implements Contract
     public function getName($name)
     {
         $originalName = str_replace('\\', '/', $name);
+        
         $pos = strrpos($originalName, '/');
+        
         $originalName = false === $pos ? $originalName : substr(
             $originalName, $pos + 1
         );
 
-        return $originalName;
+        return sanitize_file_name($originalName);
     }
 
     public function getFileMimeType($mimeType)
@@ -195,19 +199,27 @@ class File extends \SplFileInfo implements Contract
     }
 
     /**
-     * Get original HTTP file array
-     *
-     * @return array
+     * Get the file name.
+     * 
+     * @return string
      */
-    public function toArray()
+    public function getSavedFileName()
     {
-        return [
-            'name'     => $this->originalName,
-            'type'     => $this->mimeType,
-            'tmp_name' => $this->getPathname(),
-            'error'    => $this->error,
-            'size'     => $this->size
-        ];
+        if ($name = $this->originalName) {
+            return $name;
+        }
+
+        return basename($this->getPathname());
+    }
+
+    /**
+     * Get the url from path.
+     * 
+     * @return string
+     */
+    public function getUrl()
+    {
+        return $this->url($this->getPathname());
     }
 
     /**
@@ -419,5 +431,32 @@ class File extends \SplFileInfo implements Contract
         );
 
         return new self($target, false);
+    }
+
+    /**
+     * Get original HTTP file array
+     *
+     * @return array
+     */
+    public function toArray()
+    {
+        return [
+            'type'          => $this->mimeType,
+            'size_in_bytes' => $this->size,
+            'size'          => size_format($this->size),
+            'name'          => $this->getSavedFileName(),
+            'path'          => $this->getPathname(),
+            'url'           => $this->getUrl(),
+        ];
+    }
+
+    /**
+     * JsonSerialize implementation
+     * @return array
+     */
+    #[\ReturnTypeWillChange]
+    public function jsonSerialize()
+    {
+        return $this->toArray();
     }
 }

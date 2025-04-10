@@ -132,9 +132,9 @@ class Request
      */
     public function has($key)
     {
-        return $this->exists($key) && !empty(
-            Arr::get($this->inputs(), $key)
-        );
+        $inputs = $this->inputs();
+        
+        return isset($inputs[$key]) && !empty($inputs[$key]);
     }
 
     /**
@@ -247,6 +247,19 @@ class Request
                 } elseif ($this->isRest()) {
                     $isJson = true;
                 }
+            }
+        }
+
+        if (
+            !$isJson &&
+            isset($_SERVER['CONTENT_TYPE']) &&
+            strpos($_SERVER['CONTENT_TYPE'], 'application/json') !== false
+        ) {
+            $requestBody = file_get_contents('php://input');
+
+            if (!empty($requestBody)) {
+                $this->json = json_decode($requestBody, true);
+                $isJson = json_last_error() === JSON_ERROR_NONE;
             }
         }
 
@@ -426,17 +439,35 @@ class Request
     }
 
     /**
-     * Merge array with the request inputs
+     * Merge array with the request inputs if the
+     * key(s) is missing from the request.
+     * 
      * @param  array  $data
      * @return self
      */
-    public function mergeMissing(array $data = [])
+    public function mergeIfMissing(array $data = [])
     {
         $all = $this->inputs();
 
         $this->merge(Arr::mergeMissing($data, $all));
 
         return $this;
+    }
+
+    /**
+     * Merge new input into the request's input, but only when
+     * that key is present in the request but value is missing.
+     *
+     * @param  array  $input
+     * @return $this
+     */
+    public function mergeMissing(array $input)
+    {
+        return $this->merge(Helper::collect($input)
+            ->filter(function($value, $key) {
+                return $this->missing($key);
+            })->toArray()
+        );
     }
 
     /**

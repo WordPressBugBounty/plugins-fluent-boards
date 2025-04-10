@@ -80,8 +80,18 @@ class FileSystem
         $uploadOverrides = ['test_form' => false];
         $uploadedFiles = []; // Initialize the array
 
+        if(is_object($files)) {
+            $files = [$files];
+        }
+
         foreach ((array)$files as $file) {
+
             $filesArray = $file->toArray();
+
+            // tmp_name is the path to the uploaded file which is required for wp_handle_upload, new framework update
+            // changed the way to get the tmp_name Reference to line # 448 in File.php
+            $filesArray['tmp_name'] = $file->getRealPath();
+
             $extraData = Arr::only($filesArray, ['name', 'size']);
             $uploadsData = \wp_handle_upload($filesArray, $uploadOverrides);
             // Add the full path to the file

@@ -303,4 +303,6 @@ class Constant{
     const BOARD_CSV_EXPORT = 'csv_export';
     const BOARD_ATTACHMENT = 'BOARD';
 
+    const FBS_TASK_TABS_CONFIG = "fbs_task_tabs_config";
+
 }

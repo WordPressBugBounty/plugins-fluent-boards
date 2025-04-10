@@ -494,6 +494,8 @@ trait FoundationTrait
      */
     private function addAjaxAction($action, $handler, $priority, $scope)
     {
+        $action = $this->config->get('app.hook_prefix').'.'.$action;
+        
         if ($scope == 'admin') {
             return add_action(
                 'wp_ajax_'.$action,

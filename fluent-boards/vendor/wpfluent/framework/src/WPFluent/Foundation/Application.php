@@ -160,7 +160,7 @@ class Application extends Container
         $this->loadConfigIfExists();
         $this->registerTextdomain();
         $this->bindCoreComponents();
-        $this->registerAsyncActions();
+        // $this->registerAsyncActions();
         $this->requireCommonFiles($this);
         $this->addRestApiInitAction($this);
     }
@@ -497,10 +497,10 @@ class Application extends Container
      * 
      * @return void
      */
-    protected function registerAsyncActions()
-    {
-        Client::registerAsyncRequestHandler();
-    }
+    // protected function registerAsyncActions()
+    // {
+    //     Client::registerAsyncRequestHandler();
+    // }
 
     /**
      * Execute plugin booted callbacks.

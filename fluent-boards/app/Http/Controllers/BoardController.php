@@ -851,8 +851,12 @@ class BoardController extends Controller
         $boardData = $this->taskSanitizeAndValidate($request->get('board'), [
             'title' => 'required|string'
         ]);
+
+        $boardData['source_board_id'] = $board_id;
+
         $isWithLabels = $request->getSafe('isWithLabels');
         $isWithTasks = $request->getSafe('isWithTasks');
+        $isWithTemplates = $request->getSafe('isWithTemplates');
 
         try {
             if(!PermissionManager::isAdmin()) {
@@ -870,11 +874,11 @@ class BoardController extends Controller
             }
 
             //stage copy
-            $stageMapForCopyingTask = $this->stageService->copyStagesOfBoard($newBoard, $board_id);
+            $stageMapForCopyingTask = $this->stageService->copyStagesOfBoard($newBoard, $board_id, $isWithTemplates);
 
             //copy tasks of selected stages
             if ($isWithTasks == 'yes') {
-                $this->taskService->copyTasks($board_id, $stageMapForCopyingTask, $newBoard, $labelMap);
+                $this->taskService->copyTasks($board_id, $stageMapForCopyingTask, $newBoard, $labelMap,$isWithTemplates);
             }
 
             return $this->sendSuccess([

@@ -51,9 +51,9 @@ class Task extends Model
     {
         parent::boot();
         static::creating(function ($model) {
+            $board = Board::find($model->board_id);
             $model->created_by = $model->created_by ?: get_current_user_id();
-            $model->type       = $model->type
-                ?: 'task'; // default task type is task
+            $model->type       = $board->type === 'roadmap' ? 'roadmap' : 'task'; // default task type is task
 
             if (empty($model->slug)) {
                 $model->slug = sanitize_title($model->title, 'idea-'.time());

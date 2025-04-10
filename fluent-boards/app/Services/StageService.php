@@ -160,7 +160,7 @@ class StageService
         }
     }
 
-    public function copyStagesOfBoard($board, $fromBoardId)
+    public function copyStagesOfBoard($board, $fromBoardId, $isWithTemplates='no')
     {
         $stages = Stage::where('board_id', $fromBoardId)->where('type', 'stage')->whereNull('archived_at')->get();
         $stageMapForCopyingTask = array();
@@ -175,6 +175,9 @@ class StageService
             $stageToSave['settings'] = [
                 'default_task_status' => $stage->settings['default_task_status']
             ];
+            if (!empty($stage->settings['is_template']) && $isWithTemplates == 'yes') {
+                $stageToSave['settings']['is_template'] = $stage->settings['is_template'];
+            }
             $newStage = Stage::create($stageToSave);
             $stageMapForCopyingTask[$stage['id']] = $newStage->id;
         }

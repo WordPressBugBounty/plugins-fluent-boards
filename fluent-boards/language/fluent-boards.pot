@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Fluent Boards\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-02-27 08:59+0000\n"
+"POT-Creation-Date: 2025-04-10 09:30+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: \n"
@@ -316,6 +316,10 @@ msgstr ""
 msgid "Archived Tasks"
 msgstr ""
 
+#: app/Services/TransStrings.php:726
+msgid "Are you sure to delete this log?"
+msgstr ""
+
 #: app/Services/TransStrings.php:55
 msgid "Are you sure to delete this?"
 msgstr ""
@@ -389,11 +393,19 @@ msgstr ""
 msgid "Associated Crm Member has been updated"
 msgstr ""
 
+#: app/Http/Controllers/TaskController.php:710
+msgid "At least one tab must be visible"
+msgstr ""
+
+#: app/Services/TransStrings.php:719
+msgid "At least one tab should be visible"
+msgstr ""
+
 #: app/Services/TransStrings.php:64
 msgid "Attachment"
 msgstr ""
 
-#: app/Http/Controllers/CommentController.php:286
+#: app/Http/Controllers/CommentController.php:294
 msgid "attachment has been added"
 msgstr ""
 
@@ -437,7 +449,7 @@ msgstr ""
 msgid "Board doesn't exists"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:941
+#: app/Http/Controllers/BoardController.php:945
 msgid "Board has been archived successfully!"
 msgstr ""
 
@@ -453,12 +465,12 @@ msgstr ""
 msgid "Board has been deleted"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:955
+#: app/Http/Controllers/BoardController.php:959
 msgid "Board has been restored successfully!"
 msgstr ""
 
 #: app/Http/Controllers/BoardController.php:331
-#: app/Http/Controllers/BoardController.php:929
+#: app/Http/Controllers/BoardController.php:933
 msgid "Board has been updated"
 msgstr ""
 
@@ -466,7 +478,7 @@ msgstr ""
 msgid "Board ID is missing"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:153
+#: app/Http/Controllers/TaskController.php:154
 msgid "Board id is not valid"
 msgstr ""
 
@@ -589,6 +601,10 @@ msgstr ""
 msgid "Changes that you made may not be saved."
 msgstr ""
 
+#: app/Services/TransStrings.php:714
+msgid "Checkbox"
+msgstr ""
+
 #: app/Services/TransStrings.php:90
 msgid "Choose a file or drag & drop it here."
 msgstr ""
@@ -639,15 +655,15 @@ msgstr ""
 msgid "Comment"
 msgstr ""
 
-#: app/Http/Controllers/CommentController.php:124
+#: app/Http/Controllers/CommentController.php:132
 msgid "Comment has been added"
 msgstr ""
 
-#: app/Http/Controllers/CommentController.php:187
+#: app/Http/Controllers/CommentController.php:195
 msgid "Comment has been deleted"
 msgstr ""
 
-#: app/Http/Controllers/CommentController.php:174
+#: app/Http/Controllers/CommentController.php:182
 msgid "Comment has been updated"
 msgstr ""
 
@@ -659,7 +675,7 @@ msgstr ""
 msgid "Community"
 msgstr ""
 
-#: app/Services/TransStrings.php:98
+#: app/Services/TransStrings.php:98 app/Http/Controllers/TaskController.php:677
 msgid "Completed"
 msgstr ""
 
@@ -673,6 +689,18 @@ msgstr ""
 
 #: app/Models/Task.php:607
 msgid "Completion"
+msgstr ""
+
+#: app/Http/Controllers/TaskController.php:737
+msgid "Configuration saved successfully"
+msgstr ""
+
+#: app/Services/TransStrings.php:718
+msgid "Configure Tabs"
+msgstr ""
+
+#: app/Services/TransStrings.php:717
+msgid "Configure Task Tabs"
 msgstr ""
 
 #: app/Services/TransStrings.php:99 app/Services/TransStrings.php:379
@@ -856,11 +884,15 @@ msgstr ""
 msgid "Dashboard view settings are updated"
 msgstr ""
 
+#: app/Services/TransStrings.php:715
+msgid "Date"
+msgstr ""
+
 #: app/Services/TransStrings.php:634
 msgid "Date Created"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:295
+#: app/Http/Controllers/TaskController.php:308
 msgid "Dates has been updated"
 msgstr ""
 
@@ -1123,8 +1155,24 @@ msgstr ""
 msgid "File not found."
 msgstr ""
 
+#: app/Services/TransStrings.php:724
+msgid "File should not be greater than"
+msgstr ""
+
+#: app/Services/TransStrings.php:721
+msgid "File type is not supported."
+msgstr ""
+
 #: app/Services/UploadService.php:23
 msgid "File upload failed"
+msgstr ""
+
+#: app/Services/TransStrings.php:723
+msgid "File upload is already in progress."
+msgstr ""
+
+#: app/Services/TransStrings.php:725
+msgid "File uploaded successfully."
 msgstr ""
 
 #: app/Services/TransStrings.php:143
@@ -1354,8 +1402,8 @@ msgstr ""
 msgid "Idea Submitted in last 30 days:"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:575
-#: app/Http/Controllers/TaskController.php:617
+#: app/Http/Controllers/TaskController.php:588
+#: app/Http/Controllers/TaskController.php:630
 msgid "Image has been uploaded"
 msgstr ""
 
@@ -1375,7 +1423,7 @@ msgstr ""
 msgid "Import from"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:897
+#: app/Http/Controllers/BoardController.php:901
 msgid "Import successfully"
 msgstr ""
 
@@ -1439,23 +1487,27 @@ msgstr ""
 msgid "Integrations"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:467
+#: app/Http/Controllers/TaskController.php:480
 msgid "Invalid Board"
+msgstr ""
+
+#: app/Http/Controllers/TaskController.php:716
+msgid "Invalid data format"
 msgstr ""
 
 #: app/Http/Controllers/OptionsController.php:698
 msgid "Invalid plugin"
 msgstr ""
 
-#: app/Services/StageService.php:376 app/Services/UserService.php:355
+#: app/Services/StageService.php:379 app/Services/UserService.php:355
 msgid "Invalid sort or orderBy parameter"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:460
+#: app/Http/Controllers/TaskController.php:473
 msgid "Invalid Stage"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:463
+#: app/Http/Controllers/TaskController.php:476
 msgid "Invalid Value"
 msgstr ""
 
@@ -1501,6 +1553,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:171
 msgid "Keep Tasks"
+msgstr ""
+
+#: app/Services/TransStrings.php:710
+msgid "Keep Templates"
 msgstr ""
 
 #: app/Services/TransStrings.php:442
@@ -1619,6 +1675,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:553
 msgid "Loading..."
+msgstr ""
+
+#: app/Services/TransStrings.php:727
+msgid "Log Time"
 msgstr ""
 
 #: app/Services/TransStrings.php:530
@@ -1783,6 +1843,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:411
 msgid "moved task to another stage"
+msgstr ""
+
+#: app/Services/TransStrings.php:713
+msgid "Multi Select"
 msgstr ""
 
 #: app/Services/TransStrings.php:204
@@ -1979,6 +2043,10 @@ msgstr ""
 msgid "Now"
 msgstr ""
 
+#: app/Services/TransStrings.php:712
+msgid "Number"
+msgstr ""
+
 #: app/Services/TransStrings.php:240
 msgid "OK"
 msgstr ""
@@ -2020,10 +2088,12 @@ msgid "Other users who have access to this board"
 msgstr ""
 
 #: app/Services/TransStrings.php:531
+#: app/Http/Controllers/TaskController.php:683
 msgid "Others"
 msgstr ""
 
 #: app/Services/TransStrings.php:245
+#: app/Http/Controllers/TaskController.php:671
 msgid "Overdue"
 msgstr ""
 
@@ -2079,6 +2149,10 @@ msgstr ""
 msgid "Please enter a keyword"
 msgstr ""
 
+#: app/Services/TransStrings.php:722
+msgid "Please include a file"
+msgstr ""
+
 #: app/Services/TransStrings.php:600
 msgid "Please input"
 msgstr ""
@@ -2101,6 +2175,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:651
 msgid "Please Select the page where you want to show"
+msgstr ""
+
+#: app/Services/TransStrings.php:716
+msgid "Please select type"
 msgstr ""
 
 #: app/Services/TransStrings.php:250
@@ -2281,11 +2359,11 @@ msgstr ""
 msgid "Reply"
 msgstr ""
 
-#: app/Http/Controllers/CommentController.php:229
+#: app/Http/Controllers/CommentController.php:237
 msgid "Reply has been deleted"
 msgstr ""
 
-#: app/Http/Controllers/CommentController.php:216
+#: app/Http/Controllers/CommentController.php:224
 msgid "Reply has been updated"
 msgstr ""
 
@@ -2354,6 +2432,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:282
 msgid "Save Settings"
+msgstr ""
+
+#: app/Services/TransStrings.php:720
+msgid "Saving"
 msgstr ""
 
 #: app/Services/TransStrings.php:283
@@ -2875,12 +2957,12 @@ msgstr ""
 msgid "Task cover couldn't be removed. Please try again"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:306
+#: app/Http/Controllers/TaskController.php:319
 msgid "Task cover photo has been updated"
 msgstr ""
 
 #: app/Services/TransStrings.php:562
-#: app/Http/Controllers/TaskController.php:637
+#: app/Http/Controllers/TaskController.php:650
 msgid "Task Cover removed successfully"
 msgstr ""
 
@@ -2900,16 +2982,16 @@ msgstr ""
 msgid "Task Fields"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:331
+#: app/Http/Controllers/TaskController.php:344
 msgid "Task has been deleted"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:160
+#: app/Http/Controllers/TaskController.php:161
 msgid "Task has been successfully created"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:271
-#: app/Http/Controllers/TaskController.php:499
+#: app/Http/Controllers/TaskController.php:284
+#: app/Http/Controllers/TaskController.php:512
 msgid "Task has been updated"
 msgstr ""
 
@@ -2925,7 +3007,7 @@ msgstr ""
 msgid "Task Name"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:181
+#: app/Http/Controllers/TaskController.php:182
 msgid "Task not found"
 msgstr ""
 
@@ -2941,7 +3023,7 @@ msgstr ""
 msgid "Task status"
 msgstr ""
 
-#: app/Http/Controllers/TaskController.php:315
+#: app/Http/Controllers/TaskController.php:328
 msgid "Task status has been updated"
 msgstr ""
 
@@ -3004,6 +3086,10 @@ msgstr ""
 msgid "Template Title"
 msgstr ""
 
+#: app/Services/TransStrings.php:711
+msgid "Text"
+msgstr ""
+
 #: app/Services/TransStrings.php:334
 msgid "Text Color"
 msgstr ""
@@ -3032,7 +3118,7 @@ msgstr ""
 msgid "The export is not successful."
 msgstr ""
 
-#: app/Http/Controllers/CommentController.php:269
+#: app/Http/Controllers/CommentController.php:277
 msgid "The file must be a image type."
 msgstr ""
 
@@ -3225,8 +3311,8 @@ msgstr ""
 msgid "Type Roadmap"
 msgstr ""
 
-#: app/Http/Controllers/CommentController.php:166
-#: app/Http/Controllers/CommentController.php:210
+#: app/Http/Controllers/CommentController.php:174
+#: app/Http/Controllers/CommentController.php:218
 msgid "Unauthorized Action"
 msgstr ""
 
@@ -3239,6 +3325,7 @@ msgid "Unread"
 msgstr ""
 
 #: app/Services/TransStrings.php:354
+#: app/Http/Controllers/TaskController.php:665
 msgid "Upcoming"
 msgstr ""
 
@@ -3537,7 +3624,7 @@ msgstr ""
 msgid "You do not have permission to access this route"
 msgstr ""
 
-#: app/Http/Controllers/BoardController.php:859
+#: app/Http/Controllers/BoardController.php:863
 msgid "You do not have permission to duplicate board"
 msgstr ""
 
