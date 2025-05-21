@@ -3,6 +3,7 @@
 namespace FluentBoards\Framework\Support;
 
 use stdClass;
+use ArrayAccess;
 
 class StdObject
 {
@@ -25,6 +26,38 @@ class StdObject
         }
 
         return $object;
+	}
+
+	/**
+     * Get an item from an object using "dot" notation.
+     *
+     * @template TValue of object
+     *
+     * @param  TValue  $object
+     * @param  string|null  $key
+     * @param  mixed  $default
+     * @return ($key is empty ? TValue : mixed)
+     */
+    public static function get($object, $key, $default = null)
+	{
+	    if (is_null($key) || trim($key) === '') {
+	        return $object;
+	    }
+
+	    foreach (explode('.', $key) as $segment) {
+	        if (is_object($object) && isset($object->{$segment})) {
+	            $object = $object->{$segment};
+	        } elseif (
+	        	(is_array($object) || $object instanceof ArrayAccess)
+	        	&& isset($object[$segment])
+	        ) {
+	            $object = $object[$segment];
+	        } else {
+	            return $default;
+	        }
+	    }
+
+	    return $object;
 	}
 
 	/**

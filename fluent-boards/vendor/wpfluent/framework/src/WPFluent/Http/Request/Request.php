@@ -726,9 +726,7 @@ class Request
      */
     public function user()
     {
-        return new WPUserProxy(
-            new \WP_User(get_current_user_id())
-        );
+        return $this->app->user();
     }
 
     /**

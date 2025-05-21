@@ -87,7 +87,8 @@ class StageController extends Controller
     public function updateStage(Request $request, $board_id, $stage_id)
     {
         $updatedStage = $this->stageSanitizeAndValidate($request->stage, [
-            'title'    => 'required|string'
+            'title'    => 'required|string',
+            'cover_bg' => 'nullable'
         ]);
         try {
             $oldStage = Stage::findOrFail($stage_id);

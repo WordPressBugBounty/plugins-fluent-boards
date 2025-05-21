@@ -567,29 +567,36 @@ class Arr
     /**
      * Determines if an array is associative.
      *
-     * An array is "associative" if it doesn't have sequential numerical keys beginning with zero.
+     * An array is "associative" if it doesn't have
+     * sequential numerical keys beginning with zero.
      *
      * @param  array  $array
      * @return bool
      */
     public static function isAssoc(array $array)
     {
-        $keys = array_keys($array);
-
-        return array_keys($keys) !== $keys;
+        return !static::isList($array);
     }
 
     /**
      * Determines if an array is a list.
      *
-     * An array is a "list" if all array keys are sequential integers starting from 0 with no gaps in between.
+     * An array is a "list" if all array keys are sequential
+     * integers starting from 0 with no gaps in between.
      *
      * @param  array  $array
      * @return bool
      */
     public static function isList($array)
     {
-        return ! self::isAssoc($array);
+        $i = -1;
+        foreach ($array as $k => $v) {
+            ++$i;
+            if ($k !== $i) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -1708,6 +1715,27 @@ class Arr
     public static function findKey($array, callable $callback)
     {
         return static::find($array, $callback, true);
+    }
+
+    /**
+     * Find similar words in an array.
+     * 
+     * @param  string  $needle
+     * @param  array   $haystack
+     * @param  integer $accuracy
+     * @return string|null         
+     */
+    public static function findSimilar($needle, array $haystack, $accuracy = 60)
+    {
+        $matches = [];
+
+        foreach ($haystack as $item) {
+            if (Str::isSimilar($needle, $item, $accuracy)) {
+                $matches[] = $item;
+            }
+        }
+
+        return $matches ? $matches[0] : null;
     }
 
     /**

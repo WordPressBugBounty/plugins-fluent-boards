@@ -27,7 +27,7 @@ class LabelController extends Controller
                 'labels' => $labels,
             ], 200);
         } catch(\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
@@ -40,7 +40,7 @@ class LabelController extends Controller
                 'labels' => $labels,
             ], 200);
         } catch(\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
@@ -68,17 +68,16 @@ class LabelController extends Controller
     public function createLabelForTask(Request $request, $board_id)
     {
         $requestData = [
-            'task_id'    => $request->taskId,
-            'boardTerm_id' => (int) $request->labelId,
+            'task_id'    => $request->getSafe('taskId', 'intval'),
+            'board_term_id' => $request->getSafe('labelId', 'intval'),
         ];
 
         $labelData = $this->labelSanitizeAndValidate($requestData, [
             'task_id'    => 'required|integer',
-            'boardTerm_id' => 'required|integer',
+            'board_term_id' => 'required|integer',
         ]);
         try {
             $label = $this->labelService->createLabelForTask($labelData);
-//            do_action('fluent_boards/label_manage_for_task_activity', $label->task_id, 'added');
 
             return $this->sendSuccess([
                 'message' => __('Label has been added', 'fluent-boards'),
@@ -98,7 +97,7 @@ class LabelController extends Controller
                 'labels' => $labels,
             ], 200);
         } catch(\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
@@ -109,7 +108,7 @@ class LabelController extends Controller
 
             return $this->sendSuccess([
                 'message' => __('Label has been deleted', 'fluent-boards'),
-            ], 201);
+            ], 200);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
         }
@@ -118,22 +117,12 @@ class LabelController extends Controller
     public function deleteLabelOfBoard($board_id, $label_id)
     {
         try {
-
-            $label = Label::findOrFail($label_id);
-
-            if (count($label->tasks) > 0) {
-                return $this->sendError([
-                    'message' => __("You can't delete. This label used in task.", 'fluent-boards'),
-                    'type'    => 'warning',
-                ]);
-            }
-
             $this->labelService->deleteLabelOfBoard($label_id);
 
             return $this->sendSuccess([
                 'message' => __('Label has been deleted', 'fluent-boards'),
                 'type'    => 'success',
-            ], 201);
+            ], 200);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
         }

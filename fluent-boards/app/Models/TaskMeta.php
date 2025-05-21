@@ -1,6 +1,7 @@
 <?php
 
 namespace FluentBoards\App\Models;
+use FluentBoards\App\Services\Constant;
 
 class TaskMeta extends Model
 {
@@ -27,5 +28,15 @@ class TaskMeta extends Model
     public function getValueAttribute($value)
     {
         return \maybe_unserialize($value);
+    }
+
+    public function subtasks()
+    {
+        return $this->belongsToMany(
+            Task::class,
+            'fbs_task_metas',
+            'value',
+            'task_id'
+        )->where('key', Constant::SUBTASK_GROUP_CHILD);
     }
 }

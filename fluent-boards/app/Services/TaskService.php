@@ -18,6 +18,7 @@ use FluentBoardsPro\App\Modules\TimeTracking\TimeTrackingHelper;
 use FluentBoardsPro\App\Services\ProTaskService;
 use FluentBoardsPro\App\Services\RemoteUrlParser;
 use FluentRoadmap\App\Models\IdeaReaction;
+use function ElementorDeps\DI\string;
 
 class TaskService
 {
@@ -455,7 +456,6 @@ class TaskService
         }
 
         $task->addOrRemoveAssignee($authUserId);
-        do_action('fluent_boards/task_assignee_added', $task, $authUserId);
         // when user assign himself then he will be watching that task
         $task->watchers()->syncWithoutDetaching([$authUserId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
 
@@ -699,7 +699,7 @@ class TaskService
     {
         $tasks = Task::query()
             ->where('crm_contact_id', $associatedId)
-            ->with(['board', 'stage', 'assignees', 'labels', 'watchers',])
+            ->with(['board', 'stage', 'assignees', 'labels', 'watchers', 'subtaskGroup', 'subtaskGroup.subtasks', 'subtaskGroup.subtasks.assignees'])
             ->orderBy('due_at', 'ASC')
             ->get();
 
@@ -723,27 +723,53 @@ class TaskService
             }
 
 
-            $subTasks = Task::query()
-                ->where('parent_id', $task->id)
-                ->with(['assignees'])
-                ->whereNull('archived_at')
-                ->orderBy('position', 'ASC')
-                ->get();
+//            $subTasks = Task::query()
+//                ->where('parent_id', $task->id)
+//                ->with(['assignees'])
+//                ->whereNull('archived_at')
+//                ->orderBy('position', 'ASC')
+//                ->get();
+//
+//            foreach ($subTasks as $subTask) {
+//                $subTask->assignees = Helper::sanitizeUserCollections($subTask->assignees);
+//            }
+//
+//            $task->subtasks = $subTasks;
 
-            foreach ($subTasks as $subTask) {
-                $subTask->assignees = Helper::sanitizeUserCollections($subTask->assignees);
+//            just_log($task->subtaskGroup);
+
+            foreach ($task->subtaskGroup as $group) {
+                foreach ($group->subtasks as $subtask) {
+                    $subtask->assignees = Helper::sanitizeUserCollections($subtask->assignees);
+                }
             }
-
-            $task->subtasks = $subTasks;
+            $task->subtask_group = $task->subtaskGroup;
         }
 
         return $tasks;
+    }
+
+    public function copySubtaskGroup($task, $newTask, $subtaskGroupMap)
+    {
+        $subtaskGroups = TaskMeta::where('task_id', $task->id)->where('key', Constant::SUBTASK_GROUP_NAME)->get();
+        foreach ($subtaskGroups as $group) {
+            $newGroup = TaskMeta::create([
+                'task_id' => $newTask->id,
+                'key' => Constant::SUBTASK_GROUP_NAME,
+                'value' => $group->value
+            ]);
+
+            $subtaskGroupMap[$group->id] = $newGroup->id;
+        }
+
+        return $subtaskGroupMap;
     }
 
     public function copyTasks($boardId, $stageMap, $newBoard, $labelMap = [],$isWithTemplates='no')
     {
         $allActiveTasks = Task::where('board_id', $boardId)->whereNull('archived_at')->get();
         $taskMap = [];
+        $subtaskGroupMap = [];
         $parentTaskCount = 0;
         foreach ($allActiveTasks as $task) {
             $newTask = array();
@@ -765,6 +791,23 @@ class TaskService
             ];
             
             $newTask = Task::create($newTask);
+
+            if (!$task->parent_id) {
+                //group mapping
+                $subtaskGroupMap = $this->copySubtaskGroup($task, $newTask, $subtaskGroupMap);
+            } else {
+                $groupRelationOfTask = TaskMeta::where('key', Constant::SUBTASK_GROUP_CHILD)
+                                            ->where('task_id', $task->id)
+                                            ->first();
+
+                if ($groupRelationOfTask && $subtaskGroupMap[$groupRelationOfTask->value]) {
+                    TaskMeta::create([
+                        'task_id' => $newTask->id,
+                        'key' => Constant::SUBTASK_GROUP_CHILD,
+                        'value' => $subtaskGroupMap[$groupRelationOfTask->value]
+                    ]);
+                }
+            }
 
             if($isWithTemplates == 'yes') {
                 $isTemplate = TaskMeta::where('task_id', $task->id)
@@ -932,7 +975,7 @@ class TaskService
      * @param $UrlMeta
      * @return mixed|string
      */
-    private function setTitle($type, $title, $UrlMeta)
+    public function setTitle($type, $title, $UrlMeta)
     {
         if($type != 'url') {
             return sanitize_file_name($title);

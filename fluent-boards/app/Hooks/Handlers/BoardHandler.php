@@ -2,6 +2,7 @@
 
 namespace FluentBoards\App\Hooks\Handlers;
 
+use FluentBoards\App\Models\Attachment;
 use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\NotificationUser;
@@ -454,4 +455,30 @@ class BoardHandler
         $board->settings = $settings;
         $board->save();
     }
+
+    public function backgroundUpdated($boardId, $oldBackground)
+    {
+        if (
+            is_array($oldBackground) &&
+            !empty($oldBackground['is_image']) &&
+            !empty($oldBackground['image_url'])
+        ) {
+            // Delete attachment if ID exists
+            if (!empty($oldBackground['id'])) {
+                $attachment = Attachment::find($oldBackground['id']);
+                if ($attachment) {
+                    $attachment->delete();
+                }
+            }
+
+            // Delete file if full_url exists
+            if (!empty($oldBackground['full_url'])) {
+                (new FileHandler())->deleteFileByUrl($oldBackground['full_url']);
+            }
+        }
+
+        $this->createLogActivity($boardId, 'changed', 'board background', null, null);
+    }
+
+
 }

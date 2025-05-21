@@ -6,6 +6,8 @@ use DateTimeImmutable;
 use Exception;
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\Meta;
+use FluentBoards\App\Models\TaskMeta;
+use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\OptionService;

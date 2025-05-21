@@ -2,11 +2,13 @@
 
 namespace FluentBoards\App\Http\Controllers;
 
+use FluentBoards\App\Models\Attachment;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Models\Board;
+use FluentBoards\App\Services\CommentService;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Models\Stage;
@@ -14,6 +16,7 @@ use FluentBoards\App\Services\InstallService;
 use FluentBoards\App\Services\StageService;
 use FluentBoards\App\Services\TaskService;
 use FluentBoards\App\Services\BoardService;
+use FluentBoards\App\Services\UploadService;
 use FluentBoards\App\Services\UserService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\App\Services\PermissionManager;
@@ -21,6 +24,8 @@ use FluentBoards\App\Hooks\Handlers\BoardHandler;
 use FluentBoards\App\Services\LabelService;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Collection;
+use FluentBoardsPro\App\Services\AttachmentService;
+use FluentBoardsPro\App\Services\RemoteUrlParser;
 use FluentCrm\App\Models\Subscriber;
 
 class BoardController extends Controller
@@ -195,7 +200,7 @@ class BoardController extends Controller
         }
 
         do_action('fluent_boards/board_created', $board);
-        
+
         if ($installFluentCRM && !defined('FLUENTCRM')) {
             InstallService::install('fluent-crm');
         }
@@ -261,9 +266,10 @@ class BoardController extends Controller
     public function getArchivedStage(Request $request, $board_id)
     {
         try {
-            $pagination = $request->noPagination ? true : false;
-            $per_page = isset($data['per_page']) ? $data['per_page'] : 30;
-            $page = isset($data['page']) ? $data['page'] : 1;
+            $pagination = $request->getSafe('noPagination', 'boolval', false);
+            $per_page = $request->getSafe('per_page', 'intval', 30);
+            $page = $request->getSafe('page', 'intval', 1);
+
             if ($pagination) {
                 $stages = Stage::where('board_id', $board_id)
                     ->whereNotNull('archived_at')
@@ -359,9 +365,9 @@ class BoardController extends Controller
             $updatedStage = $this->boardService->restoreStage($board->id, $stage);
 
             return $this->sendSuccess([
-                'success'      => true,
+                'success' => true,
                 'updatedStage' => $updatedStage,
-                'message'      => __('Stage has been restored', 'fluent-boards')
+                'message' => __('Stage has been restored', 'fluent-boards')
             ], 200);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
@@ -387,11 +393,11 @@ class BoardController extends Controller
         }
     }
 
-    public function rePositionStages(Request $request, $board_id)
+    public function repositionStages(Request $request, $board_id)
     {
         $incomingList = $request->get('list');
         try {
-            $this->boardService->rePositionStages($board_id, $incomingList);
+            $this->boardService->repositionStages($board_id, $incomingList);
             return $this->sendSuccess([
                 'message'       => __('Stages Reordered', 'fluent-boards'),
                 'updatedStages' => $this->stageService->getLastOneMinuteUpdatedStages($board_id)
@@ -602,9 +608,9 @@ class BoardController extends Controller
 
     public function searchBoards(Request $request)
     {
-        $per_page = $request->get('per_page', 10);
-        $search_input = $request->searchInput . trim('');
-        $type = $request->type;
+        $per_page = $request->getSafe('per_page', 'intval', 10);
+        $search_input = $request->getSafe('searchInput', 'sanitize_text_field', '');
+        $type = $request->getSafe('type', 'sanitize_text_field', 'to-do');
 
         $currentUserId = get_current_user_id();
 
@@ -710,7 +716,7 @@ class BoardController extends Controller
                 'background' => $this->boardService->setBoardBackground($backgroundData, $board_id),
             ]);
         } catch (\Exception $e) {
-            $this->sendError([$e->getMessage(), 400]);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
@@ -741,7 +747,7 @@ class BoardController extends Controller
                 throw new \Exception($message . 'is required', 400);
             }
         } catch (\Exception $e) {
-            $this->sendError([$e->getMessage(), 400]);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
@@ -817,13 +823,25 @@ class BoardController extends Controller
 
     public function moveAllTasks(Request $request, $board_id)
     {
-        $oldStageId = $request->getSafe('oldStageId');
-        $newStageId = $request->getSafe('newStageId');
+        $oldStageId = $request->getSafe('oldStageId', 'intval');
+        $newStageId = $request->getSafe('newStageId', 'intval');
+
+        if (!$oldStageId || !$newStageId) {
+            return $this->sendError(__('Invalid stage IDs provided', 'fluent-boards'), 400);
+        }
+
+        // Verify stages exist and belong to the board
+        $oldStage = Stage::where('id', $oldStageId)->where('board_id', $board_id)->first();
+        $newStage = Stage::where('id', $newStageId)->where('board_id', $board_id)->first();
+
+        if (!$oldStage || !$newStage) {
+            return $this->sendError(__('One or both stages do not exist or do not belong to this board', 'fluent-boards'), 400);
+        }
 
         $updates = $this->stageService->moveAllTasks($oldStageId, $newStageId, $board_id);
 
         return [
-            'message'      => __('Tasks has been Moved', 'fluent-boards'),
+            'message'      => __('Tasks have been moved', 'fluent-boards'),
             'updatedTasks' => $updates,
         ];
 
@@ -833,7 +851,7 @@ class BoardController extends Controller
     {
         $updates = $this->stageService->archiveAllTasksInStage($stage_id);
         return [
-            'message'      => __('Tasks has been archived', 'fluent-boards'),
+            'message'      => __('Tasks have been archived', 'fluent-boards'),
             'updatedTasks' => $updates,
         ];
     }
@@ -970,6 +988,67 @@ class BoardController extends Controller
             : ($boardRelation && Arr::has($boardRelation->settings, 'is_viewer_only') && Arr::get($boardRelation->settings, 'is_viewer_only')
             ? 'viewer'
             : 'member');
+    }
+    public function uploadBoardBackground(Request $request,$board_id)
+    {
+        $file = Arr::get($request->files(), 'file')->toArray();
+        (new \FluentBoards\App\Services\UploadService)->validateFile($file);
+
+        $uploadInfo = UploadService::handleFileUpload( $request->files(), $board_id);
+
+        $fileData = $uploadInfo[0];
+        $initialDataData = [
+            'type' => 'url',
+            'url' => '',
+            'name' => '',
+            'size' => 0,
+        ];
+
+        $attachData = array_merge($initialDataData, $fileData);
+        $UrlMeta = [];
+        if($attachData['type'] == 'url') {
+            $UrlMeta = RemoteUrlParser::parse($attachData['url']);
+        }
+        $uid = wp_generate_uuid4();
+        $fileUploadedData = new Attachment();
+        $fileUploadedData->object_id = $board_id;
+        $fileUploadedData->object_type = Constant::BOARD_BACKGROUND_IMAGE;
+        $fileUploadedData->attachment_type = $attachData['type'];
+        $fileUploadedData->title = (new TaskService())->setTitle($attachData['type'], $attachData['name'], $UrlMeta);
+        $fileUploadedData->file_path = $attachData['type'] != 'url' ?  $attachData['file'] : null;
+        $fileUploadedData->full_url = esc_url($attachData['url']);
+        $fileUploadedData->file_size = $attachData['size'];
+        $fileUploadedData->settings = $attachData['type'] == 'url' ? [
+            'meta' => $UrlMeta
+        ] : '';
+        $fileUploadedData->driver = 'local';
+        $fileUploadedData->file_hash = md5($uid . mt_rand(0, 1000));
+        $fileUploadedData->save();
+        if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
+            $mediaData = (new AttachmentService())->processMediaData($fileData, $file);
+            $fileUploadedData['driver'] = $mediaData['driver'];
+            $fileUploadedData['file_path'] = $mediaData['file_path'];
+            $fileUploadedData['full_url'] = $mediaData['full_url'];
+            $fileUploadedData->save();
+        }
+
+        $board = Board::find($board_id);
+        $oldBackground = $board->background;
+        $publicUrl = (new CommentService())->createPublicUrl($fileUploadedData, $board_id);
+        $background = [
+            'color' => null,
+            'id' => $fileUploadedData->id,
+            'image_url' => $publicUrl,
+            'is_image' => true,
+        ];
+        $board->background = $background;
+        $board->save();
+        do_action('fluent_boards/board_background_updated', $board_id, $oldBackground);
+
+        return $this->sendSuccess([
+            'message'    => __('Background updated successfully', 'fluent-boards'),
+            'background' => $board->background,
+        ]);
     }
 
 }

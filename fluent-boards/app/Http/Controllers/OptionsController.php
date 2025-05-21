@@ -83,7 +83,8 @@ class OptionsController extends Controller
                     $options[] = [
                         'id'               => $task->id,
                         'title'            => $task->title,
-                        'board_id'         => $task->board_id
+                        'board_id'         => $task->board_id,
+                        'subtask_groups'   => $task->subtaskGroup
                     ];
                 }
 

@@ -29,12 +29,18 @@ $app->addCustomAction('comment_created', 'ActivityHandler@logCommentCreateActivi
 $app->addCustomAction('comment_updated', 'ActivityHandler@logCommentUpdateActivity', 10, 2);
 $app->addCustomAction('comment_deleted', 'ActivityHandler@logCommentDeleteActivity', 10, 1);
 $app->addCustomAction('subtask_added', 'ActivityHandler@logSubtaskAddedActivity', 10, 2);
+$app->addCustomAction('subtask_group_created', 'ActivityHandler@logSubtaskGroupAddedActivity', 10, 2);
 $app->addCustomAction('subtask_deleted_activity', 'ActivityHandler@logSubtaskDeletedActivity', 10, 2);
+$app->addCustomAction('subtask_group_deleted_activity', 'ActivityHandler@logSubtaskGroupDeletedActivity', 10, 2);
+$app->addCustomAction('subtask_group_title_updated', 'ActivityHandler@logSubtaskGroupTitleUpdatedActivity', 10, 2);
 $app->addCustomAction('task_completed_activity', 'ActivityHandler@logTaskCompletedOrReopenActivity', 10, 2);
 $app->addCustomAction('task_stage_updated', 'ActivityHandler@logTaskStageUpdatedActivity', 10, 2);
 $app->addCustomAction('task_assignee_added', 'ActivityHandler@logAssigneeAddedActivity', 10, 2);
 $app->addCustomAction('task_assignee_removed', 'ActivityHandler@logAssigneeRemovedActivity', 10, 2);
 $app->addCustomAction('task_added_from_fluent_form', 'ActivityHandler@taskAddedFromFluentForms', 10, 1);
+$app->addCustomAction('repeat_task_created', 'ActivityHandler@logRepeatTaskCreatedActivity', 10, 2);
+$app->addCustomAction('repeat_task_set', 'ActivityHandler@logRepeatTaskSet', 10, 1);
+$app->addCustomAction('repeat_task_updated', 'ActivityHandler@logRepeatTaskUpdated', 10, 1);
 $app->addCustomAction('task_created', 'ActivityHandler@logTaskCreationActivity', 10, 1);
 $app->addCustomAction('task_content_updated', 'ActivityHandler@logTaskContentUpdatedActivity', 10, 3);
 $app->addCustomAction('task_deleted', 'TaskHandler@taskDeleted', 10, 1);
@@ -107,7 +113,7 @@ $app->addCustomAction('send_invitation', 'ScheduleHandler@sendInvitationViaEmail
 $app->addCustomAction('task_created', 'TaskHandler@onTaskCreated', 10, 1);
 $app->addCustomAction('comment_created', 'TaskHandler@onCommentCreated', 10, 1);
 $app->addCustomAction('assign_another_user', 'TaskHandler@onAssignAnotherUser', 10, 2);
-
+$app->addCustomAction('board_background_updated', 'BoardHandler@backgroundUpdated', 10, 2);
 
 if (defined('WP_CLI') && WP_CLI) {
     \WP_CLI::add_command('fluent_boards', '\FluentBoards\App\Hooks\Cli\Commands');

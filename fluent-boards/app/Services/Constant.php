@@ -303,6 +303,11 @@ class Constant{
     const BOARD_CSV_EXPORT = 'csv_export';
     const BOARD_ATTACHMENT = 'BOARD';
 
+    const BOARD_BACKGROUND_IMAGE = 'board_background_image';
     const FBS_TASK_TABS_CONFIG = "fbs_task_tabs_config";
 
+    const FBS_OLD_SUBTASK_SYNC = 'fbs_old_subtask_sync';
+
+    const SUBTASK_GROUP_NAME = 'group_name';
+    const SUBTASK_GROUP_CHILD = 'subtask_group_id';
 }

@@ -15,9 +15,9 @@ use FluentBoards\App\Services\LabelService;
 
 
 /**
- * Contacts Class - PHP APi Wrapper
+ * Boards Class - PHP API Wrapper
  *
- * Contacts API Wrapper Class that can be used as <code>FluentBoardsApi('boards')</code> to get the class instance
+ * Boards API Wrapper Class that can be used as <code>FluentBoardsApi('boards')</code> to get the class instance
  *
  * @package FluentBoards\App\Api\Classes
  * @namespace FluentBoards\App\Api\Classes
@@ -187,13 +187,15 @@ class Boards
         return Helper::sanitizeLabel($data);
     }
 
+    /**
+     * Check if the current user has access to a board
+     *
+     * @param int $boardId The board ID to check access for
+     * @return bool True if user has access, false otherwise
+     */
     private function userHasAccessToBoard($boardId)
     {
-        if (PermissionManager::userHasPermission($boardId)) {
-            return true;
-        } else {
-            return false;
-        }
+        return PermissionManager::userHasPermission($boardId);
     }
 
 

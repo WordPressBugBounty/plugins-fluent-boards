@@ -47,6 +47,16 @@ class Task extends Model
 
     protected $appends = ['meta', 'repeat_task_meta'];
 
+    protected static $skipTaskCreatedEvent = false;
+
+    public static function withoutTaskCreatedEvent($callback)
+    {
+        static::$skipTaskCreatedEvent = true;
+        $result = $callback();
+        static::$skipTaskCreatedEvent = false;
+        return $result;
+    }
+
     public static function boot()
     {
         parent::boot();
@@ -72,7 +82,7 @@ class Task extends Model
                 ?: (new TaskService())->getLastPositionOfTasks($model->stage_id);
         });
         static::created(function ($model) {
-            if ( ! $model->parent_id) {
+            if (!$model->parent_id && !static::$skipTaskCreatedEvent) {
                 do_action('fluent_boards/task_created', $model);
                 if ($model->crm_contact_id) {
                     do_action('fluent_boards/contact_added_to_task', $model);
@@ -711,11 +721,6 @@ class Task extends Model
         return $fields;
     }
 
-    public function subtasks()
-    {
-        return $this->hasMany(Task::class, 'parent_id', 'id');
-    }
-
     public function customFields()
     {
         return $this->belongsToMany(
@@ -741,6 +746,22 @@ class Task extends Model
     {
         return $this->hasMany(Relation::class, 'object_id', 'id')
             ->where('object_type', Constant::TASK_CUSTOM_FIELD);
+    }
+
+    // Relationship to get subtask groups
+    public function subTaskGroups()
+    {
+        return $this->hasMany(TaskMeta::class, 'task_id', 'id')->where('key', Constant::SUBTASK_GROUP_NAME);
+    }
+
+    public function subtasks()
+    {
+        return $this->hasMany(Task::class, 'parent_id', 'id');
+    }
+
+    public function subtaskGroup()
+    {
+        return $this->hasMany(TaskMeta::class, 'task_id')->where('key', Constant::SUBTASK_GROUP_NAME);
     }
 
 }

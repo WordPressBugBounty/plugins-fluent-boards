@@ -65,18 +65,21 @@ class Stages
         return $stages;
     }
 
+    /**
+     * Create a new stage
+     *
+     * @param array $data Stage data including title and board_id
+     * @return Stage|false The created stage or false on failure
+     */
     public function create($data)
     {
-        if (empty($data)) {
+        // Validate required data
+        if (empty($data) || empty($data['title']) || empty($data['board_id'])) {
             return false;
         }
 
-        if (empty($data['title']) || empty($data['board_id'])) {
-            return false;
-        }
-
-        //checking if current user has access to board
-        if ( ! PermissionManager::userHasPermission($data['board_id'])) {
+        // Check if current user has access to board
+        if (!PermissionManager::userHasPermission($data['board_id'])) {
             return false;
         }
 

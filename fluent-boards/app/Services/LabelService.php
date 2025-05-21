@@ -72,9 +72,9 @@ class  LabelService
     {
         $task = Task::findOrFail($labelData['task_id']);
 
-        $task->labels()->syncWithoutDetaching([$labelData['boardTerm_id'] => ['object_type' => Constant::OBJECT_TYPE_TASK_LABEL]]);
+        $task->labels()->syncWithoutDetaching([$labelData['board_term_id'] => ['object_type' => Constant::OBJECT_TYPE_TASK_LABEL]]);
 
-        $label = $task->labels->find($labelData['boardTerm_id']);
+        $label = $task->labels->find($labelData['board_term_id']);
 
         do_action('fluent_boards/task_label',$task, $label, 'added');
 
@@ -103,7 +103,7 @@ class  LabelService
     public function deleteLabelOfBoard($labelId)
     {
         $label = Label::findOrFail($labelId);
-        $boardId = $label->board_id;
+        $label->tasks()->detach();
         $label->delete();
 
         do_action('fluent_boards/board_label_deleted', $label);

@@ -130,11 +130,10 @@ class AdminMenuHandler
         $slug = $config->get('app.slug');
         $baseUrl = fluent_boards_page_url();
 
-        $this->updateDatabase();
-
-
         do_action('fluent_boards/rendering_app');
 
+        // For subtask sync
+        UpdateHandler::maybeSubtaskGroupSync();
 
         App::make('view')->render('admin.menu', [
             'name'         => $name,
@@ -146,46 +145,6 @@ class AdminMenuHandler
             'is_new'       => Board::count() == 0 ? 'yes' : 'no',
             'is_onboarded' => $this->getOnboardingValue()
         ]);
-    }
-
-    private function updateDatabase($isForced = true)
-    {
-        global $wpdb;
-
-        $table = $wpdb->prefix . 'fbs_board_terms';
-
-        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) != $table) {
-            return;
-        } else {
-            // change column type from int to decimal - for already installed sites
-            $column_name = 'position';
-            $preparedQuery = $wpdb->prepare("DESCRIBE $table %s", $column_name);
-            $dataType = $wpdb->get_row($preparedQuery);
-            if (strpos($dataType->Type, 'int') !== false) {
-                $sql = $wpdb->prepare(
-                    "ALTER TABLE $table MODIFY $column_name decimal(10,2) NOT NULL DEFAULT '1' COMMENT 'Position: 1 = top/first, 2 = second/second in top, etc.';"
-                );
-                $wpdb->query($sql);
-            }
-        }
-
-        $table = $wpdb->prefix . 'fbs_comments';
-
-        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) != $table) {
-            return;
-        } else {
-            $column_name = 'settings';
-            // Check if the column already exists
-            $column_exists = $wpdb->get_var($wpdb->prepare(
-                "SHOW COLUMNS FROM $table LIKE %s", $column_name
-            ));
-
-            if (!$column_exists) {
-                $sql = "ALTER TABLE $table ADD $column_name TEXT NULL COMMENT 'serialize array' AFTER `created_by`";
-                $wpdb->query($sql);
-            }
-        }
-
     }
 
     public function getMenuItems($app)
@@ -576,6 +535,18 @@ class AdminMenuHandler
             _.noConflict();
         }
         ";
+    }
+    public function singleBoardRender()
+    {
+        $config = App::getInstance('config');
+
+        $slug = $config->get('app.slug');
+
+
+
+        App::make('view')->render('admin.single_board_shortcode', [
+            'slug'         => $slug,
+        ]);
     }
 
 }

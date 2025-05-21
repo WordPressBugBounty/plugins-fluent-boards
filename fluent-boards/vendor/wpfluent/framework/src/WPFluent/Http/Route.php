@@ -661,7 +661,7 @@ class Route
     {
         try {
             return $this->handleAfterMiddleware(
-                $response = $this->dispatchRouteAction()
+                $this->dispatchRouteAction()
             );
 
         } catch (ValidationException $e) {

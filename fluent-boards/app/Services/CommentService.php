@@ -126,8 +126,8 @@ class CommentService
 
     private function extractMentions($text) {
         try {
-            // More precise mention pattern that handles international usernames
-            $pattern = '%@([\p{L}\p{N}_.-]+)(?:\b|$)%u';
+            // Pattern that combines zero-width delimiters with international username support
+            $pattern = '/@\x{200B}([\p{L}\p{N}_. -@]+)\x{200C}/u';
             
             if (preg_match_all($pattern, $text, $matches)) {
                 $mentions = array_filter($matches[1], function($mention) {
@@ -188,7 +188,7 @@ class CommentService
             if (!empty($mentions)) {
                 foreach ($mentions as $mention) {
                     if (array_key_exists($mention, $mentionedUsernames)) {
-                        $mentionReplacements['@' . $mention] = sprintf(
+                        $mentionReplacements['@' . "\u{200B}" . $mention . "\u{200C}"] = sprintf(
                             '<a class="fbs_mention" href="%smember/%d/tasks">%s</a>',
                             esc_url(fluent_boards_page_url()),
                             $mentionedUsernames[$mention]['user_id'],

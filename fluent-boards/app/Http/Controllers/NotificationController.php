@@ -16,28 +16,26 @@ class NotificationController extends Controller
     }
     public function getAllNotifications(Request $request)
     {
-        $data = $request->all();
         try {
-            $per_page = isset($data['per_page']) ? $data['per_page'] : 20;
-            $page = isset($data['page']) ? $data['page'] : 1;
+            $per_page = $request->getSafe('per_page', 'intval', 20);
+            $page = $request->getSafe('page', 'intval', 1);
             $data = $this->notificationService->getAllNotifications($per_page, $page);
 
             return $this->sendSuccess($data, 200);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
     public function getAllUnreadNotifications(Request $request)
     {
-        $data = $request->all();
         try {
-            $per_page = isset($data['per_page']) ? $data['per_page'] : 20;
-            $page = isset($data['page']) ? $data['page'] : 1;
+            $per_page = $request->getSafe('per_page', 'intval', 20);
+            $page = $request->getSafe('page', 'intval', 1);
             return $this->sendSuccess(
                 $this->notificationService->getAllUnreadNotifications($per_page, $page),
                 200);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
@@ -50,7 +48,7 @@ class NotificationController extends Controller
                 'total_unread' => $unread_notifications,
             ], 200);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
@@ -61,41 +59,43 @@ class NotificationController extends Controller
             $currentSettings = [];
             $boardSettings = $this->notificationService->getBoardNotificationSettingsOfUser($board_id, $userId);
             if ($boardSettings && $boardSettings->preferences) {
-                $currentSettings = maybe_unserialize($boardSettings->preferences);
+                $unserializedData = maybe_unserialize($boardSettings->preferences);
+                // Validate unserialized data is an array
+                if (is_array($unserializedData)) {
+                    $currentSettings = $unserializedData;
+                }
             }
 
             return $this->sendSuccess([
                 'currentSettings' => $currentSettings,
             ], 200);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
     public function updateBoardNotificationSettings(Request $request, $board_id)
     {
         try {
-            $newSettings = $request->get('updatedSettings');
-
-
+            $newSettings = $request->getSafe('updatedSettings', 'sanitize_text_field');
             $this->notificationService->updateBoardNotificationSettings($newSettings, $board_id);
             return $this->sendSuccess([
-                'message' => __('Board notification settings has been updated', 'fluent-boards'),
+                'message' => __('Board notification settings have been updated', 'fluent-boards'),
             ], 200);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
     public function readNotification(Request $request)
     {
-        try{
+        try {
             $notificationId = $request->getSafe('notification_id');
 
-            if ( $notificationId ) {
-                $notification = $this->notificationService->markNotificationRead( $notificationId );
+            if ($notificationId) {
+                $notification = $this->notificationService->markNotificationRead($notificationId);
             } else {
-                $notification =  $this->notificationService->markAllRead();
+                $notification = $this->notificationService->markAllRead();
             }
 
             return $this->sendSuccess([
@@ -104,7 +104,7 @@ class NotificationController extends Controller
             ], 200);
 
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 }

@@ -3413,7 +3413,31 @@ class Builder
                 $this->toSql(), $this->getBindings(), ! $this->useWritePdo
             );
         }))->map(function ($item) {
-            return $this->applyAfterQueryCallbacks(Helper::collect([$item]))->first();
+            return $this->applyAfterQueryCallbacks(
+                Helper::collect([$item])
+            )->first();
+        })->reject(fn ($item) => is_null($item));
+    }
+
+    /**
+     * Get a lazy collection for the given query.
+     *
+     * @return \FluentBoards\Framework\Support\LazyCollection
+     */
+    public function rawCursor()
+    {
+        if (is_null($this->columns)) {
+            $this->columns = ['*'];
+        }
+
+        return (new LazyCollection(function () {
+            yield from $this->connection->rawCursor(
+                $this->toSql(), $this->getBindings(), ! $this->useWritePdo
+            );
+        }))->map(function ($item) {
+            return $this->applyAfterQueryCallbacks(
+                Helper::collect([$item])
+            )->first();
         })->reject(fn ($item) => is_null($item));
     }
 
@@ -3427,7 +3451,9 @@ class Builder
     protected function enforceOrderBy()
     {
         if (empty($this->orders) && empty($this->unionOrders)) {
-            throw new RuntimeException('You must specify an orderBy clause when using this function.');
+            throw new RuntimeException(
+                'You must specify an orderBy clause when using this function.'
+            );
         }
     }
 

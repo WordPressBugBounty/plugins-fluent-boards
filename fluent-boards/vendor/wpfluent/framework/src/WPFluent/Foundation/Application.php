@@ -9,7 +9,7 @@ use FluentBoards\Framework\Http\Client;
 use FluentBoards\Framework\Foundation\Config;
 use FluentBoards\Framework\Container\Container;
 use FluentBoards\Framework\Foundation\ComponentBinder;
-use FluentBoards\Framework\Foundation\FoundationTrait;
+use FluentBoards\Framework\Foundation\Concerns\FoundationTrait;
 
 class Application extends Container
 {
@@ -72,6 +72,13 @@ class Application extends Container
     protected $onReady = [];
 
     /**
+     * Flag to check if components are bound.
+     * 
+     * @var boolean
+     */
+    protected $componentsBound = false;
+
+    /**
      * Construct the application instance
      * 
      * @param string $file The main plugin file's absolute path
@@ -100,6 +107,12 @@ class Application extends Container
         $this->baseUrl = plugin_dir_url($this->file);
     }
 
+    /**
+     * Load the environment bariables from .env file.
+     * 
+     * @param  string $path
+     * @return void
+     */
     protected function loadEnvironmentVars($path = null)
     {
         $path = $path ?: $this->basePath . '.env';
@@ -160,7 +173,6 @@ class Application extends Container
         $this->loadConfigIfExists();
         $this->registerTextdomain();
         $this->bindCoreComponents();
-        // $this->registerAsyncActions();
         $this->requireCommonFiles($this);
         $this->addRestApiInitAction($this);
     }
@@ -238,6 +250,7 @@ class Application extends Container
 
     /**
      * Resolve the given type from the container.
+     * This method is required for unit testing.
      *
      * @param  string  $abstract
      * @param  array   $parameters
@@ -291,7 +304,10 @@ class Application extends Container
      */
     protected function bindCoreComponents()
     {
-        (new ComponentBinder($this))->bindComponents();
+        if (!$this->componentsBound) {
+            $this->componentsBound = true;
+            (new ComponentBinder($this))->bindComponents();
+        }
     }
 
     /**
@@ -491,16 +507,6 @@ class Application extends Container
     {
         $this->onReady[] = $callback;
     }
-
-    /**
-     * Register Async Actions.
-     * 
-     * @return void
-     */
-    // protected function registerAsyncActions()
-    // {
-    //     Client::registerAsyncRequestHandler();
-    // }
 
     /**
      * Execute plugin booted callbacks.

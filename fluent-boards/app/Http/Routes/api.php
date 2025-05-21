@@ -76,7 +76,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->put('/stage/{stage_id}/sort-task', 'StageController@sortStageTasks')->int('board_id')->int('stage_id');
     $router->put('/stage/{stage_id}/archive-all-task', 'BoardController@archiveAllTasksInStage')->int('board_id')->int('stage_id');
     $router->put('/change-stage-position', 'BoardController@changePositionOfStage')->int('board_id');
-    $router->put('/re-position-stages', 'BoardController@rePositionStages')->int('board_id');
+    $router->put('/re-position-stages', 'BoardController@repositionStages')->int('board_id');
     $router->put('/update-stage/{stage_id}', 'StageController@updateStage')->int('board_id'); //Todo:: will delete later
     $router->put('/update-stage-property/{stage_id}', 'StageController@updateStageProperty')->int('board_id');
     $router->put('/archive-stage/{stage_id}', 'BoardController@archiveStage')->int('board_id');
@@ -98,6 +98,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->post('/import-from-board', 'BoardController@importFromBoard')->int('board_id');
 
     $router->put('/upload/background', 'BoardController@setBoardBackground')->int('board_id');
+    $router->post('/upload/background-image', 'BoardController@uploadBoardBackground')->int('board_id');
     $router->put('/archive-board', 'BoardController@archiveBoard')->int('board_id');
     $router->put('/restore-board', 'BoardController@restoreBoard')->int('board_id');
 

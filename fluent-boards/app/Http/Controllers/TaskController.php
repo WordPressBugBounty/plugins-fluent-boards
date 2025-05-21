@@ -7,6 +7,7 @@ use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
+use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Services\CommentService;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
@@ -265,6 +266,10 @@ class TaskController extends Controller
         $task->is_watching = $task->isWatching();
         $task->assignees = Helper::sanitizeUserCollections($task->assignees);
 
+        if ($task->parent_id) {
+           $task->subtask_group_id  = TaskMeta::where('task_id', $task->id)->where('key', Constant::SUBTASK_GROUP_CHILD)->value('value');
+        }
+
         // A recent update to a task might impact other tasks on the board.
         $updatedTasks = $this->taskService->getLastOneMinuteUpdatedTasks($board_id);
         $taskExists = false;
@@ -300,12 +305,16 @@ class TaskController extends Controller
             }
         }
 
-        $task = $this->taskService->updateTaskProperty('started_at', $startAt, $task);
-        $task = $this->taskService->updateTaskProperty('due_at', $dueAt, $task);
+        if($startAt) {
+            $task = $this->taskService->updateTaskProperty('started_at', $startAt, $task);
+        }
+        if($dueAt){
+            $task = $this->taskService->updateTaskProperty('due_at', $dueAt, $task);
+        }
 
         return [
             'task'         => $task,
-            'message'      => __('Dates has been updated', 'fluent-boards'),
+            'message'      => __('Dates have been updated', 'fluent-boards'),
             'updatedTasks' => $this->taskService->getLastOneMinuteUpdatedTasks($board_id),
         ];
     }
@@ -401,6 +410,9 @@ class TaskController extends Controller
                 $col => $rule,
             ]);
         }
+
+        // If the column is not found in the rules array, throw an exception
+        throw new \Exception(sprintf(__('Invalid property: %s', 'fluent-boards'), $col));
     }
 
     public function getLabelsByTask($task_id)
@@ -618,7 +630,9 @@ class TaskController extends Controller
             $task = Task::find($task_id);
             $settings = $task->settings;
             $this->taskService->deleteTaskCoverImage($settings);
+            error_log('Task Cover Image: ' . print_r($fileUploadedData->toArray(), true));
             $publicUrl = (new CommentService())->createPublicUrl($fileUploadedData, $board_id);
+
             $settings['cover'] = [
                 'imageId' => $fileUploadedData['id'],
                 'backgroundImage' => $publicUrl,

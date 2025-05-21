@@ -324,6 +324,17 @@ class Helper
 
     public static function sanitizeUserCollections($users)
     {
+        foreach ($users as $key => $user) {
+            if (is_object($user) && isset($user->pivot)) {
+                $settings = maybe_unserialize($user->pivot->settings);
+                $user->role = Arr::get($settings, 'is_admin')
+                    ? 'Admin'
+                    : (Arr::has($settings, 'is_viewer_only') && Arr::get($settings, 'is_viewer_only')
+                        ? 'Viewer'
+                        : 'Member');
+            }
+        }
+        
         if (current_user_can('list_users')) {
             return $users;
         }

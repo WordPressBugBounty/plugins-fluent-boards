@@ -199,12 +199,24 @@ class ActivityHandler
     {
         $this->createLogActivity($parentTask->id, 'added', 'subtask', null, $subTask->title);
     }
+    public function logSubtaskGroupAddedActivity($task_id, $subTaskGroup)
+    {
+        $this->createLogActivity($task_id, 'added', 'subtask group', null, $subTaskGroup->value);
+    }
 
     public function logSubtaskDeletedActivity($id, $subTaskTitle)
     {
         $this->createLogActivity($id, 'removed', 'subtask', null, $subTaskTitle);
     }
 
+    public function logSubtaskGroupDeletedActivity($task_id, $subTaskGroup)
+    {
+        $this->createLogActivity($task_id, 'removed', 'subtask group', null, $subTaskGroup->value);
+    }
+    public function logSubtaskGroupTitleUpdatedActivity($oldTitle, $group)
+    {
+        $this->createLogActivity($group->task_id, 'changed', 'subtask group title', $oldTitle, $group->value);
+    }
     public function logTaskCompletedOrReopenActivity($task, $status)
     {
         if($status == 'closed'){
@@ -336,5 +348,40 @@ class ActivityHandler
         }else{
             $this->createLogActivity($task->id, 'archived', 'task', $task->title);
         }
+    }
+
+    public function logRepeatTaskCreatedActivity($newTask, $parentTask)
+    {
+        $this->createLogActivity(
+            $newTask->id,
+            'created',
+            'repeat task',
+            $newTask->title,
+            $parentTask->title,
+            null,
+            $parentTask
+        );
+    }
+
+    public function logRepeatTaskSet($newTask)
+    {
+        $this->createLogActivity(
+            $newTask->id,
+            'set',
+            'Repeat Task',
+            null,
+            null,
+        );
+    }
+
+    public function logRepeatTaskUpdated($newTask)
+    {
+        $this->createLogActivity(
+            $newTask->id,
+            'updated',
+            'Repeat Task',
+            null,
+            null
+        );
     }
 }

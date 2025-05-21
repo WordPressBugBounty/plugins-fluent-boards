@@ -16,6 +16,7 @@ use FluentBoards\Framework\Encryption\Encrypter;
 use FluentBoards\Framework\Database\Orm\Model;
 use FluentBoards\Framework\Validator\Validator;
 use FluentBoards\Framework\Foundation\RequestGuard;
+use FluentBoards\Framework\Database\DBManager;
 use FluentBoards\Framework\Database\ConnectionResolver;
 use FluentBoards\Framework\Database\Query\WPDBConnection;
 use FluentBoards\Framework\Pagination\AbstractCursorPaginator;
@@ -286,15 +287,22 @@ class ComponentBinder
      */
     protected function bindDB()
     {
-        $this->app->singleton('db', function($app) {
-            return new WPDBConnection(
-                $GLOBALS['wpdb'], $app->config->get('database')
-            );
-        });
+        $resolver = new ConnectionResolver([
+            'mysql' => new WPDBConnection(
+                $GLOBALS['wpdb'], 
+                $this->app->config->get('database')
+            )
+        ]);
 
-        Model::setEventDispatcher($this->app['events']);
+        $resolver->setDefaultConnection('mysql');
+
+        Model::setConnectionResolver($resolver);
         
-        Model::setConnectionResolver(new ConnectionResolver);
+        Model::setEventDispatcher($this->app['events']);
+
+        $this->app->singletonIf('db', function($app) use ($resolver) {
+            return new DBManager($resolver);
+        });
     }
 
     /**

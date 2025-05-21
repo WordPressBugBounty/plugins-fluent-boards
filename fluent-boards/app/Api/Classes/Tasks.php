@@ -23,9 +23,9 @@ use FluentBoards\App\Services\Constant;
 
 
 /**
- * Contacts Class - PHP APi Wrapper
+ * Tasks Class - PHP API Wrapper
  *
- * Contacts API Wrapper Class that can be used as <code>FluentBoardsApi('tasks')</code> to get the class instance
+ * Tasks API Wrapper Class that can be used as <code>FluentBoardsApi('tasks')</code> to get the class instance
  *
  * @package FluentBoards\App\Api\Classes
  * @namespace FluentBoards\App\Api\Classes
@@ -198,7 +198,7 @@ class Tasks
 
         if(!empty($data['contact_email']) && empty($data['crm_contact_id'])) {
             // Find first if the contact exists
-            $contact = FluentCrmApi('contacts')->creteOrUpdate([
+            $contact = FluentCrmApi('contacts')->createOrUpdate([
                 'email' => $data['contact_email'],
                 'first_name' => $data['contact_first_name'],
                 'last_name' => $data['contact_last_name'],

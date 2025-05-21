@@ -52,13 +52,14 @@ class CommentController extends Controller
     public function create(Request $request, $board_id, $task_id)
     {
         // TODO: Refactor the whole request and sanitize process here.. minimize the code in this functions.
-        
         $requestData = [
-            'parent_id'     => $request->parent_id,
-            'description'   => $request->comment,
-            'created_by'    => $request->comment_by,
-            'task_id'       => $task_id,
-            'type'          => $request->comment_type ? $request->comment_type : 'comment',
+            'parent_id'     => $request->getSafe('parent_id', function ($value) {
+                return (empty($value)) ? null : intval( $value);
+            }, null),
+            'description'   => $request->getSafe('comment', 'sanitize_textarea_field'),
+            'created_by'    => $request->getSafe('comment_by', 'intval', get_current_user_id()),
+            'task_id'       => (int) $task_id,
+            'type'          => $request->getSafe('comment_type', 'sanitize_text_field', 'comment'),
             'board_id'      => (int) $board_id,
         ];
         $validationRules = [
@@ -81,9 +82,9 @@ class CommentController extends Controller
             $rawDescription = $commentData['description'];
             $commentData['settings'] = [ 'raw_description' => $rawDescription, 'mentioned_id' => $request->mentionData ];
 
-            // Ensure UTF-8 encoding for comment description 
+            // Ensure UTF-8 encoding for comment description
             $description = mb_convert_encoding($commentData['description'], 'UTF-8', 'auto');
-            
+
             if($request->mentionData) {
                 // Process mentions and links with UTF-8 support
                 $commentData['description'] = $this->commentService->processMentionAndLink($description, $request->mentionData);
@@ -133,15 +134,12 @@ class CommentController extends Controller
                 'comment' => $comment
             ], 201);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 
     public function update(Request $request, $board_id, $comment_id)
     {
-//        $commentData = $this->commentSanitizeAndValidate($request->all(), [
-//            'description' => 'required|string',
-//        ]);
         $requestData = [
             'description'   => $request->comment
         ];
@@ -157,22 +155,22 @@ class CommentController extends Controller
         $commentData = $this->commentSanitizeAndValidate($requestData, $validationRules);
 
         try {
-            $comment = $this->commentService->update($commentData, $comment_id, $request->mentionData);
+            $comment = $this->commentService->update($commentData, $comment_id, $request->getSafe('mentionData'));
 
-            if($request->mentionData)
-            {
-                $this->notificationService->mentionInComment($comment, $request->mentionData);
-            }
-
-            if($request->images)
-            {
-                $this->commentService->attachCommentImages($comment, $request->images);
-                $comment->load(['images']);
-            }
-
-            if ( !$comment ) {
+            if (!$comment) {
                 $errorMessage = __('Unauthorized Action', 'fluent-boards');
                 return $this->sendError($errorMessage, 401);
+            }
+
+            if($request->getSafe('mentionData'))
+            {
+                $this->notificationService->mentionInComment($comment, $request->getSafe('mentionData'));
+            }
+
+            if($request->getSafe('images'))
+            {
+                $this->commentService->attachCommentImages($comment, $request->getSafe('images'));
+                $comment->load(['images']);
             }
 
             $comment->load('user');

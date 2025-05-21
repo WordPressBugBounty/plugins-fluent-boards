@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.3
-Stable tag: 1.48
+Stable tag: 1.60
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,7 +169,26 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
-
+= v1.60 (Date: May 21, 2025) =
+- New: Introduced Subtask Group
+- New: Single Board shortcode Functionality
+- New: Custom color support for stage background
+- Improvement: More Optimized UI in List View, Subtask Section etc.
+- Improvement: Scroll to top functionality in task details page
+- Improvement: User image now sourced from WordPress user profile
+- Improvement: Custom field option added in Board Menu
+- Improvement: Task description editor sync and collapse icon added
+- Improvement: Background image upload switched from WP Media to local directory
+- Improvement: Create label directly from empty search
+- Improvement: Added Activity tracking for repeat tasks
+- Improvement : Ability to delete board label
+- Fixed: Global add-task and stage save button multi-click issue
+- Fixed: Multiple emails sent issue on member invitations
+- Fixed: Disappearing search popup Issue for keyword "4466" in search
+- Fixed: Mention Issue in comments for usernames containing emails or space-separated words
+- Fixed: Stage header title text selection issue
+- Fixed: CRM contact not showing in task
+- Other Improvements
 
 = v1.48 (Date: April 10, 2025) =
 - New: Customizable tabs in 'My Tasks' of Dashboard
@@ -180,7 +199,7 @@ You can filter any task by assignees, stages, and task priorities.
 - Security: Updated Framework Library
 - Improvement: Board Duplication Includes Templates & background
 - Improvement: Copy task links directly from the task card
-- Improvement: Navbar UI Updateds for small screens
+- Improvement: Navbar UI Updated for small screens
 - Improvement: Task attachments now support uploading multiple files at once.
 - Improvement: Added the ability to delete a time log
 - Fixed: Custom Login URL Redirect Issue in Roadmap Authentication Settings

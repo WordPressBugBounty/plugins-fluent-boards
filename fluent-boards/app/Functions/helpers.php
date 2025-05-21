@@ -22,6 +22,21 @@ if (!function_exists('FluentBoardsApi')) {
 if (!function_exists('fluent_boards_user_avatar')) {
     function fluent_boards_user_avatar($email, $name = '')
     {
+        $user = get_user_by('email', $email);
+
+        if($user) {
+            $has_custom_avatar = get_user_meta($user->ID, 'wp_user_avatar', true);
+            if ($has_custom_avatar) {
+                $custom_avatar_attachment = get_post($has_custom_avatar);
+                if ($custom_avatar_attachment) {
+                    $avatar_url = wp_get_attachment_url($has_custom_avatar);
+                    return apply_filters('fluent_boards/get_avatar', $avatar_url, $email);
+                }
+            }
+            $avatar_url = get_avatar_url($user->ID, array('size' => 128));
+            return apply_filters('fluent_boards/get_avatar', $avatar_url, $email);
+        }
+
         $hash = md5(strtolower(trim($email)));
         /**
          * Gravatar URL by Email

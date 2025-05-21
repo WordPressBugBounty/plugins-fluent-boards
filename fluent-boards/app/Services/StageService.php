@@ -5,8 +5,10 @@ namespace FluentBoards\App\Services;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Stage;
+use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\Framework\Support\Arr;
+use FluentBoards\App\Services\Constant;
 
 class StageService
 {
@@ -216,12 +218,14 @@ class StageService
 
     public function importTasks($boardId, $stageMapper, $stageIds)
     {
-        $tasksToImport = Task::whereIn('stage_id', $stageIds)->whereNull('archived_at')->get();
-
+        $tasksToImport = $this->getAllParentAndSubTasksOfStages($stageIds);
+        $taskMap = [];
+        $subtaskGroupMap = [];
         foreach($tasksToImport as $task)
         {
             $newTask = array();
             $newTask['title'] = $task->title;
+            $newTask['parent_id'] = $task->parent_id ? $taskMap[$task->parent_id] : null;
             $newTask['description'] = $task->description;
             $newTask['board_id'] = $boardId;
             $newTask['stage_id'] = $stageMapper[$task->stage_id];
@@ -229,7 +233,31 @@ class StageService
             $newTask['priority'] = $task->priority;
             $newTask['position'] = $task->position;
             $newTask['due_at'] = $task->due_at;
-            Task::create($newTask);
+            $backgroundColor = $task->settings['cover']['backgroundColor'];
+            $newTask['settings'] = [
+                'cover' => [
+                    'backgroundColor' => $backgroundColor,
+                ]
+            ];
+            $newTask = Task::create($newTask);
+
+            if (!$task->parent_id) {
+                $taskMap[$task->id] = $newTask->id;
+                //group mapping
+                $subtaskGroupMap = (new TaskService())->copySubtaskGroup($task, $newTask, $subtaskGroupMap);
+            } else {
+                $groupRelationOfTask = TaskMeta::where('key', Constant::SUBTASK_GROUP_CHILD)
+                    ->where('task_id', $task->id)
+                    ->first();
+
+                if ($groupRelationOfTask && $subtaskGroupMap[$groupRelationOfTask->value]) {
+                    TaskMeta::create([
+                        'task_id' => $newTask->id,
+                        'key' => Constant::SUBTASK_GROUP_CHILD,
+                        'value' => $subtaskGroupMap[$groupRelationOfTask->value]
+                    ]);
+                }
+            }
         }
 
         //update task count of board
@@ -447,5 +475,26 @@ class StageService
 
             return $stage;
         }
+    }
+
+    public function getAllParentAndSubTasksOfStages($stageIds)
+    {
+        // Fetch parent task IDs for the given stage_ids
+        $parentTaskIds = Task::whereIn('stage_id', $stageIds)
+            ->whereNull('archived_at')
+            ->whereNull('parent_id')
+            ->pluck('id');
+
+        // Fetch parent tasks and subtasks in a single query
+        $tasks = Task::whereIn('stage_id', $stageIds)
+            ->whereNull('parent_id')
+            ->whereNull('archived_at')
+            ->get();
+
+        $subtasks = Task::whereIn('parent_id', $parentTaskIds)
+            ->get();
+
+        // Combine parent tasks and subtasks into a single collection
+        return $tasks->merge($subtasks);
     }
 }

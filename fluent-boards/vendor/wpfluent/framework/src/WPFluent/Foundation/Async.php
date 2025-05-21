@@ -233,7 +233,7 @@ class Async
 	 * Validate the handler and add a sign to mark as dispatched.
 	 * 
 	 * @param  string (Class@handler or with __invoke method) $handler
-	 * @return string
+	 * @return array
 	 * @throws \InvalidArgumentException
 	 */
 	public function validate($handler, $params, $sign)

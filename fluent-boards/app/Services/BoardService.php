@@ -281,7 +281,7 @@ class BoardService
         do_action('fluent_boards/board_stage_dragged', $changedStage);
     }
 
-    public function rePositionStages($boardId, $incomingList)
+    public function repositionStages($boardId, $incomingList)
     {
         $oldList = Stage::where('board_id', $boardId)->where('type', 'stage')->whereNull('archived_at')->orderBy('position')->pluck('id');
 
@@ -433,6 +433,7 @@ class BoardService
     public function setBoardBackground($backgroundData, $board_id)
     {
         $board = Board::find($board_id);
+        $oldBackground = $board->background;
         $background = $board->background;
 
         // if board background has color
@@ -452,6 +453,7 @@ class BoardService
 
         $board->background = $background;
         $board->save();
+        do_action('fluent_boards/board_background_updated', $board_id, $oldBackground);
 
         return $board->background;
     }
@@ -734,7 +736,6 @@ class BoardService
         $stages = [];
         $labels = [];
         $tasks = [];
-        $labels = [];
         $taskDeleted = false;
         $stageDeleted = false;
         $labelDeleted = false;
@@ -785,6 +786,9 @@ class BoardService
         foreach ($tasks as $task) {
             $task->isOverdue = $task->isOverdue();
             $task->isUpcoming = $task->upcoming();
+            $task->is_watching = $task->isWatching();
+            $task->contact = Helper::crm_contact($task->crm_contact_id);
+            $task->assignees = Helper::sanitizeUserCollections($task->assignees);
         }
 
         $board->background = \maybe_unserialize($board->background);
