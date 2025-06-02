@@ -2,12 +2,14 @@
 
 namespace FluentBoards\App\Services\Intergrations\FluentFormIntegration;
 
+use FluentBoards\App\Hooks\Handlers\AdminMenuHandler;
 use FluentBoards\App\Models\Label;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\NotificationService;
 use FluentBoards\App\Services\TaskService;
+use FluentBoardsPro\App\Models\TaskAttachment;
 use FluentForm\App\Http\Controllers\IntegrationManagerController;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\App\Models\Board;
@@ -191,6 +193,13 @@ class Bootstrap extends IntegrationManagerController
                     'component' => 'number'
                 ],
                 [
+                    'key'            => 'map_files',
+                    'label'          => 'Files/Attachments',
+                    'tips'           => "This will map all the Files/Images from the form submission to the task.",
+                    'component'      => 'checkbox-single',
+                    'checkbox_label' => 'Map Files/Attachments to Task',
+                ],
+                [
                     'key'          => 'conditionals',
                     'label'        => 'Conditional Logics',
                     'tips'         => 'Allow integration conditionally based on your submission values',
@@ -232,11 +241,7 @@ class Bootstrap extends IntegrationManagerController
             'stage_id'       => [],
             'board_label_id' => [],
             'member_ids'     => [],
-            'priority'       => [
-                'low'    => 'Low',
-                'medium' => 'Medium',
-                'high'   => 'High'
-            ]
+            'priority'       => apply_filters('fluent_boards/task_priorities', (new AdminMenuHandler())->getDefaultPriorities()),
         ];
 
         if ($boardId) {
@@ -305,6 +310,7 @@ class Bootstrap extends IntegrationManagerController
             $submitterName = trim(Arr::get($feedData, 'submitter_name'));
             $submitterEmail = Arr::get($feedData, 'submitter_email');
             $due_at_days = Arr::get($feedData, 'due_at_days');
+            $mapFiles = Arr::get($feedData, 'map_files');
             $watcher = Arr::get($feedData, 'watcher_id');
             $crateCRMContact = Arr::get($feedData, 'create_crm_contact');
 
@@ -404,6 +410,39 @@ class Bootstrap extends IntegrationManagerController
                     }
                 }
 
+                if ($mapFiles) {
+                    $results = [];
+
+                    // Loop through the array to find keys starting with 'image-upload' or 'file-upload'
+                    foreach ($formData as $key => $value) {
+                        if (preg_match('/^(image-upload|file-upload)/', $key)) {
+                            foreach ($value as $file_url) {
+                                $results[] = $file_url;
+                            }
+                        }
+                    }
+
+
+                    foreach ($results as $attachment) {
+                        $urlMeta = [
+                            'title' => 'Uploaded from FluentForm',
+                            'type'  => 'meta_data',
+                            'url' => esc_url($attachment)
+                        ];
+                        $urlData['settings'] = ['meta' => $urlMeta];
+                        // creating new attachment object
+                        $attachment = new TaskAttachment();
+                        $attachment->object_id = $task->id;
+                        $attachment->object_type = \FluentBoards\App\Services\Constant::TASK_ATTACHMENT;
+                        $attachment->attachment_type = 'url';
+                        $attachment->title = 'Uploaded File from Fluent Form';
+                        $attachment->full_url = $urlMeta['url'];
+                        $attachment->settings = $urlData['settings'] ?? '';
+                        $attachment->driver = 'local';
+                        $attachment->save();
+                    }
+                }
+
                 $successMessage = __('Fluent Boards feed has been successfully initialized and data has been pushed.', 'fluent-boards');
                 do_action('fluentform/integration_action_result', $feed, 'success', $successMessage);
             } else {
@@ -466,4 +505,5 @@ class Bootstrap extends IntegrationManagerController
         }
         return null;
     }
+
 }

@@ -87,6 +87,7 @@ class BoardController extends Controller
 
         foreach ($relatedBoards as $relatedBoard) {
             $relatedBoard->users = Helper::sanitizeUserCollections($relatedBoard->users);
+            $relatedBoard->is_pinned = $this->boardService->isPinned($relatedBoard->id);
         }
 
         return $this->sendSuccess([
@@ -141,6 +142,7 @@ class BoardController extends Controller
 
         foreach ($boards as $board) {
             $board->users = Helper::sanitizeUserCollections($board->users);
+            $board->is_pinned = $this->boardService->isPinned($board->id);
         }
 
         return [
@@ -309,6 +311,8 @@ class BoardController extends Controller
 
         $board->users = Helper::sanitizeUserCollections($board->users);
         $board->owner = Helper::sanitizeUserCollections($board->owner);
+
+        $board->is_pinned = $this->boardService->isPinned($board->id);
 
         $board = apply_filters('fluent_boards/board_find', $board);
 
@@ -1049,6 +1053,39 @@ class BoardController extends Controller
             'message'    => __('Background updated successfully', 'fluent-boards'),
             'background' => $board->background,
         ]);
+    }
+
+    public function getPinnedBoards()
+    {
+        $pinnedBoards = $this->boardService->getPinnedBoards();
+
+        return $this->sendSuccess([
+            'pinnedBoards' => $pinnedBoards,
+        ], 200);
+    }
+
+    public function pinBoard($boardId)
+    {
+        $this->boardService->pinBoard($boardId);
+
+        return $this->sendSuccess([
+            'message' => __('The Board has been pinned', 'fluent-boards'),
+        ], 200);
+    }
+
+    public function unpinBoard($boardId)
+    {
+        $remove = $this->boardService->unpinBoard($boardId);
+
+        if (!$remove) {
+            return $this->sendError([
+                'message' => __('Board is not pinned', 'fluent-boards'),
+            ], 400);
+        }
+
+        return $this->sendSuccess([
+            'message' => __('Board is removed from pinned boards', 'fluent-boards'),
+        ], 200);
     }
 
 }

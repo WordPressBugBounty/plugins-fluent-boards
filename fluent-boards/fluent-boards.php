@@ -5,7 +5,7 @@ defined('ABSPATH') or exit;
 /**
 Plugin Name: Fluent Boards - Project Management Tool
 Description: Fluent Boards is a powerful tool designed for efficient management of to-do lists, projects, and tasks with kanban board and more..
-Version: 1.60
+Version: 1.65
 Author: WPManageNinja
 Author URI: https://fluentboards.com
 Plugin URI: https://fluentboards.com
@@ -20,7 +20,7 @@ if (defined('FLUENT_BOARDS')) {
 }
 
 define('FLUENT_BOARDS', 'fluent-boards');
-define('FLUENT_BOARDS_PLUGIN_VERSION', '1.60');
+define('FLUENT_BOARDS_PLUGIN_VERSION', '1.65');
 define('FLUENT_BOARDS_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('FLUENT_BOARDS_DIR_FILE', __FILE__);
 define('FLUENT_BOARDS_PLUGIN_URL', plugin_dir_url(__FILE__));

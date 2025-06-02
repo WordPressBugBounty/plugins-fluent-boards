@@ -2,9 +2,9 @@
 Contributors: techjewel,adreastrian,wpmanageninja
 Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
-Tested up to: 6.7
+Tested up to: 6.8
 Requires PHP: 7.3
-Stable tag: 1.60
+Stable tag: 1.65
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -34,7 +34,7 @@ Create projects, assign members, set priority, manage multi-stage workflows, rec
 ✅ Easily identify and resolve any bottlenecks for smooth task management
 ✅ Filter and check task progress by assignee, due date, priority, and labels
 ✅ Change or reorder task stages by simply dragging or moving
-✅ Switch between Kaban and the  table view to visualize tasks differently
+✅ Switch between Kanban and the  table view to visualize tasks differently
 ✅ Communicate with the team, receive in-depth activity history, and improve coordination
 ✅ Drop and share links or important files in any task or comment
 ✅ Customize the board background and make your workspace unique
@@ -44,7 +44,7 @@ Create projects, assign members, set priority, manage multi-stage workflows, rec
 
 
 = 🗂️PROJECT MANAGEMENT =
-Managing projects is a nightmare when you select the wrong tool. But with FluentBoards you’ll enjoy the simplest management of the toughest projects!
+Managing projects is a nightmare when you select the wrong tool. But with FluentBoards you'll enjoy the simplest management of the toughest projects!
 
 From creating projects to completing to-dos, the journey is enjoyable and stress-free, making your workflow smooth and helping you achieve goals in the smartest way possible!
 
@@ -146,7 +146,7 @@ Absolutely! You can administrate multiple projects effortlessly.
 No, you can easily manage your projects without requiring any technical knowledge or coding skills.
 
 = Is my information safe? =
-Yes! You don’t need to bother about your information going out of your website like SaaS solutions. You have complete control over your data.
+Yes! You don't need to bother about your information going out of your website like SaaS solutions. You have complete control over your data.
 
 = Is it scalable for both small and large projects? =
 Yes, it is designed to be scalable, meaning you can effortlessly handle small and large projects.
@@ -169,6 +169,26 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v1.65 (Date: June 02, 2025) =
+- New: Pinned board functionality for quick access to important boards
+- New: Direct task creation from image drops or pastes
+- New: Enhanced task filtering by CRM contact association
+- New: Task filtering by watchers for better task tracking
+- New: Background blur effect in task details dialog for improved focus
+- New: Customizable task priority levels via filter hook
+- Improvement: Attachments/Files can be mapped with Task from Fluent Form
+- Improvement: Added search functionality in move card popover
+- Improvement: Customizable task tabs for comments and activities via filter hook
+- Improvement: Enhanced comment reply interface
+- Improvement: Improved subtask and group creation UX workflow
+- Improvement: Direct subtask group creation from CRM contact section
+- Fixed: Removed background styling from task title input in list view
+- Fixed: Input Method Editor (IME) compatibility in subtask fields
+- Fixed: Task date removal functionality issue
+- Fixed: Translation Issue
+- Other Improvements & Bug Fixes
+
 = v1.60 (Date: May 21, 2025) =
 - New: Introduced Subtask Group
 - New: Single Board shortcode Functionality
@@ -181,7 +201,7 @@ You can filter any task by assignees, stages, and task priorities.
 - Improvement: Background image upload switched from WP Media to local directory
 - Improvement: Create label directly from empty search
 - Improvement: Added Activity tracking for repeat tasks
-- Improvement : Ability to delete board label
+- Improvement: Ability to delete board label
 - Fixed: Global add-task and stage save button multi-click issue
 - Fixed: Multiple emails sent issue on member invitations
 - Fixed: Disappearing search popup Issue for keyword "4466" in search

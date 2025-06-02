@@ -13,7 +13,7 @@ class UpdateHandler
         $lastDbVersion = get_option('_fluent_boards_db_version');
         if (!$lastDbVersion || version_compare($lastDbVersion, FLUENT_BOARDS_DB_VERSION, '<')) {
             // the last updated version is less than the current version
-            self::adjustOldSubtasksToSubtaskGroup();
+//            self::adjustOldSubtasksToSubtaskGroup();
             update_option('_fluent_boards_db_version', FLUENT_BOARDS_DB_VERSION);
         }
 

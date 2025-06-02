@@ -15,6 +15,7 @@ use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\BoardTerm;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoardsPro\App\Modules\TimeTracking\TimeTrackingHelper;
+use FluentBoardsPro\App\Services\AttachmentService;
 use FluentBoardsPro\App\Services\ProTaskService;
 use FluentBoardsPro\App\Services\RemoteUrlParser;
 use FluentRoadmap\App\Models\IdeaReaction;
@@ -368,7 +369,11 @@ class TaskService
 
         $task = $task->reopen();
 
-        do_action('fluent_boards/task_due_date_changed', $task, $oldValue);
+        if($value){
+            do_action('fluent_boards/task_due_date_changed', $task, $oldValue);
+        } else {
+            do_action('fluent_boards/task_due_date_removed', $task);
+        }
 
         $wathersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_DUE_DATE_CHANGE);
         $this->sendMailAfterTaskModify('due_date_update', $wathersToSendEmail, $task->id);
@@ -381,7 +386,9 @@ class TaskService
         $task->started_at = $value;
         $task->save();
 
-        do_action('fluent_boards/task_start_date_changed', $task, $oldValue);
+        if($value){
+            do_action('fluent_boards/task_start_date_changed', $task, $oldValue);
+        }
     }
 
     private function updatePriority($value, $task)
@@ -1006,6 +1013,56 @@ class TaskService
         }
     }
 
+    public function createTaskFromImage($board_id, $stage_id, $uploadInfo, $file)
+    {
+
+        $board = Board::find($board_id);
+        $task = new Task();
+        $taskType = $board->type === 'to-do' ? 'task' : 'roadmap' ;
+        $taskData = [
+            'title' => $uploadInfo[0]['name'],
+            'board_id' => $board_id,
+            'stage_id' => $stage_id,
+            'type' => $taskType,
+        ];
+        $task->fill($taskData);
+        $task->save();
+
+        $fileData = $uploadInfo[0];
+        $fileUploadedData = $this->uploadMediaFileFromWpEditor($task->id, $fileData, Constant::TASK_DESCRIPTION);
+        if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
+            $mediaData = (new AttachmentService())->processMediaData($fileData, $file);
+            $fileUploadedData['driver'] = $mediaData['driver'];
+            $fileUploadedData['file_path'] = $mediaData['file_path'];
+            $fileUploadedData['full_url'] = $mediaData['full_url'];
+            $fileUploadedData->save();
+        }
+
+        $settings = $task->settings;
+        $settings['cover'] = [
+            'imageId' => $fileUploadedData['id'],
+            'backgroundImage' => (new CommentService())->createPublicUrl($fileUploadedData, $board_id),
+        ];
+        $task->settings = $settings;
+        $task = $task->moveToNewPosition(1);
+        $task->save();
+        $task->load(['board', 'stage', 'labels', 'assignees']);
+
+        $task->assignees = Helper::sanitizeUserCollections($task->assignees);
+
+        $task->isOverdue = $task->isOverdue();
+        $task->contact = Task::lead_contact($task->crm_contact_id);
+        $task->board->stages = (new StageService())->stagesByBoardId($board_id);
+        $task->is_watching = (new NotificationService())->isCurrentUserObservingTask($task);
+
+        $task = $this->loadNextStage($task);
+
+        if ($task->type == 'roadmap') {
+            $task->vote_statistics = $this->getIdeaVoteStatistics($task->id);
+        }
+
+        return $task;
+    }
     public function deleteTaskCoverImage($settings)
     {
         if (isset($settings['cover']['imageId']) && $settings['cover']['imageId']) {

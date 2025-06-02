@@ -22,6 +22,7 @@ use FluentBoards\App\Services\Helper;
 //$app->addCustomAction('task_prop_changed', 'ActivityHandler@logActivity', 10, 3);
 $app->addCustomAction('task_board_changed', 'ActivityHandler@logMoveTaskToAnotherBoardActivity', 10, 2); //will call from service after board change code merged
 $app->addCustomAction('task_due_date_changed', 'ActivityHandler@logDueDateActivity', 10, 2);
+$app->addCustomAction('task_due_date_removed', 'ActivityHandler@logDueDateRemoveActivity', 10, 1);
 $app->addCustomAction('task_start_date_changed', 'ActivityHandler@logStartDateActivity', 10, 2);
 
 $app->addCustomAction('task_priority_changed', 'ActivityHandler@logPriorityChangeActivity', 10, 2);
@@ -29,6 +30,7 @@ $app->addCustomAction('comment_created', 'ActivityHandler@logCommentCreateActivi
 $app->addCustomAction('comment_updated', 'ActivityHandler@logCommentUpdateActivity', 10, 2);
 $app->addCustomAction('comment_deleted', 'ActivityHandler@logCommentDeleteActivity', 10, 1);
 $app->addCustomAction('subtask_added', 'ActivityHandler@logSubtaskAddedActivity', 10, 2);
+$app->addCustomAction('subtask_cloned', 'ActivityHandler@logSubtaskCloneActivity', 10, 2);
 $app->addCustomAction('subtask_group_created', 'ActivityHandler@logSubtaskGroupAddedActivity', 10, 2);
 $app->addCustomAction('subtask_deleted_activity', 'ActivityHandler@logSubtaskDeletedActivity', 10, 2);
 $app->addCustomAction('subtask_group_deleted_activity', 'ActivityHandler@logSubtaskGroupDeletedActivity', 10, 2);
@@ -61,6 +63,7 @@ $app->addCustomAction('task_created', 'BoardHandler@taskCreatedOnBoard', 10, 1);
 $app->addCustomAction('before_task_deleted', 'BoardHandler@beforeTaskDeleted', 10, 2);
 $app->addCustomAction('task_deleted', 'BoardHandler@taskdeleted', 10, 1);
 $app->addCustomAction('task_moved_from_board', 'BoardHandler@taskMovedFromBoard', 10, 3);
+$app->addCustomAction('task_moved_from_board', 'ActivityHandler@taskMovedFromBoard', 10, 3);
 $app->addCustomAction('task_archived', 'BoardHandler@taskArchivedOnBoard', 10, 1);
 $app->addCustomAction('board_member_added', 'BoardHandler@boardMemberAdded', 10, 2);
 $app->addCustomAction('board_viewer_added', 'BoardHandler@boardViewerAdded', 10, 2);

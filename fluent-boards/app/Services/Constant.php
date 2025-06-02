@@ -310,4 +310,6 @@ class Constant{
 
     const SUBTASK_GROUP_NAME = 'group_name';
     const SUBTASK_GROUP_CHILD = 'subtask_group_id';
+
+    const USER_PINNED_BOARDS = 'pinned_boards';
 }

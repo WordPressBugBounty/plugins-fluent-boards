@@ -763,8 +763,14 @@ class BoardService
         }
 
         // if task in this board has been deleted
-        $taskDeletedOrMovedFormBoard = Activity::where('object_id', $boardId)->where('updated_at', '>=', $oneMinuteAgo)->where('action', 'deleted')->orWhere('action', 'moved')->where('column', 'task')->exists();
-
+        $taskDeletedOrMovedFormBoard = Activity::where('object_id', $boardId)
+            ->where('updated_at', '>=', $oneMinuteAgo)
+            ->where(function($query) {
+                $query->where('action', 'deleted')
+                    ->orWhere('action', 'moved');
+            })
+            ->where('column', 'task')
+            ->exists();
         if ($taskDeletedOrMovedFormBoard) {
             $tasksQuery = Task::query()
                 ->where([
@@ -789,6 +795,7 @@ class BoardService
             $task->is_watching = $task->isWatching();
             $task->contact = Helper::crm_contact($task->crm_contact_id);
             $task->assignees = Helper::sanitizeUserCollections($task->assignees);
+            $task->watchers = Helper::sanitizeUserCollections($task->watchers);
         }
 
         $board->background = \maybe_unserialize($board->background);
@@ -1049,4 +1056,101 @@ class BoardService
         return $user;
     }
 
+    private function getUserWisePinnedBoards()
+    {
+        $userId = get_current_user_id();
+
+        $pinnedBoardMeta = Meta::query()->where('object_id', $userId)
+            ->where('object_type', Constant::OBJECT_TYPE_USER)
+            ->where('key', Constant::USER_PINNED_BOARDS)
+            ->first();
+
+        return $pinnedBoardMeta;
+    }
+
+    public function getPinnedBoards()
+    {
+        $pinnedBoardMeta = $this->getUserWisePinnedBoards();
+
+        if (!$pinnedBoardMeta) {
+            return [];
+        } else {
+            $ids  = $pinnedBoardMeta->value;
+
+            // Convert to array of integers
+            $intIds = array_map('intval', $ids);
+
+            return Board::whereIn('id', $intIds)->whereNull('archived_at')->get();
+        }
+    }
+
+    public function pinBoard($boardId)
+    {
+        $pinnedBoardMeta = $this->getUserWisePinnedBoards();
+
+        if ($pinnedBoardMeta) {
+            $currentPinnedBoards = $pinnedBoardMeta->value;
+            if (!in_array($boardId, $currentPinnedBoards)) {
+                $currentPinnedBoards[] = $boardId;
+                $pinnedBoardMeta->value = $currentPinnedBoards;
+                $pinnedBoardMeta->save();
+            }
+        } else {
+            // Create an empty array
+            $boardIds = [];
+            $boardIds[] = $boardId;
+
+            $meta = new Meta();
+            $meta->object_id = get_current_user_id();
+            $meta->object_type = Constant::OBJECT_TYPE_USER;
+            $meta->key = Constant::USER_PINNED_BOARDS;
+            $meta->value = $boardIds;
+            $meta->save();
+        }
+    }
+
+    /**
+     * @param $boardId
+     * @return bool
+     */
+    public function unpinBoard($boardId)
+    {
+        $pinnedBoardMeta = $this->getUserWisePinnedBoards();
+
+        if (!$pinnedBoardMeta) {
+            return false;
+        }
+
+        $currentPinnedBoards = $pinnedBoardMeta->value;
+        if (in_array($boardId, $currentPinnedBoards)) {
+            $index = array_search($boardId, $currentPinnedBoards);
+            array_splice($currentPinnedBoards, $index, 1);
+            $pinnedBoardMeta->value = $currentPinnedBoards;
+            $pinnedBoardMeta->save();
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param $boardId
+     * @return bool
+     * If board id is in user's current pinned boards list
+     */
+    public function isPinned($boardId)
+    {
+        $pinnedBoardMeta = $this->getUserWisePinnedBoards();
+
+        if (!$pinnedBoardMeta) {
+            return false;
+        }
+
+        $currentPinnedBoards = $pinnedBoardMeta->value;
+        if (in_array($boardId, $currentPinnedBoards)) {
+            return true;
+        }
+
+        return false;
+    }
 }

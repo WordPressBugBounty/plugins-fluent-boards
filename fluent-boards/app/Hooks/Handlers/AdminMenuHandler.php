@@ -379,6 +379,7 @@ class AdminMenuHandler
             'crm_base_url'                    => defined('FLUENTCRM') ? fluentcrm_menu_url_base() : '',
             'start_of_week'                   => intval(get_option('start_of_week', 0)),
             'time_format'                     => get_option('time_format', 'g:i'),
+            'priorities'                      => apply_filters('fluent_boards/task_priorities', $this->getDefaultPriorities()),
             'wpContentCss' => add_query_arg(
                 'ver', get_bloginfo('version'),
                 site_url('/wp-includes/js/tinymce/skins/wordpress/wp-content.css')
@@ -388,6 +389,7 @@ class AdminMenuHandler
                 site_url('/wp-includes/css/dashicons.css')
             ),
             'is_rtl' => is_rtl(),
+            'task_tabs' => apply_filters('fluent_boards/task_tabs', $this->getDefaultTaskTabs()),
         ]);
     }
 
@@ -402,6 +404,35 @@ class AdminMenuHandler
 //        }
 //
 //        return 'no';
+    }
+
+    private function getDefaultTaskTabs()
+    {
+        return [
+            'all' => [
+                'key' => 'all',
+                'label' => __('All', 'fluent-boards'),
+                'component' => 'task-all-comments-and-activities'
+            ],
+            'comment' => [
+                'key' => 'comment',
+                'label' => __('Comments', 'fluent-boards'),
+                'component' => 'task-comments'
+            ],
+            'activity' => [
+                'key' => 'activity',
+                'label' => __('Activities', 'fluent-boards'),
+                'component' => 'task-activities'
+            ]
+        ];
+    }
+    public function getDefaultPriorities()
+    {
+        return [
+            'low'    => __('Low', 'fluent-boards'),
+            'medium' => __('Medium', 'fluent-boards'),
+            'high'   => __('High', 'fluent-boards')
+        ];
     }
 
     /*

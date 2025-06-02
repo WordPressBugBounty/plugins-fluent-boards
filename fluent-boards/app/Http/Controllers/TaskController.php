@@ -19,6 +19,7 @@ use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoardsPro\App\Services\AttachmentService;
+use FluentCrm\App\Models\Subscriber;
 
 class TaskController extends Controller
 {
@@ -304,13 +305,10 @@ class TaskController extends Controller
                 $startAt = gmdate('Y-m-d 00:00:00', strtotime($dueAt));
             }
         }
+        
+        $task = $this->taskService->updateTaskProperty('started_at', $startAt, $task);
+        $task = $this->taskService->updateTaskProperty('due_at', $dueAt, $task);
 
-        if($startAt) {
-            $task = $this->taskService->updateTaskProperty('started_at', $startAt, $task);
-        }
-        if($dueAt){
-            $task = $this->taskService->updateTaskProperty('due_at', $dueAt, $task);
-        }
 
         return [
             'task'         => $task,
@@ -607,6 +605,21 @@ class TaskController extends Controller
         }
     }
 
+    public function createTaskFromImage(Request $request, $board_id)
+    {
+        $stageId = $request->getSafe('stage_id');
+        $file = Arr::get($request->files(), 'file')->toArray();
+        (new \FluentBoards\App\Services\UploadService)->validateFile($file);
+
+        $uploadInfo = UploadService::handleFileUpload( $request->files(), $board_id);
+        $task = $this->taskService->createTaskFromImage($board_id, $stageId, $uploadInfo, $file);
+        return $this->sendSuccess([
+            'task' => $task,
+            'updatedTasks' => $this->taskService->getLastOneMinuteUpdatedTasks($board_id),
+            'message' => __('Task has been created', 'fluent-boards'),
+        ], 200);
+
+    }
 
     public function handleTaskCoverImageUpload(Request $request, $board_id, $task_id)
     {
@@ -751,5 +764,44 @@ class TaskController extends Controller
             'message' => __('Configuration saved successfully', 'fluent-boards'),
             'config' => $config
         ]);
+    }
+    public function getAssociatedCrmContacts($board_id)
+    {
+        $contactsInTasks = Task::where('board_id', $board_id)
+                                ->whereNotNull('crm_contact_id')
+                                ->get();
+        
+        if ($contactsInTasks->isEmpty()) {
+            return $this->sendSuccess([], 200);
+        }
+                        
+        $contactIds = $contactsInTasks->pluck('crm_contact_id')
+                                    ->unique()
+                                    ->toArray();
+                        
+        $allContacts = Subscriber::whereIn('id', $contactIds)->get();
+                        
+         if ($allContacts->isEmpty()) {
+            return $this->sendSuccess([], 200);
+        }
+                        
+        $formattedContacts = [];
+        foreach ($allContacts as $contact) {
+            $name = trim($contact->first_name . ' ' . $contact->last_name);
+                        
+            $formattedContacts[] = [
+                'id' => $contact->id,
+                'display_name' => $name,
+                'email' => $contact->email,
+                'photo' => fluent_boards_user_avatar($contact->user_email, $name),
+                ];
+            }
+            if (!empty($formattedContacts)) {
+                usort($formattedContacts, function ($a, $b) {
+                return strcmp($a['display_name'], $b['display_name']);
+            });
+        }
+                        
+    return $this->sendSuccess($formattedContacts, 200);
     }
 }

@@ -747,6 +747,10 @@ class TransStrings
             'Task due date has been changed'                                     => __('Task due date has been changed', 'fluent-boards'),
             'has archived '                                                      => __('has archived ', 'fluent-boards'),
             ' task of board '                                                    => __(' task of board ', 'fluent-boards'),
+            'board is pinned'                                                    => __('board is pinned', 'fluent-boards'),
+            'click to pin board'                                                 => __('click to pin board', 'fluent-boards'),
+            'Pinned'                                                             => __('Pinned', 'fluent-boards'),
+            'No pinned board yet'                                                => __('No pinned board yet', 'fluent-boards'),
             'Task has been archived'                                             => __('Task has been archived', 'fluent-boards'),
             'has invited you to join board: '                                    => __('has invited you to join board: ', 'fluent-boards'),
             'Invitation for joining board'                                       => __('Invitation for joining board', 'fluent-boards'),
@@ -763,9 +767,14 @@ class TransStrings
             'Add Subtask on Top'                                                 => __('Add Subtask on Top', 'fluent-boards'),
             'Delete Group'                                                       => __('Delete Group', 'fluent-boards'),
             'Create Subtask Group'                                               => __('Create Subtask Group', 'fluent-boards'),
+            'Subtask Group'                                                      => __('Subtask Group', 'fluent-boards'),
             'Go to top'                                                          => __('Go to top', 'fluent-boards'),
             'Deleting this label will remove it from all associated tasks.'      => __('Deleting this label will remove it from all associated tasks.', 'fluent-boards'),
-            
+            'Clone'                                                              => __('Clone', 'fluent-boards'),
+            'Tasks I am watching'                                                => __('Tasks I am watching', 'fluent-boards'),
+            'Show tasks I am watching (not assigned)'                            => __('Show tasks I am watching (not assigned)', 'fluent-boards'),
+            'Enter subtask group name'                                           => __('Enter subtask group name', 'fluent-boards'),
+            'Add a more detailed description...'                                 => __('Add a more detailed description...', 'fluent-boards'),
         ];
     }
 }

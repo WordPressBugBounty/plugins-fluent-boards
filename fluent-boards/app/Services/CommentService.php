@@ -295,7 +295,7 @@ class CommentService
             return false;
         }
 
-        $allMentionedIds = array_unique(array_merge($comment->settings['mentioned_id'] ?? [], $mentionData ?? []));
+        $allMentionedIds = array_unique(array_merge($comment->settings['mentioned_id'] ?? [], is_array($mentionData) ? $mentionData : []));
 
         if ($allMentionedIds) {
             $processedDescription = $this->processMentionAndLink($commentData['description'], $allMentionedIds);

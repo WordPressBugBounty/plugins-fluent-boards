@@ -748,12 +748,6 @@ class Task extends Model
             ->where('object_type', Constant::TASK_CUSTOM_FIELD);
     }
 
-    // Relationship to get subtask groups
-    public function subTaskGroups()
-    {
-        return $this->hasMany(TaskMeta::class, 'task_id', 'id')->where('key', Constant::SUBTASK_GROUP_NAME);
-    }
-
     public function subtasks()
     {
         return $this->hasMany(Task::class, 'parent_id', 'id');

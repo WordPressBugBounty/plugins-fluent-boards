@@ -134,6 +134,10 @@ class ActivityHandler
 
         $this->createLogActivity($task->id, $action, $column, $old, $new);
     }
+    public function logDueDateRemoveActivity($task)
+    {
+        $this->createLogActivity( $task->id, 'removed', 'Due Date', null);
+    }
 
     public function logStartDateActivity($task, $oldDate)
     {
@@ -198,6 +202,11 @@ class ActivityHandler
     public function logSubtaskAddedActivity($parentTask, $subTask)
     {
         $this->createLogActivity($parentTask->id, 'added', 'subtask', null, $subTask->title);
+    }
+
+    public function logSubtaskCloneActivity($parentTask, $subTask)
+    {
+        $this->createLogActivity($parentTask->id, 'cloned', 'subtask', null, $subTask->title);
     }
     public function logSubtaskGroupAddedActivity($task_id, $subTaskGroup)
     {
@@ -383,5 +392,9 @@ class ActivityHandler
             null,
             null
         );
+    }
+    public function taskMovedFromBoard($task, $oldBoard, $newBoard)
+    {
+        $this->createLogActivity($task->id, 'moved', 'board', $oldBoard->title, $newBoard->title);
     }
 }

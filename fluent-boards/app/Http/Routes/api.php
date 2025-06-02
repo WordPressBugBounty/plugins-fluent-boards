@@ -47,6 +47,7 @@ $router->prefix('projects')->withPolicy('AuthPolicy')->group(function ($router) 
     $router->get('/recent-boards', 'BoardController@getRecentBoards');
     $router->post('/onboard', 'BoardController@createFirstBoard');
     $router->put('/skip-onboarding', 'BoardController@skipOnboarding');
+    $router->get('/pinned-boards', 'BoardController@getPinnedBoards');
 });
 
 $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(function ($router) {
@@ -63,6 +64,8 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->put('/labels/{label_id}', 'LabelController@editLabelofBoard');
     $router->delete('/labels/{label_id}', 'LabelController@deleteLabelOfBoard');
     $router->delete('/tasks/{task_id}/labels/{label_id}', 'LabelController@deleteLabelOfTask');
+    $router->put('/pin-board', 'BoardController@pinBoard');
+    $router->put('/unpin-board', 'BoardController@unpinBoard');
 
     $router->get('/users', 'BoardController@getBoardUsers');
     $router->post('/user/{user_id}/remove', 'BoardController@removeUserFromBoard')->int('board_id')->int('user_id');
@@ -110,6 +113,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->get('/', 'TaskController@getTasksByBoard')->int('board_id');
         $router->get('/by-stage', 'TaskController@getTasksByBoardStage')->int('board_id');
         $router->post('/', 'TaskController@create');
+        $router->post('/create-task-from-image', 'TaskController@createTaskFromImage')->int('board_id');
         $router->get('/archived', 'TaskController@getArchivedTasks')->int('board_id');
         $router->get('/{task_id}', 'TaskController@find')->int('board_id')->int('task_id')->int('task_id');
         $router->put('/{task_id}', 'TaskController@updateTaskProperties')->int('board_id')->int('task_id');
@@ -179,6 +183,7 @@ $router->withPolicy('UserPolicy')->get('/all-unread-notifications', 'Notificatio
 $router->withPolicy('UserPolicy')->get('notification/unread-count', 'NotificationController@newNotificationNumber');
 $router->withPolicy('UserPolicy')->put('notification/read', 'NotificationController@readNotification');
 $router->withPolicy('UserPolicy')->get('quick-search', 'OptionsController@quickSearch');
+$router->withPolicy('UserPolicy')->get('contacts/{board_id}', 'TaskController@getAssociatedCrmContacts')->int('board_id');
 
 $router->prefix('options')->withPolicy('AuthPolicy')->group(function ($router) {
     $router->get('members', 'OptionsController@getBoardMembers');
