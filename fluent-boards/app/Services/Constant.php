@@ -73,6 +73,8 @@ class Constant{
     const USER_GLOBAL_NOTIFICATIONS = 'user_global_notifications';
 
     const OBJECT_TYPE_BOARD = 'board';
+
+    const OBJECT_TYPE_FOLDER = 'folder';
     const OBJECT_TYPE_TASK = 'TASK';
     const CRM_CONTACT = 'crm_subscriber';
     const CRM_CONTACT_ASSOCIATED_BOARD = 'contact_associated_board';
@@ -89,6 +91,19 @@ class Constant{
     const GLOBAL_DASHBOARD_NOTIFICATION = 'dashboard_notification';
 
     const USER_DASHBOARD_VIEW = 'user_dashboard_view';
+
+    const USER_LISTVIEW_PREFERENCES = 'user_listview_preferences';
+
+    const DEFAULT_DASHBOARD_VIEW_PREFERENCES = [
+        'dashboard_view_label' => true,
+        'dashboard_view_priority' => true,
+        'dashboard_view_assignee' => true,
+        'dashboard_view_subtask' => true,
+        'dashboard_view_attachment' => true,
+        'dashboard_view_due_date' => true,
+        'dashboard_view_comment' => true,
+        'dashboard_view_notification' => true
+    ];
 
 
     const BOARD_DEFAULT_IMAGE = 'board_default_image';
@@ -301,6 +316,7 @@ class Constant{
     const TASK_CUSTOM_FIELD = 'task_custom_field';
 
     const BOARD_CSV_EXPORT = 'csv_export';
+    const BOARD_JSON_EXPORT = 'json_export';
     const BOARD_ATTACHMENT = 'BOARD';
 
     const BOARD_BACKGROUND_IMAGE = 'board_background_image';

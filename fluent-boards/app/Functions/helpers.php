@@ -220,3 +220,37 @@ function fluentboardsCsvMimes()
         'application/txt'
     ]);
 }
+
+function fluent_boards_string_to_bool($value)
+{
+    // Normalize known string values to booleans
+    $trueFalseMap = [
+        'yes'   => true,
+        'no'    => false,
+        'true'  => true,
+        'false' => false,
+        '1'     => true,
+        '0'     => false,
+        true    => true,
+        false   => false,
+    ];
+
+    // Allow modification of the map
+    $trueFalseMap = apply_filters('fluent_boards/true_false_convert', $trueFalseMap);
+
+    // Handle array input recursively
+    if (is_array($value)) {
+        return array_map('fluent_boards_string_to_bool', $value);
+    }
+
+    // Normalize string input
+    $key = is_string($value) ? strtolower(trim($value)) : $value;
+
+    // Match normalized value against map
+    if (array_key_exists($key, $trueFalseMap)) {
+        return $trueFalseMap[$key];
+    }
+
+    // Fallback: return original value if not recognized
+    return $value;
+}

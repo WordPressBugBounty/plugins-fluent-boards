@@ -13,6 +13,7 @@ use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\BoardTerm;
+use FluentBoards\App\Models\CommentImage;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoardsPro\App\Modules\TimeTracking\TimeTrackingHelper;
 use FluentBoardsPro\App\Services\AttachmentService;
@@ -202,7 +203,7 @@ class TaskService
                     break;
 
                 case 'is_watching':
-                    $this->updateObservationOfCurrentUser($value, $task);
+                    $this->updateObservationOfUser($value, $task);
                     break;
 
                 case 'last_completed_at':
@@ -399,24 +400,28 @@ class TaskService
         do_action('fluent_boards/task_priority_changed', $task, $oldPriority);
     }
 
-    public function updateObservationOfCurrentUser($value, $task)
-    {
-        $currentUserId = get_current_user_id();
-
-        if ($value == 'stop') {
-            $task->watchers()->detach($currentUserId);
-        } else {
-            $task->watchers()->syncWithoutDetaching([$currentUserId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
-        }
-        $task->updated_at = current_time('mysql');
-        $task->save();
-
-        if ($value == 'stop') {
-            $task->is_watching = false;
-        } else {
-            $task->is_watching = true;
-        }
+    public function updateObservationOfUser($value, $task)
+{
+    if (is_array($value) && isset($value['userId'])) {
+        $userId = intval($value['userId']);
+        $action = isset($value['action']) ? $value['action'] : 'start';
+    } else {
+        $userId = get_current_user_id();
+        $action = is_string($value) ? $value : 'start';
     }
+
+    if (!$userId || !in_array($action, ['stop', 'start'])) {
+        return;
+    }
+
+    if ($action == 'stop') {
+        $task->watchers()->detach($userId);
+    } else {
+        $task->watchers()->syncWithoutDetaching([$userId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
+    }
+    $task->updated_at = current_time('mysql');
+    $task->save();
+}
 
     public function taskCoverPhotoUpdate($taskId, $imagePath)
     {
@@ -1084,6 +1089,304 @@ class TaskService
 
             do_action('fluent_boards/task_attachment_deleted', $deletedAttachment);
         }
+    }
+
+    public function cloneTask(int $taskId, $taskData): Task
+    {
+        global $wpdb;
+
+        $wpdb->query('START TRANSACTION');
+
+        try {
+            // Load task with all necessary relationships
+            $task = Task::with([
+                'assignees',
+                'labels',
+                'watchers',
+            ])->findOrFail($taskId);
+
+            // Create new task with cloned data
+            $clonedTask = $task->replicate();
+            $clonedTask->title = $taskData['title'] ?? $task->title . ' (' . \__('cloned', 'fluent-boards') . ')';
+
+            $settings = $clonedTask->settings ?? [];
+
+            unset(
+                $settings['attachment_count'],
+                $settings['subtask_completed_count'],
+                $settings['subtask_count']
+            );
+            $clonedTask->settings = $settings;
+            $clonedTask->stage_id = $taskData['stage_id'] ?? $task->stage_id; 
+            $clonedTask->comments_count = 0; // Reset comments count for cloned task
+            $clonedTask->save();
+
+            $positionIndex = 1; // Default position index for new task
+            if($task->stage_id === $clonedTask->stage_id) {
+                // Calculate position for the cloned task next to original task
+                $positionIndex = $this->calculateClonedTaskPosition($task);
+            } 
+            // Move cloned task to the new position
+            $clonedTask->moveToNewPosition($positionIndex);
+
+            $this->cloneTaskMeta($task, $clonedTask);
+
+            $this->cloneTaskCustomFields($task, $clonedTask);
+
+            if($taskData['assignee']) {
+                $this->cloneAssignees($task, $clonedTask);
+            }
+            if($taskData['label']) {
+                $this->cloneTaskLabels($task, $clonedTask);
+            }
+            $this->cloneTaskWatchers($task, $clonedTask);
+
+            if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
+                // Clone time tracking data if Pro version is active
+                if ($taskData['attachment']) {
+                    $this->cloneAttachments($task, $clonedTask);
+                }
+                if ($taskData['subtask']) {
+                    $this->cloneSubtasks($task, $clonedTask);
+                }
+            }
+
+            if($taskData['comment']) {
+                $this->cloneCommentsAndReplies($task, $clonedTask);
+            }
+
+            // Load and prepare the cloned task for response
+            $clonedTask = $this->prepareClonedTaskForResponse($clonedTask);
+            do_action('fluent_boards/task_cloned', $task, $clonedTask);
+
+            $wpdb->query('COMMIT');
+            return $clonedTask;
+
+        } catch (\Exception $e) {
+            $wpdb->query('ROLLBACK');
+            error_log('Task cloning failed: ' . $e->getMessage());
+            throw new \Exception(
+                \__('Failed to clone task: ', 'fluent-boards') . $e->getMessage(),
+                $e->getCode() ?: 500
+            );
+        }
+    }
+
+    private function calculateClonedTaskPosition(Task $originalTask): int
+    {
+        $tasks = Task::where('stage_id', $originalTask->stage_id)
+            ->whereNull('archived_at')
+            ->orderBy('position', 'asc')
+            ->get();
+
+        $index = $tasks->search(function($task) use ($originalTask) {
+            return $task->id === $originalTask->id;
+        });
+
+        return $index !== false ? $index + 2 : 1; // Return 1-based index
+    }
+
+    private function cloneTaskMeta(Task $originalTask, Task $clonedTask): void
+    {
+        $taskMetas = TaskMeta::where('task_id', $originalTask->id)
+            ->where('key', '!=', Constant::SUBTASK_GROUP_NAME)
+            ->get();
+        foreach ($taskMetas as $meta) {
+            TaskMeta::create([
+                'task_id' => $clonedTask->id,
+                'key' => $meta->key,
+                'value' => $meta->value
+            ]);
+        }
+    }
+
+    private function cloneAssignees($originalTask, $clonedTask)
+    {
+        // Clone assignees
+        if ($originalTask->assignees) {
+            foreach ($originalTask->assignees as $assignee) {
+                $clonedTask->assignees()->syncWithoutDetaching([$assignee->ID => ['object_type' => Constant::OBJECT_TYPE_TASK_ASSIGNEE]]);
+            }
+        }
+    }
+
+    private function cloneTaskLabels(Task $originalTask, Task $clonedTask): void
+    {
+        // Clone labels
+        if ($originalTask->labels) {
+            foreach ($originalTask->labels as $label) {
+                $clonedTask->labels()->syncWithoutDetaching([$label->id => ['object_type' => Constant::OBJECT_TYPE_TASK_LABEL]]);
+            }
+        }
+    }
+
+    private function cloneTaskWatchers(Task $originalTask, Task $clonedTask): void
+    {
+        /// Clone watchers
+        if ($originalTask->watchers) {
+            foreach ($originalTask->watchers as $watcher) {
+                $clonedTask->watchers()->syncWithoutDetaching([$watcher->ID => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
+            }
+        }
+    }
+    private function cloneTaskCustomFields(Task $originalTask, Task $clonedTask): void
+    {
+
+        // Clone custom fields
+        if ($originalTask->taskCustomFields) {
+            foreach ($originalTask->taskCustomFields as $customField) {
+                $clonedField = $customField->replicate();
+                $clonedField->object_id = $clonedTask->id;
+                $clonedField->save();
+            }
+        }
+    }
+    private function cloneAttachments(Task $originalTask, Task $clonedTask): void
+    {
+        $attachments = $originalTask->attachments;
+        foreach ($attachments as $attachment) {
+            $clonedAttachment = $attachment->replicate();
+            $clonedAttachment->object_id = $clonedTask->id;
+            $clonedAttachment->save();
+
+            // If this is a cover image, update task settings
+            if ($attachment->type === 'cover_image') {
+                $settings = $clonedTask->settings;
+                if (isset($settings['cover_image'])) {
+                    $settings['cover_image'] = $clonedAttachment->id;
+                    $clonedTask->settings = $settings;
+                    $clonedTask->save();
+                }
+            }
+        }
+        $settings = $clonedTask->settings;
+        $settings['attachment_count'] = $clonedTask->attachments()->count();
+        $clonedTask['settings'] = $settings;
+        $clonedTask->save();
+    }
+    private function cloneCommentsAndReplies(Task $originalTask, Task $clonedTask)
+    {
+        // Get comments ordered by created_at
+        $comments = Comment::where('task_id', $originalTask->id)
+            ->where('type', 'comment')
+            ->whereNull('parent_id')
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        if ($comments->isEmpty()) {
+            return;
+        }
+
+        foreach ($comments as $comment) {
+            $clonedComment = $comment->replicate();
+            $clonedComment->task_id = $clonedTask->id;
+            $clonedComment->save();
+
+            // Get replies ordered by created_at
+            $replies = Comment::where('parent_id', $comment->id)
+                ->where('type', 'reply')
+                ->orderBy('created_at', 'asc')
+                ->get();
+
+            foreach ($replies as $reply) {
+                $clonedReply = $reply->replicate();
+                $clonedReply->task_id = $clonedTask->id;
+                $clonedReply->parent_id = $clonedComment->id;
+                $clonedReply->save();
+
+                // Clone reply image if any
+                $this->cloneCommentOrReplyImage($reply, $clonedReply);
+            }
+
+            // Clone comment image if any
+            $this->cloneCommentOrReplyImage($comment, $clonedComment);
+        }
+        return;
+    }
+    private function cloneCommentOrReplyImage($oldCommentOrReply, $clonedCommentOrReply)
+    {
+        $images = CommentImage::where('object_id', $oldCommentOrReply->id)
+            ->where('object_type', Constant::COMMENT_IMAGE)
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        if ($images->count() > 0) {
+            foreach ($images as $image) {
+                $clonedImage = $image->replicate();
+                $clonedImage->object_id = $clonedCommentOrReply->id;
+                $clonedImage->save();
+            }
+        }
+    }
+    private function cloneSubtasks(Task $originalTask, Task $clonedTask): void
+    {
+        // First clone subtask groups
+        $subtaskGroupMap = $this->cloneSubtaskGroups($originalTask, $clonedTask);
+        $completedSubtasksCount = 0;
+
+        if ($originalTask->subtasks) {
+            foreach ($originalTask->subtasks as $subtask) {
+                $clonedSubtask = $subtask->replicate();
+                $clonedSubtask->parent_id = $clonedTask->id;
+                $clonedSubtask->save();
+                if($clonedSubtask->status == 'closed') {
+                    $completedSubtasksCount++;
+                }
+
+                // Update subtask group relationship if exists
+                $groupRelation = TaskMeta::where('task_id', $subtask->id)
+                    ->where('key', Constant::SUBTASK_GROUP_CHILD)
+                    ->first();
+
+                if ($groupRelation && isset($subtaskGroupMap[$groupRelation->value])) {
+                    TaskMeta::create([
+                        'task_id' => $clonedSubtask->id,
+                        'key' => Constant::SUBTASK_GROUP_CHILD,
+                        'value' => $subtaskGroupMap[$groupRelation->value]
+                    ]);
+                }
+            }
+        }
+        $settings = $clonedTask->settings;
+        $settings['subtask_count'] = $clonedTask->subtasks()->count();
+        $clonedTask['settings'] = $settings;
+        $clonedTask->settings['subtask_completed_count'] = $completedSubtasksCount;
+        $clonedTask->save();
+    }
+    private function cloneSubtaskGroups(Task $originalTask, Task $clonedTask): array
+    {
+        $subtaskGroupMap = [];
+        
+        if ($originalTask->subtaskGroup) {
+            foreach ($originalTask->subtaskGroup as $group) {
+                $clonedGroup = TaskMeta::create([
+                    'task_id' => $clonedTask->id,
+                    'key' => Constant::SUBTASK_GROUP_NAME,
+                    'value' => $group->value
+                ]);
+                
+                $subtaskGroupMap[$group->id] = $clonedGroup->id;
+            }
+        }
+        
+        return $subtaskGroupMap;
+    }
+    private function prepareClonedTaskForResponse(Task $clonedTask): Task
+    {
+        // Load relationships
+        $clonedTask->load(['board', 'stage', 'labels', 'assignees', 'subtasks']);
+        
+        // Sanitize assignees
+        $clonedTask->assignees = Helper::sanitizeUserCollections($clonedTask->assignees);
+        
+        // Set additional properties
+        $clonedTask->isOverdue = $clonedTask->isOverdue();
+        $clonedTask->contact = Task::lead_contact($clonedTask->crm_contact_id);
+        $clonedTask->board->stages = (new StageService())->stagesByBoardId($clonedTask->board_id);
+        $clonedTask->is_watching = (new NotificationService())->isCurrentUserObservingTask($clonedTask);
+        
+        // Load next stage if applicable
+        return $this->loadNextStage($clonedTask);
     }
 
 }

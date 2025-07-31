@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.3
-Stable tag: 1.65
+Stable tag: 1.80
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,33 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v1.80 (Date: July 31, 2025) =
+- New: Board folderization for better board management.
+- New: Task clone with customization for efficient task duplication
+- New: Boards list view
+- New: Simple notes for subtasks to capture brief task details
+- New: Task List view settings for customizable user experience
+- New: Rearrange custom fields order with drag functionality for better organization
+- New: Added task watcher functionality alongside task assignees
+- New: Added ability to make comments public/private in Roadmap tasks.
+- New: Mentioned and assigned filters in notification sidebar
+- New: Board menu now customizable with ability to add/reorder items
+- Improvement: Enhanced JSON export with large data support
+- Improvement: Redesigned custom fields interface for better user experience
+- Improvement: Added 'load more' in quick search
+- Improvement: Open task in new board within move card component for improved task management
+- Fixed: Multiple task creation issue in repeat tasks
+- Fixed: Resolved board view conflict issue
+- Fixed: Stage background color issue in duplicated boards
+- Fixed: Multiclick issue during saving
+- Fixed: Task positioning issue when moving tasks
+- Fixed: Added Fluent Boards to CRM navigation
+- Fixed: Task filtering issue with translated priorities
+- Fixed: Label popover UX issue in task drawer
+- Fixed: Roadmap idea vote count issue
+- Fixed: Auto-focus issue in global search
+- Other Improvements & Bug Fixes
 
 = v1.65 (Date: June 02, 2025) =
 - New: Pinned board functionality for quick access to important boards

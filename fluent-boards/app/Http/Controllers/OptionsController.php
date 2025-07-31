@@ -443,64 +443,74 @@ class OptionsController extends Controller
     {
         $currentUserId = get_current_user_id();
 
-        $query = sanitize_text_field($_REQUEST['query']);
-        $query = strtolower($query);
+        $query = strtolower(sanitize_text_field($_REQUEST['query']));
         $scope = sanitize_text_field($_REQUEST['scope']);
 
+        // Pagination parameters
+        $taskPage = isset($_REQUEST['task_page']) ? max(1, (int)$_REQUEST['task_page']) : 0;
+        $boardPage = isset($_REQUEST['board_page']) ? max(1, (int)$_REQUEST['board_page']) : 0;
+        $perPage = isset($_REQUEST['per_page']) ? (int)$_REQUEST['per_page'] : 20;
+
+        // Build base queries
         $firstThreeChars = substr($query, 0, 3);
         $firstNineChars = substr($query, 0, 9);
 
         if($firstThreeChars == 'id:') {
-            $idPart = substr($query, 3);
-            $idPart = preg_replace('/[^a-zA-Z0-9]/', '', $idPart);
+            $idPart = preg_replace('/[^a-zA-Z0-9]/', '', substr($query, 3));
             $tasksQuery = Task::query()->where('parent_id', null)->whereRaw('id LIKE ?', ['%' . $idPart . '%']);
+            $boardQuery = Board::query()->whereRaw('id LIKE ?', ['%' . $idPart . '%']);
         }elseif($firstNineChars == 'archived:') {
-            $archivedPart = substr($query, 9);
-            $archivedPart = trim($archivedPart);
+            $archivedPart = trim(substr($query, 9));
             $tasksQuery = Task::query()->where('parent_id', null)->whereNotNull('archived_at')->whereRaw('LOWER(title) LIKE ?', ['%' . $archivedPart . '%']);
+            $boardQuery = Board::query()->whereNotNull('archived_at')->whereRaw('LOWER(title) LIKE ?', ['%' . $archivedPart . '%']);
         } else {
             $tasksQuery = Task::query()->where('parent_id', null)->whereRaw('LOWER(title) LIKE ?', ['%' . $query . '%']);
+            $boardQuery = Board::query()->whereRaw('LOWER(title) LIKE ?', ['%' . $query . '%']);
         }
 
+        // Apply scope and permissions
         $isUserAdmin = PermissionManager::isAdmin($currentUserId);
-
-        // This is a check for deleted tasks to be excluded from search results
-        $allActiveBoardsIds = Board::query()->where('archived_at', null)->pluck('id')->toArray();
-
         if ($scope == 'all') {
-            if($firstThreeChars == 'id:'){
-                $idPart = substr($query, 3);
-                $idPart = preg_replace('/[^a-zA-Z0-9]/', '', $idPart);
-                $boardQuery = Board::query()->whereRaw('id LIKE ?', ['%' . $idPart . '%']);
-            }elseif ($firstNineChars == 'archived:') {
-                $archivedPart = substr($query, 9);
-                $archivedPart = trim($archivedPart);
-                $boardQuery = Board::query()->whereNotNull('archived_at')->whereRaw('LOWER(title) LIKE ?', ['%' . $archivedPart . '%']);
-            } else {
-                $boardQuery = Board::query()->whereRaw('LOWER(title) LIKE ?', ['%' . $query . '%']);
-            }
-            if ($isUserAdmin) {
-                $boards = $boardQuery->limit(10)->get();
-                $tasks = $tasksQuery->limit(10)->get();
-            } else {
+            if (!$isUserAdmin) {
                 $boardIds = PermissionManager::getBoardIdsForUser($currentUserId);
-                $boards = $boardQuery->whereIn('id', $boardIds)->limit(10)->get();
-                $tasks = $tasksQuery->whereIn('board_id', $boardIds)->limit(10)->get();
+                $boardQuery->whereIn('id', $boardIds);
+                $tasksQuery->whereIn('board_id', $boardIds);
             }
         } else {
-            $boards = []; // boards results is not needed in scoped search
+            // For 'current_board' scope, we don't search boards
+            $boardQuery->where('id', -1);
+
             $inBoard = (int)$scope;
-            if ($isUserAdmin || in_array($inBoard, $boardIds = PermissionManager::getBoardIdsForUser($currentUserId))) {
-                $tasks = $tasksQuery->where('board_id', $inBoard)->limit(10)->get();
+            if ($isUserAdmin || in_array($inBoard, PermissionManager::getBoardIdsForUser($currentUserId))) {
+                $tasksQuery->where('board_id', $inBoard);
             } else {
-                // Out of permission scope search
-                $tasks = [];
+                $tasksQuery->where('id', -1); // Force no results
             }
         }
 
+        $allActiveBoardsIds = Board::query()->where('archived_at', null)->pluck('id')->toArray();
 
-        $formattedTasks = [];
+        $boards = [];
+        $tasks = [];
+        $totalBoards = 0;
+        $totalTasks = 0;
         $formattedBoards = [];
+        $formattedTasks = [];
+
+        // Fetch Boards if requested
+        if ($boardPage > 0) {
+            $totalBoards = $boardQuery->count();
+            $boardOffset = ($boardPage - 1) * $perPage;
+            $boards = $boardQuery->skip($boardOffset)->take($perPage)->get();
+        }
+
+        // Fetch Tasks if requested
+        if ($taskPage > 0) {
+            $totalTasks = $tasksQuery->count();
+            $taskOffset = ($taskPage - 1) * $perPage;
+            $tasks = $tasksQuery->skip($taskOffset)->take($perPage)->get();
+        }
+
         foreach ($boards as $board) {
             $formattedBoards[] = [
                 'type'        => 'board',
@@ -510,14 +520,11 @@ class OptionsController extends Controller
             ];
         }
         foreach ($tasks as $task) {
-
             if (!in_array($task->board_id, $allActiveBoardsIds)) {
-                // if the task is not in an active board, skip it
                 continue;
             }
 
             $board = $task->board;
-
             $formattedTasks[] = [
                 'type'        => 'task',
                 'id'          => $task->id,
@@ -533,44 +540,56 @@ class OptionsController extends Controller
                     'id'    => $task->stage_id,
                     'title' => $task->stage->title ?? '',
                 ],
-
             ];
         }
-        return $this->sendSuccess([
-            'tasks'  => $formattedTasks,
-            'boards' => $formattedBoards
-        ], 200);
 
+        return $this->sendSuccess([
+            'tasks' => [
+                'data' => $formattedTasks,
+                'current_page' => $taskPage,
+                'per_page' => $perPage,
+                'total' => $totalTasks,
+                'last_page' => (int) ceil($totalTasks / $perPage)
+            ],
+            'boards' => [
+                'data' => $formattedBoards,
+                'current_page' => $boardPage,
+                'per_page' => $perPage,
+                'total' => $totalBoards,
+                'last_page' => (int) ceil($totalBoards / $perPage)
+            ]
+        ], 200);
     }
 
-    public function getDashboardViewSettings()
+    public function getDashboardViewSettings(Request $request)
     {
-        try {
-            $globalSettings = $this->optionService->getDashboardViewSettings();
-            if ($globalSettings->value)
-                $currentSettings = maybe_unserialize($globalSettings->value);
+        $view = $request->getSafe('view', 'sanitize_text_field');
 
-            return $this->sendSuccess([
-                'currentSettings' => $currentSettings,
-            ], 200);
-        } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+        if ($view == 'cardview') {
+            $globalSettings = $this->optionService->getDashboardViewSettings();
+        } else {
+            $globalSettings = $this->optionService->getListViewPreferences();
         }
+        if ($globalSettings->value)
+            $currentSettings = maybe_unserialize($globalSettings->value);
+
+        return $this->sendSuccess([
+            'currentSettings' => $currentSettings,
+        ], 200);
     }
 
     public function updateDashboardViewSettings(Request $request)
     {
-        try {
-            $newSettings = $request->getSafe('updatedSettings');
+        $newSettings = $request->getSafe('updatedSettings');
+        $view = $request->getSafe('view', 'sanitize_text_field');
 
-            $this->optionService->updateDashboardViewSettings($newSettings);
+        $this->optionService->updateDashboardViewSettings($newSettings, $view);
 
-            return $this->sendSuccess([
-                'message' => __("Dashboard view settings are updated", 'fluent-boards'),
-            ], 201);
-        } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
-        }
+        return $this->sendSuccess([
+            'message' => __(
+                $view == 'listview' ? "List view settings updated successfully" : "Card view settings updated successfully", 'fluent-boards'
+            ),
+        ], 201);
     }
 
 

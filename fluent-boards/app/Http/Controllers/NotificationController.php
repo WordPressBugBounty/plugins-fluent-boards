@@ -19,7 +19,8 @@ class NotificationController extends Controller
         try {
             $per_page = $request->getSafe('per_page', 'intval', 20);
             $page = $request->getSafe('page', 'intval', 1);
-            $data = $this->notificationService->getAllNotifications($per_page, $page);
+            $action = $request->getSafe('action', 'sanitize_text_field', 'all');
+            $data = $this->notificationService->getAllNotifications($per_page, $page, $action);
 
             return $this->sendSuccess($data, 200);
         } catch (\Exception $e) {

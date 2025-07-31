@@ -397,4 +397,14 @@ class ActivityHandler
     {
         $this->createLogActivity($task->id, 'moved', 'board', $oldBoard->title, $newBoard->title);
     }
+
+    public function taskCloned($originalTask, $clonedTask)
+    {
+        $this->createLogActivity(
+            $clonedTask->id,
+            'cloned',
+            'task',
+            'from ' . $originalTask->title,
+        );
+    }
 }

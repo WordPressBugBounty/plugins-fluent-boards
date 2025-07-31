@@ -17,14 +17,16 @@ use FluentBoards\App\Services\StageService;
 use FluentBoards\App\Services\TaskService;
 use FluentBoards\App\Services\BoardService;
 use FluentBoards\App\Services\UploadService;
-use FluentBoards\App\Services\UserService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Hooks\Handlers\BoardHandler;
+use FluentBoards\App\Hooks\Handlers\BoardMenuHandler;
 use FluentBoards\App\Services\LabelService;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Collection;
 use FluentBoardsPro\App\Services\AttachmentService;
+use FluentBoardsPro\App\Services\CustomFieldService;
+use FluentBoardsPro\App\Services\ProHelper;
 use FluentBoardsPro\App\Services\RemoteUrlParser;
 use FluentCrm\App\Models\Subscriber;
 
@@ -60,22 +62,30 @@ class BoardController extends Controller
         $searchInput = $request->getSafe('searchInput', 'sanitize_text_field');
 
         $option = $request->getSafe('option', 'sanitize_text_field');
+        $folderId = $request->getSafe('fid', 'intval'); // Get folder ID from request
 
-        if(!defined('FLUENT_ROADMAP'))
-        {
-            if($option == 'archived') {
+        // Initialize the query based on archive status
+        if (!defined('FLUENT_ROADMAP')) {
+            if ($option == 'archived') {
                 $relatedBoardsQuery = Board::whereNotNull('archived_at')->where('type', 'to-do')->byAccessUser($userId);
             } else {
                 $relatedBoardsQuery = Board::whereNull('archived_at')->where('type', 'to-do')->byAccessUser($userId);
             }
         } else {
-            if($option == 'archived') {
+            if ($option == 'archived') {
                 $relatedBoardsQuery = Board::whereNotNull('archived_at')->byAccessUser($userId);
             } else {
                 $relatedBoardsQuery = Board::whereNull('archived_at')->byAccessUser($userId);
             }
         }
 
+        // If folder ID is provided, filter boards by folder
+        if ($folderId && defined('FLUENT_BOARDS_PRO')) {
+            $boardIds = ProHelper::getBoardIdsByFolder($folderId);
+            $relatedBoardsQuery = $relatedBoardsQuery->whereIn('id', $boardIds);
+        }
+
+        // Add search functionality
         if (!empty($searchInput)) {
             $relatedBoardsQuery = $relatedBoardsQuery->where('title', 'like', '%' . $searchInput . '%');
         }
@@ -90,9 +100,69 @@ class BoardController extends Controller
             $relatedBoard->is_pinned = $this->boardService->isPinned($relatedBoard->id);
         }
 
-        return $this->sendSuccess([
+        $response = [
             'boards' => $relatedBoards
-        ], 200);
+        ];
+
+        // Include folder mapping if pro version is available - ALWAYS include for consistency
+        if (defined('FLUENT_BOARDS_PRO')) {
+            $response['folder_mapping'] = $this->getBoardFolderMapping($userId);
+            if ($folderId) {
+                $response['current_folder'] = $this->getCurrentFolderInfo($folderId);
+            }
+        } else {
+            // Include empty folder mapping for consistency
+            $response['folder_mapping'] = [];
+        }
+
+        return $this->sendSuccess($response);
+    }
+
+    /**
+     * Get folder mapping for boards
+     */
+    private function getBoardFolderMapping($userId)
+    {
+        if (!defined('FLUENT_BOARDS_PRO')) {
+            return [];
+        }
+
+        $folderService = new \FluentBoardsPro\App\Services\FolderService();
+        $folders = $folderService->getFolders($userId);
+
+        $mapping = [];
+        foreach ($folders as $folder) {
+            $mapping[$folder->id] = [
+                'id' => $folder->id,
+                'title' => $folder->title,
+                'board_ids' => $folder->boards ? $folder->boards->pluck('id')->toArray() : []
+            ];
+        }
+
+        return $mapping;
+    }
+
+    /**
+     * Get current folder information
+     */
+    private function getCurrentFolderInfo($folderId)
+    {
+        if (!defined('FLUENT_BOARDS_PRO')) {
+            return null;
+        }
+
+        $folderService = new \FluentBoardsPro\App\Services\FolderService();
+        $folder = $folderService->getFolderById($folderId);
+
+        if (!$folder) {
+            return null;
+        }
+
+        return [
+            'id' => $folder->id,
+            'title' => $folder->title,
+            'board_count' => $folder->boards ? $folder->boards->count() : 0
+        ];
     }
 
     /**
@@ -103,25 +173,49 @@ class BoardController extends Controller
      */
     public function getBoardsList(Request $request)
     {
+        $userId = get_current_user_id();
+
+        // Query to fetch boards that are not archived and accessible by the user
+        // Check if the FLUENT_ROADMAP constant is defined
+        if (!defined('FLUENT_ROADMAP')) {
+            $relatedBoardsQuery = Board::whereNull('archived_at')->where('type', 'to-do')->byAccessUser($userId);
+        } else {
+            $relatedBoardsQuery = Board::whereNull('archived_at')->byAccessUser($userId);
+        }
+
+        $relatedBoards = $relatedBoardsQuery->with('stages')->get();
+
+        // Fetch the stages associated with the boards
+        $stages = Stage::whereIn('board_id', $relatedBoards->pluck('id'))->where('archived_at', null)->get();
+
+        return $this->sendSuccess([
+            'boards' => $relatedBoards,
+            'all_stages' => $stages,
+        ], 200);
+    }
+    public function getOnlyBoardsByUser(Request $request)
+    {
         try {
             $userId = get_current_user_id();
 
-            // Query to fetch boards that are not archived and accessible by the user
-            // Check if the FLUENT_ROADMAP constant is defined
-            if (!defined('FLUENT_ROADMAP')) {
+            $searchInput = $request->getSafe('searchInput', 'sanitize_text_field');
+
+
+            if(!defined('FLUENT_ROADMAP'))
+            {
                 $relatedBoardsQuery = Board::whereNull('archived_at')->where('type', 'to-do')->byAccessUser($userId);
             } else {
                 $relatedBoardsQuery = Board::whereNull('archived_at')->byAccessUser($userId);
             }
 
-            $relatedBoards = $relatedBoardsQuery->with('stages')->get();
+            if (!empty($searchInput)) {
+                $relatedBoardsQuery = $relatedBoardsQuery->where('title', 'like', '%' . $searchInput . '%');
+            }
 
-            // Fetch the stages associated with the boards
-            $stages = Stage::whereIn('board_id', $relatedBoards->pluck('id'))->where('archived_at', null)->get();
+            $relatedBoards = $relatedBoardsQuery->orderBy('created_at', 'DESC')->get();
 
             return $this->sendSuccess([
-                'boards' => $relatedBoards,
-                'all_stages' => $stages,
+                'boards' => $relatedBoards
             ], 200);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 404);
@@ -234,6 +328,7 @@ class BoardController extends Controller
             'type'           => 'required|string',
             'currency'       => 'nullable|string',
             'crm_contact_id' => 'nullable|numeric',
+            'folder_id'      => 'nullable',
         ]);
 
         try {
@@ -253,6 +348,15 @@ class BoardController extends Controller
             }
 
             do_action('fluent_boards/board_created', $board);
+
+
+            if(defined('FLUENT_BOARDS_PRO')) {
+                if ($request->get('folder_id')) {
+                    // do sanitize folder ID
+                    $folderId = $request->get('folder_id');
+                    (new \FluentBoardsPro\App\Services\FolderService())->addBoardToFolder($folderId, [$board->id]);
+                }
+            }
 
             $message = __('Board has been created successfully', 'fluent-boards');
 
@@ -301,6 +405,12 @@ class BoardController extends Controller
         $board->load(['users', 'stages', 'labels', 'owner']);
 
         if (defined('FLUENT_BOARDS_PRO')){
+            $customFiledPositionMeta = $board->getMetaByKey('custom_field_positions');
+            if(!$customFiledPositionMeta) {
+                (new CustomFieldService())->reIndexCustomFieldPositions($board_id);
+                $board->updateMeta('custom_field_positions', 'yes');
+            }
+            
             $board->load(['customFields']);
         }
 
@@ -1086,6 +1196,31 @@ class BoardController extends Controller
         return $this->sendSuccess([
             'message' => __('Board is removed from pinned boards', 'fluent-boards'),
         ], 200);
+    }
+
+    public function getBoardFolder($board_id)
+    {
+        try {
+            $folder = $this->boardService->getBoardFolder($board_id);
+            return $this->sendSuccess([
+                'folder' => $folder,
+            ], 200);
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 400);
+        }
+    }
+
+    public function getBoardMenuItems($board_id)
+    {
+        try {
+            $menuItems = (new BoardMenuHandler())->getMenuItems($board_id);
+            
+            return $this->sendSuccess([
+                'menu_items' => $menuItems
+            ], 200);
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 500);
+        }
     }
 
 }

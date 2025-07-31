@@ -68,7 +68,7 @@ class CommentService
     {
         try {
             if (empty($url)) {
-                error_log('Empty URL provided');
+                // error_log('Empty URL provided');
                 return false;
             }
 
@@ -76,7 +76,7 @@ class CommentService
 
             // Early return for obviously invalid formats
             if ($url === 'http://' || $url === 'https://') {
-                error_log('Invalid URL format (just protocol)');
+                // error_log('Invalid URL format (just protocol)');
                 return false;
             }
 
@@ -113,7 +113,7 @@ class CommentService
             if (preg_match_all($urlPattern, $text, $matches)) {
                 $urls = array_filter($matches[0], function($url) {
                     $trimmed = trim($url);
-                    error_log('Found URL candidate: ' . $trimmed);
+                    // error_log('Found URL candidate: ' . $trimmed);
                     return !empty($trimmed);
                 });
                 return array_values($urls); // Re-index array

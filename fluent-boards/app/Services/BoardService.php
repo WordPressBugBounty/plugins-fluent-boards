@@ -3,16 +3,15 @@
 namespace FluentBoards\App\Services;
 
 use FluentBoards\App\Models\Activity;
-use FluentBoards\App\Models\Stage;
-use FluentBoards\App\Models\User;
 use FluentBoards\App\Models\Board;
-use FluentBoards\App\Models\Relation;
-use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Meta;
+use FluentBoards\App\Models\Relation;
+use FluentBoards\App\Models\Stage;
+use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\TaskMeta;
+use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Libs\FileSystem;
-use FluentBoards\Framework\Support\Arr;
-use FluentRoadmap\App\Models\Idea;
+use FluentBoardsPro\App\Models\Folder;
 
 class BoardService
 {
@@ -60,6 +59,7 @@ class BoardService
             $notification->users()->detach();
         }
         $board->notifications()->delete();
+        $board->removeBoardFromFolder();
 
         //delete board related meta
         $this->deleteBoardMeta($boardId);
@@ -1152,5 +1152,18 @@ class BoardService
         }
 
         return false;
+    }
+
+    public function getBoardFolder($boardId)
+    {
+        $relation = Relation::where('object_type', Constant::OBJECT_TYPE_FOLDER_BOARD)
+            ->where('foreign_id', $boardId)
+            ->first();
+
+        if (!$relation) {
+            return null;
+        }
+
+        return Folder::findOrFail($relation->object_id);
     }
 }

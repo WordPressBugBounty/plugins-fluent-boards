@@ -11,14 +11,23 @@ use FluentBoards\App\Models\User;
 
 class NotificationService
 {
-    public function getAllNotifications($per_page, $page)
+    public function getAllNotifications($per_page, $page, $action = 'all')
     {
         $user = wp_get_current_user();
 
-        $notifications = Notification::where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
+        $query = Notification::where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
             ->whereHas('users', function($q) use ($user) {
                 $q->where('user_id', $user->ID);
-            })->with('activitist', 'task')->orderBy('created_at', 'desc')->paginate($per_page, ['*'], 'page', $page);
+            });
+
+        // Add action filter if not 'all'
+        if ($action !== 'all') {
+            $query->where('action', $action);
+        }
+
+        $notifications = $query->with('activitist', 'task')
+            ->orderBy('created_at', 'desc')
+            ->paginate($per_page, ['*'], 'page', $page);
 
         foreach ($notifications as $notification){
             $notification->read = $notification->checkReadOrNot();

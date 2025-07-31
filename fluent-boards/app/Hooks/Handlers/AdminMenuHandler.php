@@ -38,6 +38,20 @@ class AdminMenuHandler
 
             $this->enqueueAssets();
         });
+
+        add_filter('fluent_crm/sidebar_core_menu_items', function($menuItems, $permissions) {
+            $settings = fluent_boards_get_pref_settings();
+            if (Arr::get($settings, 'menu_settings.in_fluent_crm') === 'yes') {
+                $menuItems[] = [
+                    'key'        => 'fluent-boards',
+                    'page_title' => __('Fluent Boards', 'fluent-boards'),
+                    'menu_title' => __('Fluent Boards', 'fluent-boards'),
+                    'capability' => 'manage_options', 
+                    'uri'        => admin_url('admin.php?page=fluent-boards')
+                ];
+            }
+            return $menuItems;
+        }, 10, 2);
     }
 
     public function add()
@@ -367,7 +381,9 @@ class AdminMenuHandler
             ],
             'base_url'                        => fluent_boards_page_url(),
             'site_url'                        => site_url('/'),
-            'server_time_zone'                     => (new DateTime('now', wp_timezone()))->format( 'P'),
+            // 'server_time'                     => (new DateTime('now'))->format('Y-m-d H:i:s P'), // Server's default timezone
+            'server_time'                       => (new DateTime('now', wp_timezone()))->format('Y-m-d H:i:s P'), // wordpress site time 
+            'server_time_zone'                => (new DateTime('now', wp_timezone()))->format( 'P'),
             'utc_offset'                      => current_time('timestamp') - strtotime(gmdate('Y-m-d H:i:s')),
             'trans'                           => TransStrings::getStrings(),
             'is_new'                          => Board::count() == 0 ? 'yes' : 'no',

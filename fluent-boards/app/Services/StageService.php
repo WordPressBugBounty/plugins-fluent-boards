@@ -174,6 +174,7 @@ class StageService
             $stageToSave['slug'] = str_replace(' ', '-', strtolower($stage['title']));
             $stageToSave['type'] = 'stage';
             $stageToSave['position'] = $key + 1;
+            $stageToSave['bg_color'] = $stage['bg_color'];
             $stageToSave['settings'] = [
                 'default_task_status' => $stage->settings['default_task_status']
             ];

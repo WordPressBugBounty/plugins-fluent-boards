@@ -294,4 +294,24 @@ class CommentController extends Controller
         ], 200);
 
     }
+
+    public function updateCommentPrivacy($board_id, $comment_id)
+    {
+        $comment = Comment::findOrFail($comment_id);
+
+        // Check if user has permission to update the comment
+        if ($comment->created_by != get_current_user_id()) {
+            return $this->sendError(__('Unauthorized Action', 'fluent-boards'), 401);
+        }
+
+        // Toggle privacy
+        $comment->privacy = ($comment->privacy === 'public') ? 'private' : 'public';
+        $comment->save();
+
+        return $this->sendSuccess([
+            'comment' => $comment,
+            $privacy = $comment->privacy == 'public' ? __('public', 'fluent-boards') : __('private', 'fluent-boards'),
+            'message' => sprintf(__('This comment is now %s', 'fluent-boards'), $privacy),
+        ], 200);
+    }
 }

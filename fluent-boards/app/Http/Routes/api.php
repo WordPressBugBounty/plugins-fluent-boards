@@ -34,6 +34,9 @@ $router->withPolicy('BoardUserPolicy')->group(function ($router) {
     $router->get('get-global-notification-settings', 'OptionsController@getGlobalNotificationSettings');
     $router->put('update-dashboard-view-settings', 'OptionsController@updateDashboardViewSettings');
     $router->get('get-dashboard-view-settings', 'OptionsController@getDashboardViewSettings');
+    $router->get('projects/reports', 'ReportController@getBoardReports');
+    $router->get('reports/timesheet', 'ReportController@getTimeSheetReport');
+
 });
 
 $router->prefix('projects')->withPolicy('AuthPolicy')->group(function ($router) {
@@ -41,6 +44,7 @@ $router->prefix('projects')->withPolicy('AuthPolicy')->group(function ($router) 
     $router->post('/', 'BoardController@create');
     $router->get('/get-default-board-colors', 'BoardController@getBoardDefaultBackgroundColors');
     $router->get('/list-of-boards', 'BoardController@getBoardsList'); // it is using for to get all boards by user
+    $router->get('/user-accessible-boards', 'BoardController@getOnlyBoardsByUser');
     $router->get('/crm-associated-boards/{id}', 'BoardController@getAssociatedBoards')->int('associated_id');
     $router->get('/currencies', 'BoardController@getCurrencies');
     $router->get('/user-admin-in-boards', 'BoardController@getUsersOfBoards');
@@ -48,6 +52,7 @@ $router->prefix('projects')->withPolicy('AuthPolicy')->group(function ($router) 
     $router->post('/onboard', 'BoardController@createFirstBoard');
     $router->put('/skip-onboarding', 'BoardController@skipOnboarding');
     $router->get('/pinned-boards', 'BoardController@getPinnedBoards');
+
 });
 
 $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(function ($router) {
@@ -104,7 +109,8 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->post('/upload/background-image', 'BoardController@uploadBoardBackground')->int('board_id');
     $router->put('/archive-board', 'BoardController@archiveBoard')->int('board_id');
     $router->put('/restore-board', 'BoardController@restoreBoard')->int('board_id');
-
+    $router->get('/board-menu-items', 'BoardController@getBoardMenuItems')->int('board_id');
+    $router->get('/stage-wise-reports', 'ReportController@getStageWiseBoardReports')->int('board_id');
 
 
     //# Tasks under a single board routes
@@ -131,6 +137,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->put('/reply/{reply_id}', 'CommentController@updateReply')->int('board_id')->int('reply_id');
         $router->delete('/comments/{comment_id}', 'CommentController@deleteComment')->int('board_id')->int('comment_id');
         $router->delete('/reply/{reply_id}', 'CommentController@deleteReply')->int('board_id')->int('reply_id');
+        $router->put('/comments/{comment_id}/privacy', 'CommentController@updateCommentPrivacy')->int('board_id')->int('comment_id');
 
 
         // Activities Area
@@ -143,6 +150,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->post('/{task_id}/task-cover-image-upload', 'TaskController@handleTaskCoverImageUpload')->int('board_id')->int('task_id');
         $router->post('/{task_id}/remove-task-cover', 'TaskController@removeTaskCover')->int('board_id')->int('task_id');
         $router->post('/{task_id}/wp-editor-media-file-upload', 'TaskController@uploadMediaFileFromWpEditor')->int('board_id')->int('task_id');
+        $router->post('/{task_id}/clone-task', 'TaskController@cloneTask')->int('board_id')->int('task_id');
     });
 });
 

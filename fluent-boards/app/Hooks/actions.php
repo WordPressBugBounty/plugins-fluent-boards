@@ -117,6 +117,8 @@ $app->addCustomAction('task_created', 'TaskHandler@onTaskCreated', 10, 1);
 $app->addCustomAction('comment_created', 'TaskHandler@onCommentCreated', 10, 1);
 $app->addCustomAction('assign_another_user', 'TaskHandler@onAssignAnotherUser', 10, 2);
 $app->addCustomAction('board_background_updated', 'BoardHandler@backgroundUpdated', 10, 2);
+$app->addCustomAction('task_cloned', 'TaskHandler@taskCloned', 10, 2);
+$app->addCustomAction('task_cloned_activity', 'ActivityHandler@taskCloned', 10, 2);
 
 if (defined('WP_CLI') && WP_CLI) {
     \WP_CLI::add_command('fluent_boards', '\FluentBoards\App\Hooks\Cli\Commands');

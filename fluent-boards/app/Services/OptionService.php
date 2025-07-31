@@ -105,22 +105,11 @@ class OptionService
 
         //if no settings found of this user then store default
         if(!$dshboardViewSettings) {
-            //default notification settings
-            $newSettingsArray = [
-                'dashboard_view_label' => true,
-                'dashboard_view_priority' => true,
-                'dashboard_view_assignee' => true,
-                'dashboard_view_subtask' => true,
-                'dashboard_view_due_date' => true,
-                'dashboard_view_comment' => true,
-                'dashboard_view_notification' => true
-            ];
-
             $meta = new Meta();
             $meta->object_id = $userId;
             $meta->object_type = Constant::OBJECT_TYPE_USER;
             $meta->key = Constant::USER_DASHBOARD_VIEW;
-            $meta->value = $newSettingsArray;
+            $meta->value = Constant::DEFAULT_DASHBOARD_VIEW_PREFERENCES;
             $meta->save();
 
             return $meta;
@@ -128,13 +117,38 @@ class OptionService
 
         return $dshboardViewSettings;
     }
-    public function updateDashboardViewSettings($newSettings)
+
+    public function getListViewPreferences()
+    {
+        $userId = get_current_user_id();
+        $dshboardViewSettings = Meta::where('object_id', $userId)
+            ->where('object_type', Constant::OBJECT_TYPE_USER)
+            ->where('key', Constant::USER_LISTVIEW_PREFERENCES)
+            ->first();
+
+        //if no settings found of this user then store default
+        if(!$dshboardViewSettings) {
+            $meta = new Meta();
+            $meta->object_id = $userId;
+            $meta->object_type = Constant::OBJECT_TYPE_USER;
+            $meta->key = Constant::USER_LISTVIEW_PREFERENCES;
+            $meta->value = Constant::DEFAULT_DASHBOARD_VIEW_PREFERENCES;
+            $meta->save();
+
+            return $meta;
+        }
+
+        return $dshboardViewSettings;
+    }
+    public function updateDashboardViewSettings($newSettings, $view)
     {
         $userId = get_current_user_id();
 
+        $viewWiseKey = $view == 'listview' ? Constant::USER_LISTVIEW_PREFERENCES : Constant::USER_DASHBOARD_VIEW;
+
         $dshboardViewSettings = Meta::where('object_id', $userId)
             ->where('object_type', Constant::OBJECT_TYPE_USER)
-            ->where('key', Constant::USER_DASHBOARD_VIEW)
+            ->where('key', $viewWiseKey)
             ->first();
 
         foreach ($newSettings as $index => $setting)

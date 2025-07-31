@@ -2,13 +2,12 @@
 
 namespace FluentBoards\App\Models;
 
-use FluentBoards\App\Services\BoardService;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Services\UserService;
 use FluentBoards\Framework\Database\Orm\Builder;
-use FluentBoards\Framework\Support\Arr;
 use FluentBoardsPro\App\Models\CustomField;
+use FluentBoardsPro\App\Services\Constant as ServicesConstant;
 
 class Board extends Model
 {
@@ -315,5 +314,17 @@ class Board extends Model
         return $boardPermissions->settings['is_viewer_only'] ?? false;
     }
 
+    public function removeBoardFromFolder()
+    {
+        $relation = Relation::where('object_type', ServicesConstant::OBJECT_TYPE_FOLDER_BOARD)
+            ->where('foreign_id', $this->id)
+            ->first();
+
+        if (!$relation) {
+            return;
+        }
+        $relation->delete();
+
+    }
 
 }

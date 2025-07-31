@@ -65,6 +65,12 @@ class TaskController extends Controller
         // Process each task
         $this->processTasks($tasks, $board);
 
+        if ($board->type === 'roadmap') {
+            foreach ($tasks as $task) {
+                $task->vote_statistics = $this->taskService->getIdeaVoteStatistics($task->id);
+            }
+        }
+
         return [
             'tasks' => $tasks,
         ];
@@ -188,7 +194,7 @@ class TaskController extends Controller
                 $task->load(['attachments']);
             }
 
-            $task->load(['board', 'stage', 'labels', 'assignees']);
+            $task->load(['board', 'stage', 'labels', 'assignees','watchers']);
 
             $task->assignees = Helper::sanitizeUserCollections($task->assignees);
 
@@ -383,7 +389,7 @@ class TaskController extends Controller
             'last_completed'    => 'nullable|date',
             'assignees'         => 'nullable|integer',
             'archived_at'       => 'nullable|string',
-            'is_watching'       => 'nullable|string',
+            'is_watching'       => 'nullable',
             'is_template'       => 'string',
             'last_completed_at' => 'nullable',
             'settings'          => 'nullable|array',
@@ -643,7 +649,6 @@ class TaskController extends Controller
             $task = Task::find($task_id);
             $settings = $task->settings;
             $this->taskService->deleteTaskCoverImage($settings);
-            error_log('Task Cover Image: ' . print_r($fileUploadedData->toArray(), true));
             $publicUrl = (new CommentService())->createPublicUrl($fileUploadedData, $board_id);
 
             $settings['cover'] = [
@@ -803,5 +808,31 @@ class TaskController extends Controller
         }
                         
     return $this->sendSuccess($formattedContacts, 200);
+    }
+    
+    public function cloneTask(Request $request, $board_id, $task_id) 
+    {
+        $taskData = $this->taskSanitizeAndValidate($request->all(), [
+            'title'          => 'required|string',
+            'board_id'       => 'required|numeric',
+            'stage_id'       => 'required|numeric',
+            'assignee'       => 'required',
+            'subtask'        => 'required',
+            'label'          => 'required',
+            'attachment'     => 'required',
+            'comment'        => 'required',
+        ]);
+        try {
+            $taskData = fluent_boards_string_to_bool($taskData);
+            $clonedTask = $this->taskService->cloneTask($task_id, $taskData);
+
+            return $this->sendSuccess([
+                'message' => __('Task has been cloned successfully', 'fluent-boards'),
+                'task' => $clonedTask,
+                'updatedTasks' => $this->taskService->getLastOneMinuteUpdatedTasks($clonedTask->board_id)
+            ], 200);
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 400);
+        }
     }
 }

@@ -222,4 +222,12 @@ class TaskHandler
 
         return maybe_unserialize($globalSettings->value);
     }
+
+    public function taskCloned($originalTask, $clonedTask)
+    {
+        Activity::where('object_id', $clonedTask->id)
+            ->where('object_type', Constant::ACTIVITY_TASK)
+            ->delete();
+        do_action('fluent_boards/task_cloned_activity', $originalTask, $clonedTask);
+    }
 }
