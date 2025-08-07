@@ -7,7 +7,6 @@ use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Services\UserService;
 use FluentBoards\Framework\Database\Orm\Builder;
 use FluentBoardsPro\App\Models\CustomField;
-use FluentBoardsPro\App\Services\Constant as ServicesConstant;
 
 class Board extends Model
 {
@@ -316,7 +315,7 @@ class Board extends Model
 
     public function removeBoardFromFolder()
     {
-        $relation = Relation::where('object_type', ServicesConstant::OBJECT_TYPE_FOLDER_BOARD)
+        $relation = Relation::where('object_type', 'FluentBoardsPro\App\Models\Folder')
             ->where('foreign_id', $this->id)
             ->first();
 

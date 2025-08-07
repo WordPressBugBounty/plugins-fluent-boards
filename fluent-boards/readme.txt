@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.3
-Stable tag: 1.80
+Stable tag: 1.80.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,12 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v1.80.1 (Date: August 07, 2025) =
+
+- Fixed: Board & Folder Delete issues
+- Fixed: Label Popover issue
+- Other Improvements & Bug Fixes
 
 = v1.80 (Date: July 31, 2025) =
 - New: Board folderization for better board management.

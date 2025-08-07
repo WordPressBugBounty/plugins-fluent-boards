@@ -447,9 +447,9 @@ class BoardController extends Controller
         do_action('fluent_boards/board_updated', $board, $oldBoard);
 
         return [
-            'stages'  => $board->stages()->get(),
             'message' => __('Board has been updated', 'fluent-boards'),
             'board'   => $board,
+            'stages'  => $board->stages()->get(),  
         ];
     }
 
