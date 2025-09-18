@@ -305,6 +305,8 @@ class TaskController extends Controller
 
         $startAt = $request->getSafe('started_at', 'sanitize_text_field', NULL);
         $dueAt = $request->getSafe('due_at', 'sanitize_text_field', NULL);
+        $reminderType = $request->getSafe('reminder_type', 'sanitize_text_field', NULL);
+        $remindAt = $request->getSafe('remind_at', 'sanitize_text_field', NULL);
 
         if ($startAt && $dueAt) {
             if (strtotime($startAt) > strtotime($dueAt)) {
@@ -315,6 +317,9 @@ class TaskController extends Controller
         $task = $this->taskService->updateTaskProperty('started_at', $startAt, $task);
         $task = $this->taskService->updateTaskProperty('due_at', $dueAt, $task);
 
+        // Handle task reminder for all tasks (both tasks and subtasks)
+        $task = $this->taskService->updateTaskProperty('reminder_type', $reminderType, $task);
+        $task = $this->taskService->updateTaskProperty('remind_at', $remindAt, $task);
 
         return [
             'task'         => $task,
@@ -524,7 +529,6 @@ class TaskController extends Controller
         $updatedTasks = $this->taskService->getLastOneMinuteUpdatedTasks($task->board_id, $request->get('last_boards_updated'));
 
         return [
-            'new_position' => $task,
             'message'      => __('Task has been updated', 'fluent-boards'),
             'task'         => $task,
             'updatedTasks' => $updatedTasks,
@@ -693,36 +697,83 @@ class TaskController extends Controller
     {
         $default_config = [
             [
+                'name'    => 'assigned',
+                'label'   => __('Assigned', 'fluent-boards'),
+                'visible' => 'true',
+                'order'   => 1
+            ],
+            [
                 'name'    => 'upcoming',
                 'label'   => __('Upcoming', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 1
+                'order'   => 2
             ],
             [
                 'name'    => 'overdue',
                 'label'   => __('Overdue', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 2
+                'order'   => 3
+            ],
+            [
+                'name'    => 'mentioned',
+                'label'   => __('Mentioned', 'fluent-boards'),
+                'visible' => 'true',
+                'order'   => 4
             ],
             [
                 'name'    => 'completed',
                 'label'   => __('Completed', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 3
+                'order'   => 5
             ],
             [
                 'name'    => 'others',
                 'label'   => __('Others', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 4
+                'order'   => 6
             ]
         ];
 
         $existConfig = Meta::where('object_id', get_current_user_id())->where('key', Constant::FBS_TASK_TABS_CONFIG)->first();
         $config = $default_config;
 
-        if (!empty($existConfig->value)) {
+        if ($existConfig && !empty($existConfig->value)) {
             $config = $existConfig->value;
+            $existingNames = array_column($config, 'name');
+            $missingTabs = [];
+            foreach ($default_config as $defaultTab) {
+                if (!in_array($defaultTab['name'], $existingNames)) {
+                    $missingTabs[] = $defaultTab;
+                }
+            }
+            
+            if (!empty($missingTabs)) {
+                $newConfig = [];
+                $order = 1;
+                $addedAssigned = false;
+                foreach ($config as $tab) {
+                    if ($tab['name'] === 'upcoming' && !$addedAssigned) {
+                        $assignedTab = array_filter($missingTabs, fn($t) => $t['name'] === 'assigned');
+                        if (!empty($assignedTab)) {
+                            $assignedTab = reset($assignedTab);
+                            $assignedTab['order'] = $order++;
+                            $newConfig[] = $assignedTab;
+                            $addedAssigned = true;
+                        }
+                    }
+                    $tab['order'] = $order++;
+                    $newConfig[] = $tab;
+                }
+                foreach ($missingTabs as $missingTab) {
+                    if ($missingTab['name'] !== 'assigned') {
+                        $missingTab['order'] = $order++;
+                        $newConfig[] = $missingTab;
+                    }
+                }
+                $config = $newConfig;
+                $existConfig->value = $config;
+                $existConfig->save();
+            }
         }
 
         return $this->sendSuccess([
@@ -814,7 +865,6 @@ class TaskController extends Controller
     {
         $taskData = $this->taskSanitizeAndValidate($request->all(), [
             'title'          => 'required|string',
-            'board_id'       => 'required|numeric',
             'stage_id'       => 'required|numeric',
             'assignee'       => 'required',
             'subtask'        => 'required',

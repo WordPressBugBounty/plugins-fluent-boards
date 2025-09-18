@@ -125,7 +125,6 @@ class OptionService
             ->where('object_type', Constant::OBJECT_TYPE_USER)
             ->where('key', Constant::USER_LISTVIEW_PREFERENCES)
             ->first();
-
         //if no settings found of this user then store default
         if(!$dshboardViewSettings) {
             $meta = new Meta();
@@ -143,20 +142,48 @@ class OptionService
     public function updateDashboardViewSettings($newSettings, $view)
     {
         $userId = get_current_user_id();
-
-        $viewWiseKey = $view == 'listview' ? Constant::USER_LISTVIEW_PREFERENCES : Constant::USER_DASHBOARD_VIEW;
-
+    
+        if ($view == 'listview') {
+            $viewWiseKey = Constant::USER_LISTVIEW_PREFERENCES;
+        } elseif ($view == 'tableview') {
+            $viewWiseKey = Constant::USER_TABLEVIEW_PREFERENCES;
+        } else {
+            $viewWiseKey = Constant::USER_DASHBOARD_VIEW;
+        }
+    
         $dshboardViewSettings = Meta::where('object_id', $userId)
             ->where('object_type', Constant::OBJECT_TYPE_USER)
             ->where('key', $viewWiseKey)
             ->first();
-
+    
         foreach ($newSettings as $index => $setting)
         {
             $newSettings[$index] = $setting == 'true' ? true : false;
         }
-
+    
         $dshboardViewSettings->value = $newSettings;
         $dshboardViewSettings->save();
+    }
+    
+    // Add this new method
+    public function getTableViewPreferences()
+    {
+        $userId = get_current_user_id();
+        $tableViewSettings = Meta::where('object_id', $userId)
+            ->where('object_type', Constant::OBJECT_TYPE_USER)
+            ->where('key', Constant::USER_TABLEVIEW_PREFERENCES)
+            ->first();
+        if (!$tableViewSettings) {
+            $meta = new Meta();
+            $meta->object_id = $userId;
+            $meta->object_type = Constant::OBJECT_TYPE_USER;
+            $meta->key = Constant::USER_TABLEVIEW_PREFERENCES;
+            $meta->value = Constant::DEFAULT_TABLEVIEW_VIEW_PREFERENCES;
+            $meta->save();
+    
+            return $meta;
+        }
+    
+        return $tableViewSettings;
     }
 }

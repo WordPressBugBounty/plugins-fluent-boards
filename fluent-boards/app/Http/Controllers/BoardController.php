@@ -53,7 +53,7 @@ class BoardController extends Controller
 
     public function getBoards(Request $request)
     {
-        $per_page = $request->getSafe('per_page', 'intval', 20);
+        $per_page = $request->getSafe('per_page', 'intval', 100);
         $userId = get_current_user_id();
         $type = $request->getSafe('type', 'sanitize_text_field', 'to-do');
 
@@ -489,24 +489,6 @@ class BoardController extends Controller
     }
 
 
-    public function changePositionOfStage(Request $request, $board_id)
-    {
-        $changeData = $this->boardSanitizeAndValidate($request->only(['fromPosition', 'toPosition']), [
-            'fromPosition' => 'required',
-            'toPosition'   => 'required',
-        ]);
-
-        try {
-            $this->boardService->changePositionOfStage($board_id, $changeData);
-
-            return $this->sendSuccess([
-                'message' => __('Board stage has been updated', 'fluent-boards')
-            ], 200);
-        } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 400);
-        }
-    }
-
     public function repositionStages(Request $request, $board_id)
     {
         $incomingList = $request->get('list');
@@ -684,14 +666,13 @@ class BoardController extends Controller
     {
         $memberId = $request->getSafe('memberId');
         $isViewerOnly = $request->getSafe('isViewerOnly');
-        $isAlreadyMember = $this->boardService->isAlreadyMember($board_id, $memberId);
-
-        if ($isAlreadyMember) {
+        $member = $this->boardService->addMembersInBoard($board_id, $memberId, $isViewerOnly);
+        if (!$member) {
             return $this->sendError([
                 'message' => __('User already a member', 'fluent-boards'),
             ], 304);
         }
-        $member = $this->boardService->addMembersInBoard($board_id, $memberId, $isViewerOnly);
+
 
         return [
             'message' => __('Member added successfully', 'fluent-boards'),

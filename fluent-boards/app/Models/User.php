@@ -130,4 +130,25 @@ class User extends Model
         )->withTimestamps()
             ->withPivot('marked_read_at');
     }
+    public function assignedTasks()
+    {
+        return $this->belongsToMany(
+            Task::class,
+            'fbs_relations',
+            'foreign_id',
+            'object_id'
+        )->withPivot('settings')
+            ->wherePivot('object_type', Constant::OBJECT_TYPE_TASK_ASSIGNEE)
+            ->withTimestamps();
+    }
+
+    public function mentionedTasks()
+    {
+        return Task::whereHas('notifications', function ($query) {
+            $query->where('action', 'task_comment_mentioned')
+                ->whereHas('users', function ($q) {
+                    $q->where('user_id', $this->ID);
+                });
+        });
+    }
 }

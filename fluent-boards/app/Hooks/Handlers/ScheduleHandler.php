@@ -52,19 +52,26 @@ class ScheduleHandler
                             .htmlspecialchars($boardUrl).'">'
                             .htmlspecialchars($board->title).'</a>';
 
-            $preparedBody = 'commented on '.$taskLinkTag.' on '
-                .$boardLinkTag.' board.';
-            $preHeader = 'New comment has been added on task';
-            $mailSubject = 'New comment has been added on task';
+            // Consolidated translation with placeholders
+            $preparedBody = sprintf(
+                __('commented on %1$s on %2$s board.', 'fluent-boards'),
+                $taskLinkTag,
+                $boardLinkTag
+            );
+            $preHeader = __('New comment has been added on task','fluent-boards');
+            $mailSubject = __('New comment has been added on task','fluent-boards');
 
 
             if ($comment->type == 'reply')
             {
-                $preparedBody = 'replied on your comment on '.$taskLinkTag.' on '
-                    .$boardLinkTag.' board.';
+                $preparedBody = sprintf(
+                    __('replied on your comment on %1$s on %2$s board.', 'fluent-boards'),
+                    $taskLinkTag,
+                    $boardLinkTag
+                );
 
-                $preHeader = 'A reply has been added to your comment on a task.';
-                $mailSubject = 'New Reply on Your Task Comment';
+                $preHeader = __('A reply has been added to your comment on a task.','fluent-boards');
+                $mailSubject = __('New Reply on Your Task Comment','fluent-boards');
             }
 
             $data = [
@@ -131,10 +138,13 @@ class ScheduleHandler
             $commentLink = $taskUrl . '?comment='.$comment->id;
 
             $data = [
-                'body'        => 'mentioned you in a comment on '.$taskLinkTag.' on '
-                    .$boardLinkTag.' board.',
+                'body'        => sprintf(
+                    __('mentioned you in a comment on %1$s on %2$s board.', 'fluent-boards'),
+                    $taskLinkTag,
+                    $boardLinkTag
+                ),
                 'comment_link' => $page_url,
-                'pre_header'  => 'You are mentioned in a comment',
+                'pre_header'  => __('You are mentioned in a comment','fluent-boards'),
                 'show_footer' => true,
                 'comment'     => $comment->description,
                 'userData'    => $userData,
@@ -143,7 +153,7 @@ class ScheduleHandler
                 'site_logo'   => fluent_boards_site_logo(),
             ];
 
-            $mailSubject = 'You are mentioned in a comment';
+            $mailSubject = __('You are mentioned in a comment','fluent-boards');
             $message     = Helper::loadView('emails.comment2', $data);
             $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
@@ -181,9 +191,12 @@ class ScheduleHandler
                                .htmlspecialchars($taskUrl).'">'
                                .htmlspecialchars($task->title).'</a>';
                 $data        = [
-                    'body'        => 'has assigned you to task '.$taskLinkTag
-                                     .' on the board '.$boardLinkTag,
-                    'pre_header'  => 'you have been assigned to task',
+                    'body'        => sprintf(
+                        __('has assigned you to task %1$s on %2$s board.', 'fluent-boards'),
+                        $taskLinkTag,
+                        $boardLinkTag
+                    ),
+                    'pre_header'  => __('you have been assigned to task','fluent-boards'),
                     'show_footer' => true,
                     'userData'    => $userData,
                     'site_url'    => site_url(),
@@ -201,11 +214,12 @@ class ScheduleHandler
                                .htmlspecialchars($task->title).'</a>';
 
                 $data = [
-                    'body'        => 'has assigned you to subtask <strong>'
-                                     .$task->title.'</strong> of task '
-                                     .$taskLinkTag.' on the board '
-                                     .$boardLinkTag,
-                    'pre_header'  => 'you have been assigned to subtask',
+                    'body'        => sprintf(
+                                __('has assigned you to subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'),
+                                $task->title,
+                                $taskLinkTag,
+                                $boardLinkTag),
+                    'pre_header'  => __('you have been assigned to subtask','fluent-boards'),
                     'show_footer' => true, 'user' => $assignee,
                     'userData'    => $userData,
                     'site_url'    => site_url(),
@@ -214,7 +228,7 @@ class ScheduleHandler
                 ];
             }
 
-            $mailSubject = 'You have been assigned to task';
+            $mailSubject = __('You have been assigned to task','fluent-boards');
             $message     = Helper::loadView('emails.assignee2', $data);
             $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
@@ -253,9 +267,12 @@ class ScheduleHandler
                                .htmlspecialchars($taskUrl).'">'
                                .htmlspecialchars($task->title).'</a>';
                 $data        = [
-                    'body'        => 'has removed you from task '.$taskLinkTag
-                                     .' on the board '.$boardLinkTag,
-                    'pre_header'  => 'you have been removed from task',
+                    'body'        => sprintf(
+                                __('has removed you from task %1$s on the board %2$s', 'fluent-boards'),
+                                $taskLinkTag,
+                                $boardLinkTag
+                    ),
+                    'pre_header'  => __('you have been removed from task','fluent-boards'),
                     'show_footer' => true,
                     'userData'    => $userData,
                     'site_url'    => site_url(),
@@ -273,17 +290,18 @@ class ScheduleHandler
                                .htmlspecialchars($task->title).'</a>';
 
                 $data = [
-                    'body'        => 'has removed you from subtask <strong>'
-                                     .$task->title.'</strong> of task '
-                                     .$taskLinkTag.' on the board '
-                                     .$boardLinkTag,
-                    'pre_header'  => 'you have been removed from subtask',
+                    'body'        => sprintf(
+                                __('has removed you from subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'),
+                                $task->title,
+                                $taskLinkTag,
+                                $boardLinkTag),
+                    'pre_header'  => __('you have been removed from subtask','fluent-boards'),
                     'show_footer' => true,
                     'userData'    => $userData,
                 ];
             }
 
-            $mailSubject = 'You have been removed from task';
+            $mailSubject = __('You have been removed from task','fluent-boards');
             $message     = Helper::loadView('emails.assignee2', $data);
             $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
@@ -319,10 +337,13 @@ class ScheduleHandler
                            .htmlspecialchars($task->title).'</a>';
 
             $data = [
-                'body'        => 'has moved '.$taskLinkTag.' task to <strong>'
-                                 .$task->stage->title
-                                 .'</strong> stage of board '.$boardLinkTag,
-                'pre_header'  => 'Task stage has been changed',
+                'body'        => sprintf(
+                    __('has moved %1$s task to <strong>%2$s</strong> stage of board %3$s', 'fluent-boards'),
+                    $taskLinkTag,
+                    $task->stage->title,
+                    $boardLinkTag
+                ),
+                'pre_header'  => __('Task stage has been changed','fluent-boards'),
                 'show_footer' => true,
                 'userData'    => $userData,
                 'site_url'    => site_url(),
@@ -331,7 +352,7 @@ class ScheduleHandler
             ];
 
 
-            $mailSubject = 'Task stage has been changed';
+            $mailSubject = __('Task stage has been changed','fluent-boards');
             $message     = Helper::loadView('emails.assignee2', $data);
             $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
@@ -339,7 +360,7 @@ class ScheduleHandler
                 \wp_mail($assignee_email, $mailSubject, $message, $headers);
             }
         } catch (\Exception $e) {
-            throw new \Exception('Error in sending mail to new assignees', 1);
+            error_log($e->getMessage() ." Error in sending mail to new assignees");
         }
     }
 
@@ -367,10 +388,12 @@ class ScheduleHandler
                            .htmlspecialchars($task->title).'</a>';
 
             $data = [
-                'body'        => 'has updated due date of '.$taskLinkTag
-                                 .' task to <strong>'.$task->due_at
-                                 .'</strong> of board '.$boardLinkTag,
-                'pre_header'  => 'Task due date has been changed',
+                'body'        => sprintf(
+                                __('has updated due date of %1$s task to <strong>%2$s</strong> of board %3$s', 'fluent-boards'),
+                                $taskLinkTag,
+                                $task->due_at,
+                                $boardLinkTag),
+                'pre_header'  => __('Task due date has been changed','fluent-boards'),
                 'show_footer' => true,
                 'userData'    => $userData,
                 'site_url'    => site_url(),
@@ -379,7 +402,7 @@ class ScheduleHandler
             ];
 
 
-            $mailSubject = 'Task due date has been changed';
+            $mailSubject = __('Task due date has been changed','fluent-boards');
             $message     = Helper::loadView('emails.assignee2', $data);
             $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
@@ -415,9 +438,11 @@ class ScheduleHandler
                            .htmlspecialchars($task->title).'</a>';
 
             $data = [
-                'body'        => 'has archived '.$taskLinkTag.' task of board '
-                                 .$boardLinkTag,
-                'pre_header'  => 'Task has been archived',
+                'body'        => sprintf(
+                                __('has archived %1$s task of board %2$s', 'fluent-boards'),
+                                $taskLinkTag,
+                                $boardLinkTag),
+                'pre_header'  => __('Task has been archived','fluent-boards'),
                 'show_footer' => true,
                 'userData'    => $userData,
                 'site_url'    => site_url(),
@@ -426,7 +451,7 @@ class ScheduleHandler
             ];
 
 
-            $mailSubject = 'Task has been archived';
+            $mailSubject = __('Task has been archived','fluent-boards');
             $message     = Helper::loadView('emails.assignee2', $data);
             $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
@@ -448,90 +473,6 @@ class ScheduleHandler
             'display_name' => $currentUser->display_name,
             'photo'        => $gravaterPhoto,
         ];
-    }
-
-    public function sendInvitationViaEmail($boardId, $email, $current_user_id)
-    {
-        try {
-            $userData = $this->getUserData($current_user_id);
-
-            $board = Board::findOrFail($boardId) ?? null;
-            if (!$board) {
-                return;
-            }
-
-            $page_url = fluent_boards_page_url();
-
-            $hashCode = $this->hashGenerate(20);
-
-            $siteUrl = add_query_arg( array(
-                'fbs' => 1,
-                'invitation' => 'board',
-                'email' => $email,
-                'hash' => $hashCode,
-                'bid' => $boardId
-            ), site_url('index.php') );
-
-            $data = [
-                'body'        => 'has invited you to join board: '. $board->title ,
-                'pre_header'  => __('join board invitation in fluent boards', 'fluent-boards'),
-                'btn_title'   => __('Join Board', 'fluent-boards'),
-                'show_footer' => true,
-                'userData'    => $userData,
-                'boardLink'   => $siteUrl,
-                'site_url'    => site_url(),
-                'site_title'  => get_bloginfo('name'),
-                'site_logo'   => fluent_boards_site_logo(),
-            ];
-
-            $mailSubject = 'Invitation for joining board';
-            $message = Helper::loadView('emails.invite-external', $data);
-            $headers = ['Content-Type: text/html; charset=UTF-8'];
-
-            $this->saveHashByEmail($boardId, $email, $hashCode);
-
-            \wp_mail($email, $mailSubject, $message, $headers);
-        } catch (\Exception $e) {
-            // do nothing // better to log here
-        }
-    }
-
-    private function hashGenerate($chars)
-    {
-        $data = '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcefghijklmnopqrstuvwxyz';
-        return substr(str_shuffle($data), 0, $chars);
-    }
-
-    private function saveHashByEmail($boardId, $email, $hash)
-    {
-        $this->deleteHashCode($boardId, $email);
-
-        $fbs_meta = new Meta();
-        $fbs_meta->object_id = $boardId;
-        $fbs_meta->object_type = Constant::OBJECT_TYPE_BOARD;
-        $fbs_meta->key = Constant::BOARD_INVITATION;
-        $fbs_meta->value = ['email' => $email, 'hash' => $hash];
-        $fbs_meta->save();
-    }
-
-    private function deleteHashCode($boardId, $email)
-    {
-        $activeHashCodes = $this->getActiveHashCodes($boardId);
-
-        foreach ($activeHashCodes as $savedHash) {
-            $value = maybe_unserialize($savedHash->value);
-            if($value['email'] == $email){
-                Meta::where('id', $savedHash->id)->delete();
-            }
-        }
-    }
-
-    private function getActiveHashCodes($boardId)
-    {
-        return Meta::query()->where('object_id', $boardId)
-            ->where('object_type', Constant::OBJECT_TYPE_BOARD)
-            ->where('key', Constant::BOARD_INVITATION)
-            ->get();
     }
 
 }

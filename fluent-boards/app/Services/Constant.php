@@ -93,6 +93,7 @@ class Constant{
     const USER_DASHBOARD_VIEW = 'user_dashboard_view';
 
     const USER_LISTVIEW_PREFERENCES = 'user_listview_preferences';
+    const USER_TABLEVIEW_PREFERENCES = 'user_tableview_preferences';
 
     const DEFAULT_DASHBOARD_VIEW_PREFERENCES = [
         'dashboard_view_label' => true,
@@ -103,6 +104,15 @@ class Constant{
         'dashboard_view_due_date' => true,
         'dashboard_view_comment' => true,
         'dashboard_view_notification' => true
+    ];
+
+    const DEFAULT_TABLEVIEW_VIEW_PREFERENCES = [
+        'table_view_priority' => true,
+        'table_view_status' => true,
+        'table_view_dates' => true,
+        'table_view_assignees' => true,
+        'table_view_labels' => true,
+        'table_view_created_at' => true,
     ];
 
 

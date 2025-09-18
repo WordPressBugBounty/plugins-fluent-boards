@@ -567,9 +567,15 @@ class OptionsController extends Controller
 
         if ($view == 'cardview') {
             $globalSettings = $this->optionService->getDashboardViewSettings();
-        } else {
+        } elseif ($view == 'listview') {
             $globalSettings = $this->optionService->getListViewPreferences();
+        } elseif ($view == 'tableview') {
+            $globalSettings = $this->optionService->getTableViewPreferences();
+        } else {
+            // Handle invalid view or default to one
+            return $this->sendError(['message' => __('Invalid view type', 'fluent-boards')], 400);
         }
+
         if ($globalSettings->value)
             $currentSettings = maybe_unserialize($globalSettings->value);
 
@@ -587,7 +593,9 @@ class OptionsController extends Controller
 
         return $this->sendSuccess([
             'message' => __(
-                $view == 'listview' ? "List view settings updated successfully" : "Card view settings updated successfully", 'fluent-boards'
+                $view == 'listview' ? "List view settings updated successfully" :
+                ($view == 'tableview' ? "Table view settings updated successfully" :
+                "Card view settings updated successfully"), 'fluent-boards'
             ),
         ], 201);
     }

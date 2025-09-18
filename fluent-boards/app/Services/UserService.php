@@ -212,85 +212,8 @@ class UserService
 
         return $searchResult;
     }
+    
 
-//    public function getMemberAssociatedTasks($user_id, $requestData)
-//    {
-//        $taskType = $requestData['taskType'];
-//        $boardIds = !empty($requestData['boardIds']) ? $requestData['boardIds'] : [];
-//        $orderBy = $requestData['orderBy'];
-//        $order = $requestData['order'];
-//        $per_page = 15;
-//        $user = User::find($user_id);
-//
-//        // get the task assigned to the user
-//        $tasksQuery = $user->tasks()->with(['stage', 'board'])->whereNull('archived_at');
-//        if ($taskType == 'upcoming') {
-//            $tasksQuery = $tasksQuery->upcoming();
-//        } elseif ($taskType == 'overdue') {
-//            $tasksQuery = $tasksQuery->overdue();
-//        } elseif ($taskType == 'completed') {
-//            $tasksQuery = $tasksQuery->where('status', 'closed');
-//        } else {
-//            $tasksQuery = $tasksQuery->whereNull('due_at');
-//        }
-//
-//        $currentUserId = get_current_user_id();
-//        if($currentUserId != $user->ID) {
-//            if(!PermissionManager::isAdmin()){
-//                $currentUser = User::find($currentUserId);
-//                $currentUserBoardIds = $currentUser->whichBoards->pluck('id')->toArray();
-//                if (empty($boardIds)) {
-//                    $boardIds = $currentUserBoardIds;
-//                } else {
-//                    // Get the intersection of the two arrays
-//                    $boardIds = array_intersect($boardIds, $currentUserBoardIds);
-//                }
-//            }
-//        }
-//
-//        if($boardIds){
-//            $tasksQuery = $tasksQuery->whereIn('board_id', $boardIds);
-//        }
-//
-//        $sortOptions = ['priority', 'due_at', 'position', 'created_at', 'title'];
-//        $orderOptions = ['ASC', 'DESC'];
-//
-//        // Validate order and orderBy parameters
-//        if (!in_array($order, $sortOptions) || !in_array($orderBy, $orderOptions)) {
-//            throw new \Exception(__('Invalid sort or orderBy parameter', 'fluent-boards'));
-//        }
-//
-//        // Apply ordering based on the specified order and orderBy
-//        switch ($order) {
-//            case 'priority':
-//                $tasksQuery->orderByRaw("FIELD(priority, 'High', 'Medium', 'Low') {$orderBy}");
-//                break;
-//
-//            case 'due_at':
-//                if ($orderBy === 'ASC') {
-//                    // Separate ordering for tasks with and without due dates
-//                    $tasksQuery = $tasksQuery->orderBy('due_at');
-//                } else {
-//                    $tasksQuery->orderBy('due_at', $orderBy);
-//                }
-//                break;
-//
-//            default:
-//                $tasksQuery->orderBy($order, $orderBy);
-//                break;
-//        }
-//
-//        $tasks = $tasksQuery->paginate($per_page, ['*'], 'page', $requestData->page);
-//        return [
-//            'tasks'          => $tasks->values()->toArray(),
-//            'paginationInfo' => [
-//                'current_page' => $tasks->currentPage(),
-//                'last_page'    => $tasks->lastPage(),
-//                'total'        => $tasks->total(),
-//            ],
-//        ];
-//
-//    }
     public function getMemberAssociatedTasks($user_id, $requestData)
     {
         $taskType = $requestData['taskType'] ?? null;
@@ -312,7 +235,12 @@ class UserService
             ];
         }
 
-        // Get the task assigned to the user
+        if($taskType == 'assigned') {
+            $tasksQuery = $user->assignedTasks()->with(['stage', 'board'])->whereNull('archived_at')->whereNull('parent_id');
+        } else if($taskType == 'mentioned') {
+            $tasksQuery = $user->mentionedTasks()->with(['stage', 'board'])->whereNull('archived_at')->whereNull('parent_id');
+        } else {
+            // Get the task assigned to the user
         $tasksQuery = $user->tasks()->with(['stage', 'board'])->whereNull('archived_at');
 
         switch ($taskType) {
@@ -329,6 +257,9 @@ class UserService
                 $tasksQuery->whereNull('due_at');
                 break;
         }
+        }
+
+        
 
         $currentUserId = get_current_user_id();
         if ($currentUserId != $user->ID && !PermissionManager::isAdmin()) {

@@ -7,7 +7,7 @@ use FluentBoards\App\Services\PermissionManager;
 
 class BoardMenuHandler
 {
-   public static function getMenuItems($board_id)
+   public static function getMenuItems($board_id = null)
     {
         // Get default menu items with positions
         $defaultMenuItems = self::getDefaultMenuItems($board_id);
@@ -54,18 +54,18 @@ class BoardMenuHandler
         return $allMenuItems;
     }
     
-    private static function getDefaultMenuItems($board_id)
+    private static function getDefaultMenuItems($board_id = null)
     {
-        $board = Board::find($board_id);
-        if (!$board) {
-            return [];
-        }
+        // $board = Board::find($board_id);
+        // if (!$board) {
+        //     return [];
+        // }
 
-        // Cache permission and state checks
-        $isAdmin = PermissionManager::isAdmin();
-        $isManager = $isAdmin || PermissionManager::isBoardManager($board_id);
-        $isArchived = (bool) $board->archived_at;
-        $isViewerOnly = (bool) $board->isUserOnlyViewer;
+        // // Cache permission and state checks
+        // $isAdmin = PermissionManager::isAdmin();
+        // $isManager = $isAdmin || PermissionManager::isBoardManager($board_id);
+        // $isArchived = (bool) $board->archived_at;
+        // $isViewerOnly = (bool) $board->isUserOnlyViewer;
 
         // Non-conditional menu items (always shown)
         $defaultItems = [
@@ -110,13 +110,20 @@ class BoardMenuHandler
                 'type' => 'default',
                 'position' => 8,
                 'role' => ''
-            ]
+            ],
+            [
+                'key' => 'webhooks',
+                'label' => __('Webhooks', 'fluent-boards'),
+                'type' => 'default',
+                'position' => 9,
+                'role' => ''
+            ],
         ];
     
         // Conditional items
         
         // Notification Settings (only if not viewer only)
-        if (!$isViewerOnly) {
+        // if (!$isViewerOnly) {
             $notificationItems = [
                 [
                     'key' => 'notification_settings',
@@ -127,10 +134,10 @@ class BoardMenuHandler
                 ]
             ];
             $defaultItems = array_merge($defaultItems, $notificationItems);
-        }
+        // }
         
         // Change Background (only for admins/managers and non-archived boards)
-        if ($isManager && !$isArchived) {
+        // if ($isManager && !$isArchived) {
             $backgroundItems = [
                 [
                     'key' => 'change_background',
@@ -141,10 +148,10 @@ class BoardMenuHandler
                 ]
             ];
             $defaultItems = array_merge($defaultItems, $backgroundItems);
-        }
+        // }
         
         // Associated CRM Contacts (only if FluentCRM exists)
-        if (!!defined('FLUENTCRM')) {
+        // if (!!defined('FLUENTCRM')) {
             $crmItems = [
                 [
                     'key' => 'associated_crm_contacts',
@@ -155,10 +162,10 @@ class BoardMenuHandler
                 ]
             ];
             $defaultItems = array_merge($defaultItems, $crmItems);
-        }
+        // }
         
         // Admin/Manager only items for non-archived boards
-        if ($isManager && !$isArchived) {
+        // if ($isManager && !$isArchived) {
             $adminItems = [
                 [
                     'key' => 'duplicate_board',
@@ -176,7 +183,7 @@ class BoardMenuHandler
                 ]
             ];
             $defaultItems = array_merge($defaultItems, $adminItems);
-        } else if ($isManager && $isArchived) {
+        // } else if ($isManager && $isArchived) {
             $archivedAdminItems = [
                 [
                     'key' => 'restore_board',
@@ -194,7 +201,7 @@ class BoardMenuHandler
                 ]
             ];
             $defaultItems = array_merge($defaultItems, $archivedAdminItems);
-        }
+        // }
         
         return $defaultItems;
     }

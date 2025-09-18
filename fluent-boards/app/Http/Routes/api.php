@@ -11,7 +11,6 @@ $router->prefix('tasks')->withPolicy('AuthPolicy')->group(function ($router) {
     $router->get('/crm-associated-tasks/{associated_id}', 'TaskController@getAssociatedTasks')->int('associated_id');
     $router->get('/stage/{task_id}', 'TaskController@getStageByTask'); //FUTURE: this api need to be relocated
 
-    $router->post('/create-first-task', 'TaskController@createFirstTask');
     $router->get('/boards-by-type/{type}', 'BoardController@getBoardsByType');
     $router->get('/{task_id}/labels', 'TaskController@getLabelsByTask');
 
@@ -26,7 +25,6 @@ $router->withPolicy('BoardUserPolicy')->group(function ($router) {
     $router->get('get-user-permissions', 'OptionsController@getUserPermission');
     $router->get('ajax-options', 'OptionsController@selectorOptions');
     $router->put('update-user-permissions', 'OptionsController@updatedUserPermission');
-    $router->post('set-permission-all-board-admin', 'OptionsController@SetUserPermissionAllBoardAdmin');
     $router->delete('remove-user-from-board', 'OptionsController@removeUserFromBoard');
     $router->get('/fluent-boards-users', 'UserController@allFluentBoardsUsers');
     $router->get('/search-fluent-boards-users', 'UserController@searchFluentBoardsUser');
@@ -83,7 +81,6 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->post('/stage-create', 'BoardController@createStage')->int('board_id');
     $router->put('/stage/{stage_id}/sort-task', 'StageController@sortStageTasks')->int('board_id')->int('stage_id');
     $router->put('/stage/{stage_id}/archive-all-task', 'BoardController@archiveAllTasksInStage')->int('board_id')->int('stage_id');
-    $router->put('/change-stage-position', 'BoardController@changePositionOfStage')->int('board_id');
     $router->put('/re-position-stages', 'BoardController@repositionStages')->int('board_id');
     $router->put('/update-stage/{stage_id}', 'StageController@updateStage')->int('board_id'); //Todo:: will delete later
     $router->put('/update-stage-property/{stage_id}', 'StageController@updateStageProperty')->int('board_id');
@@ -172,6 +169,14 @@ $router->prefix('webhooks')->withPolicy('WebhookPolicy')->group(function ($route
     $router->post('/', 'WebhookController@create');
     $router->put('/{id}', 'WebhookController@update')->int('id');
     $router->delete('/{id}', 'WebhookController@delete')->int('id');
+});
+
+// Add outgoing webhook routes
+$router->prefix('outgoing-webhooks')->withPolicy('WebhookPolicy')->group(function ($router) {
+    $router->get('/', 'WebhookController@outgoingWebhooks');
+    $router->post('/', 'WebhookController@createOutgoingWebhook');
+    $router->put('/{id}', 'WebhookController@updateOutgoingWebhook')->int('id');
+    $router->delete('/{id}', 'WebhookController@deleteOutgoingWebhook')->int('id');
 });
 
 

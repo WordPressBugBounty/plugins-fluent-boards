@@ -47,6 +47,7 @@ $app->addCustomAction('task_created', 'ActivityHandler@logTaskCreationActivity',
 $app->addCustomAction('task_content_updated', 'ActivityHandler@logTaskContentUpdatedActivity', 10, 3);
 $app->addCustomAction('task_deleted', 'TaskHandler@taskDeleted', 10, 1);
 $app->addCustomAction('task_archived', 'ActivityHandler@taskArchived', 10, 1);
+//$app->addCustomAction('task_custom_field_changed', 'ActivityHandler@logCustomFieldActivity', 10, 5); // commented for now, will implement later
 
 $app->addCustomAction('board_created', 'BoardHandler@boardCreated', 10, 1);
 $app->addCustomAction('before_board_deleted', 'BoardHandler@beforeBoardDeleted', 10, 2);
@@ -54,7 +55,6 @@ $app->addCustomAction('board_deleted', 'BoardHandler@boardDeleted', 10, 1);
 $app->addCustomAction('board_updated', 'BoardHandler@boardUpdated', 10, 2);
 $app->addCustomAction('stage_updated', 'BoardHandler@boardStageUpdated', 10, 3);
 $app->addCustomAction('board_stage_moved', 'BoardHandler@boardStageMoved', 10, 2);
-$app->addCustomAction('board_stage_dragged', 'BoardHandler@boardStageDragged', 10, 1);
 $app->addCustomAction('board_stage_added', 'BoardHandler@boardStageAdded', 10, 2);
 $app->addCustomAction('stage_deleted', 'BoardHandler@boardStageDeleted', 10, 2);
 $app->addCustomAction('stage_archived', 'BoardHandler@boardStageArchived', 10, 2);
@@ -112,7 +112,6 @@ $app->addCustomAction('task_attachment_deleted', 'TaskHandler@taskAttachmentDele
 $app->addAction('deleted_user', 'BoardHandler@deleteUserRelatedData', 10, 3);
 $app->addAction('delete_attachment', 'FileHandler@mediaFileDeleted', 10, 1);
 
-$app->addCustomAction('send_invitation', 'ScheduleHandler@sendInvitationViaEmail', 10, 3);
 $app->addCustomAction('task_created', 'TaskHandler@onTaskCreated', 10, 1);
 $app->addCustomAction('comment_created', 'TaskHandler@onCommentCreated', 10, 1);
 $app->addCustomAction('assign_another_user', 'TaskHandler@onAssignAnotherUser', 10, 2);

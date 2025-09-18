@@ -309,13 +309,20 @@ class Task extends Model
     {
         $data = apply_filters('fluent_boards/before_task_create', $data);
         $createdTask = Task::create($data);
-
+    
         if ( ! empty($data['assignees'])) {
             $assignees = array_filter(array_map('intval', $data['assignees']));
             if ($assignees) {
                 $assigneeData = array_fill_keys($assignees,
                     ['object_type' => Constant::OBJECT_TYPE_TASK_ASSIGNEE]);
                 $createdTask->assignees()->syncWithoutDetaching($assigneeData);
+                
+                // Add assignees as watchers
+                foreach ($assignees as $assigneeId) {
+                    $createdTask->watchers()->syncWithoutDetaching([
+                        $assigneeId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]
+                    ]);
+                }
             }
         }
 

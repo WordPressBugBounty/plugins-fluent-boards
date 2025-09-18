@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.3
-Stable tag: 1.80.1
+Stable tag: 1.85
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -170,8 +170,24 @@ You can filter any task by assignees, stages, and task priorities.
 
 == Changelog ==
 
-= v1.80.1 (Date: August 07, 2025) =
 
+= v1.85 (Date: September 18, 2025) =
+- New: Table View for tasks
+- New: Outgoing Webhooks
+- New: Task and subtask reminder feature
+- New: REST API documentation
+- Improvement: 'Assigned' & 'Mentioned' Tab in My tasks section
+- Improvement: Added "Create from template" option in task create action in CRM Automation
+- Improvement: Improved member search to support partial name matches
+- Improvement: Additional translations
+- Fixed: Security Issues in board member invitations
+- Fixed: Roles Issues in board member management
+- Fixed: Frontend portal task creation issue in List view
+- Fixed: Incoming webhook task creation issue with watchers and members
+- Fixed: Email sent issue when self-assigned to task
+- Other Improvements & Bug Fixes
+
+= v1.80.1 (Date: August 07, 2025) =
 - Fixed: Board & Folder Delete issues
 - Fixed: Label Popover issue
 - Other Improvements & Bug Fixes

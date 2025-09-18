@@ -120,12 +120,6 @@ class BoardHandler
         $this->createLogActivity($boardId, 'updated', 'title of stage', $oldStageLabel, $newStageLabel);
     }
 
-	public function boardStageDragged($stage)
-	{
-		$message = sprintf(__('had changed the position of <em><strong>%1s</strong></em> stage.', 'fluent-boards'), $stage->label);
-        $this->createLogActivity($stage->board_id,'moved', 'stage', $stage->label);
-	}
-
 	public function boardStageAdded($board, $stage)
 	{
 		$this->createLogActivity($board->id,'created', 'stage', null, $stage->title);

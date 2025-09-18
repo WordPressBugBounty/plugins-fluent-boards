@@ -356,9 +356,24 @@ class Helper
 
         if(!PermissionManager::isBoardManager($boardId)) //Todo: may create permission security issue, will be modified later
         {
+            $currentUser = wp_get_current_user();
+            if($currentUser && isset($currentUser->user_email)){
+                $currentUserEmail = $currentUser->user_email;
+            }
             foreach ($users as $user) {
-                unset($user->user_email);
-                unset($user->email);
+
+                if($user['email'] === $currentUserEmail){
+                    $sanitizedUsers[] = $user;
+                    continue;
+                }
+
+                if (isset($user['email'])) {
+                    $user['email'] = self::obfuscateEmail($user['email']);
+                }
+                if (isset($user['user_email'])) {
+                    $user['user_email'] = self::obfuscateEmail($user['user_email']);
+                }
+
                 $sanitizedUsers[] = $user;
             }
         } else {
@@ -368,6 +383,28 @@ class Helper
         }
 
         return $sanitizedUsers;
+    }
+
+    public static function obfuscateEmail($email)
+    {
+        if (!is_string($email) || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return $email; // Not a valid email, return as is
+        }
+
+        list($name, $domain) = explode('@', $email, 2);
+
+        // Local part: show first 3 chars, then fixed ****
+        $visibleLocal = substr($name, 0, 3);
+        $maskedLocal  = $visibleLocal . '****';
+
+        // Domain: mask the main label to **** + last 2 chars, keep rest (TLDs) intact
+        $domainParts = explode('.', $domain);
+        $mainLabel   = $domainParts[0] ?? '';
+        $tail        = strlen($mainLabel) >= 2 ? substr($mainLabel, -2) : $mainLabel;
+        $domainParts[0] = '****' . $tail; // e.g., example.com -> ****le.com
+        $maskedDomain = implode('.', $domainParts);
+
+        return $maskedLocal . '@' . $maskedDomain;
     }
 
     public static function getPriorityOptions()
@@ -504,5 +541,22 @@ class Helper
         ];
 
         return self::sanitizeData($data, $fieldMaps);
+    }
+
+
+    public static function taskReminderTypes()
+    {
+        $allowedTypes = [
+                            '30_minutes_before' => __('30 minutes before', 'fluent-boards'),
+                            '1_hour_before'     => __('1 hour before', 'fluent-boards'),
+                            '2_hours_before'    => __('2 hours before', 'fluent-boards'),
+                            '1_day_before'      => __('1 day before', 'fluent-boards'),
+                            '2_days_before'     => __('2 days before', 'fluent-boards'),
+                            '1_week_before'     => __('1 week before', 'fluent-boards'),
+                        ];
+
+        $allowedTypes = apply_filters('fluent_boards/task_reminder_types', $allowedTypes);
+
+        return $allowedTypes;
     }
 }

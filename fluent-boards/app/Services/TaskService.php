@@ -90,14 +90,18 @@ class TaskService
 
     public function getTasksForBoards($filters = ['overdue', 'upcoming'], $limit = 5, $task_ids = [])
     {
+        $assigned = $this->getTasksForBoardsByCategory('assigned', $limit, $task_ids);
         $overDue = $this->getTasksForBoardsByCategory('overdue', $limit, $task_ids);
         $completed = $this->getTasksForBoardsByCategory('completed', $limit, $task_ids);
+        $mentioned = $this->getTasksForBoardsByCategory('mentioned', $limit, $task_ids);
         $upcoming = $this->getTasksForBoardsByCategory('upcoming', $limit, $task_ids);
         $others = $this->getTasksForBoardsByCategory('others', $limit, $task_ids);
 
         return [
+            'assigned'            => $assigned ?? [],
             'overdue'             => $overDue ?? [],
             'upcoming'            => $upcoming ?? [],
+            'mentioned'           => $mentioned ?? [],
             'completed'           => $completed ?? [],
             'others'              => $others ?? []
         ];
@@ -110,18 +114,58 @@ class TaskService
             ->with(['assignees', 'board', 'stage'])
             ->whereNull('archived_at')
             ->where('parent_id', null)
-            ->orderBy('due_at', 'ASC');
+            ->orderBy('due_at', 'DESC');
 
-        if ('overdue' == $category) {
-            $taskQuery->overdue();
-        } elseif ('upcoming' == $category) {
-            $taskQuery->upcoming();
-        } elseif ('others' == $category) {
-            $taskQuery->whereNull('due_at');
-        } elseif ('completed' == $category) {
-            $taskQuery->where('status', 'closed');
-        } else {
-            return [];
+        switch ($category) {
+            case 'overdue':
+                $taskQuery->overdue();
+                break;
+            case 'upcoming':
+                $taskQuery->upcoming();
+                break;
+            case 'others':
+                $taskQuery->whereNull('due_at');
+                break;
+            case 'completed':
+                $taskQuery->where('status', 'closed');
+                break;
+            case 'assigned':
+                // Rebuild query to order by latest assignment (pivot created_at) so the most recently assigned tasks come first.
+                $currentUserId = get_current_user_id();
+                $taskQuery = Task::query()
+                    ->select('fbs_tasks.*')
+                    ->distinct()
+                    ->with(['assignees', 'board', 'stage'])
+                    ->whereIn('fbs_tasks.id', $taskIds)
+                    ->whereNull('fbs_tasks.archived_at')
+                    ->whereNull('fbs_tasks.parent_id')
+                    ->join('fbs_relations as rel', function ($join) use ($currentUserId) {
+                        $join->on('rel.object_id', '=', 'fbs_tasks.id')
+                            ->where('rel.object_type', Constant::OBJECT_TYPE_TASK_ASSIGNEE)
+                            ->where('rel.foreign_id', $currentUserId);
+                    })
+                    ->orderBy('rel.created_at', 'DESC')
+                    ->orderBy('fbs_tasks.updated_at', 'DESC');
+                break;
+            case 'mentioned':
+                $currentUserId = get_current_user_id();
+                $userNotifications = NotificationUser::where('user_id', $currentUserId)
+                    ->with(['notification' => function ($query) {
+                        $query->where('action', 'task_comment_mentioned');
+                    }])
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+                $taskIds = $userNotifications->filter(function ($userNotification) {
+                    $notification = $userNotification->notification;
+                    return $notification && $notification->task && is_null($notification->task->archived_at) && is_null($notification->task->parent_id);
+                })->pluck('notification.task_id')->unique();
+                $validTasks = Task::whereIn('id', $taskIds)
+                    ->with(['assignees', 'board', 'stage'])
+                    ->get();
+
+                return $validTasks->toArray();
+            default:
+                return [];
         }
 
         $tasks = $taskQuery->take($limit)->get();
@@ -138,7 +182,7 @@ class TaskService
         $validColumns = [
             'board_id',
             'type',
-            'reminder_type',
+//            'reminder_type',
             'remind_at',
             'log_minutes',
             'settings'
@@ -236,6 +280,23 @@ class TaskService
                         $task->updateMeta(Constant::IS_TASK_TEMPLATE, $value);
                     }
                     break;
+
+                case 'reminder_type':
+                    if (defined('FLUENT_BOARDS_PRO')) {
+                        $allowedTypes = Helper::taskReminderTypes();
+
+                        // check in keys of allowed types
+                        if (array_key_exists($value, $allowedTypes)) {
+                            $value = $value;
+                        } else {
+                            $value = null;
+                        }
+
+                        $task->reminder_type = $value;
+                        $task->save();
+                        do_action('fluent_boards/task_reminder_type_changed', $task, $value);
+                    }
+                    break;
             }
         }
 
@@ -251,7 +312,7 @@ class TaskService
         $task->save();
 
         if ($operation == 'added') {
-            if ((new NotificationService())->checkIfEmailEnable($payloadAssigneeId, Constant::BOARD_EMAIL_TASK_ASSIGN, $task->board_id)) {
+            if ((new NotificationService())->checkIfEmailEnable($payloadAssigneeId, Constant::BOARD_EMAIL_TASK_ASSIGN, $task->board_id) && $payloadAssigneeId != get_current_user_id()) {
                 $this->sendMailAfterTaskModify('add_assignee', $payloadAssigneeId, $task->id);
             }
 //            $assigneeIdsToSendEmail = $this->filterAssigneeToSendEmail($task, $idArray, Constant::BOARD_EMAIL_TASK_ASSIGN);
@@ -261,7 +322,7 @@ class TaskService
                 do_action('fluent_boards/assign_another_user', $task, $payloadAssigneeId);
             }
         } else {
-            if ((new NotificationService())->checkIfEmailEnable($payloadAssigneeId, Constant::BOARD_EMAIL_REMOVE_FROM_TASK, $task->board_id)) {
+            if ((new NotificationService())->checkIfEmailEnable($payloadAssigneeId, Constant::BOARD_EMAIL_REMOVE_FROM_TASK, $task->board_id) && $payloadAssigneeId != get_current_user_id()) {
                 $this->sendMailAfterTaskModify('remove_assignee', $payloadAssigneeId, $task->id);
             }
             do_action('fluent_boards/task_assignee_removed', $task, $payloadAssigneeId);
@@ -748,7 +809,6 @@ class TaskService
 //
 //            $task->subtasks = $subTasks;
 
-//            just_log($task->subtaskGroup);
 
             foreach ($task->subtaskGroup as $group) {
                 foreach ($group->subtasks as $subtask) {
@@ -1072,10 +1132,12 @@ class TaskService
     {
         if (isset($settings['cover']['imageId']) && $settings['cover']['imageId']) {
             $image = TaskImage::find($settings['cover']['imageId']);
-            $deletedImage = clone $image;
-            $deletedImage->delete();
+            if ($image) {
+                $deletedImage = clone $image;
+                $deletedImage->delete();
 
-            do_action('fluent_boards/task_attachment_deleted', $deletedImage);
+                do_action('fluent_boards/task_attachment_deleted', $deletedImage);
+            }
         }
 
     }

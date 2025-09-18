@@ -7,6 +7,7 @@ use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\TransStrings;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Collection;
@@ -325,7 +326,7 @@ class AdminMenuHandler
 
         wp_enqueue_script(
             $slug . '_admin_app',
-            $assets . 'admin/app.js',
+            $assets . 'admin/app.min.js',
             ['jquery'],
             FLUENT_BOARDS_PLUGIN_VERSION,
             true
@@ -406,6 +407,8 @@ class AdminMenuHandler
             ),
             'is_rtl' => is_rtl(),
             'task_tabs' => apply_filters('fluent_boards/task_tabs', $this->getDefaultTaskTabs()),
+            'board_menu_items' => BoardMenuHandler::getMenuItems(),
+            'reminder_types' => defined('FLUENT_BOARDS_PRO') ? Helper::taskReminderTypes() : [],
         ]);
     }
 

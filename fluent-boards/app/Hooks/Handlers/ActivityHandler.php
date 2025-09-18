@@ -398,6 +398,61 @@ class ActivityHandler
         $this->createLogActivity($task->id, 'moved', 'board', $oldBoard->title, $newBoard->title);
     }
 
+    public function logCustomFieldActivity($taskId, $customField, $oldValue, $newValue, $isNewCustomField)
+    {
+        // Format values for display in activity
+        $displayNewValue = $this->formatValueForDisplay($newValue, $customField->settings['custom_field_type']);
+        
+        $action = 'changed';
+        $column = $customField->title;
+        
+        // Ensure we have a value to display
+        if (empty($displayNewValue)) {
+            $displayNewValue = 'empty';
+        }
+
+        // Handle old value display logic
+        $displayOldValue = null;
+        if (!$isNewCustomField && $oldValue !== null && $oldValue !== '') {
+            // Format old value for display if it exists
+            $displayOldValue = $this->formatValueForDisplay($oldValue, $customField->settings['custom_field_type']);
+        }
+
+        $settings = [
+            'custom_field_id' => $customField->id,
+            'custom_field_title' => $customField->title,
+            'custom_field_type' => $customField->settings['custom_field_type']
+        ];
+
+        $this->createLogActivity($taskId, $action, $column, $displayOldValue, $displayNewValue, null, $settings);
+    }
+
+    /**
+     * Format custom field value for display in activity logs
+     */
+    private function formatValueForDisplay($value, $fieldType)
+    {
+        if ($value === null || $value === '') {
+            return 'empty';
+        }
+
+        switch ($fieldType) {
+            case 'checkbox':
+                return $value ? 'checked' : 'unchecked';
+            case 'date':
+                // If it's already formatted as Y-m-d H:i:s, convert to readable format
+                if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) {
+                    return date('M j, Y g:i A', strtotime($value));
+                }
+                return $value;
+            case 'select':
+            case 'text':
+            case 'textarea':
+            case 'number':
+            default:
+                return (string) $value;
+        }
+    }
     public function taskCloned($originalTask, $clonedTask)
     {
         $this->createLogActivity(

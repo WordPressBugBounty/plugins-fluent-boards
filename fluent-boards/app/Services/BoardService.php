@@ -240,46 +240,6 @@ class BoardService
         return serialize($this->processStages($stages));
     }
 
-    public function changePositionOfStage($boardId, $changeData)
-    {
-        $allStages = Stage::where('board_id', $boardId)
-            ->where('is_archived', 0)
-            ->where('type', 'stage')
-            ->orderBy('position', 'asc')
-            ->get();
-
-        $changedStage = null;
-
-        foreach ($allStages as $stage) {
-            if ($changeData['fromPosition'] < $changeData['toPosition']) {
-                if ($stage['position'] == $changeData['fromPosition']) {
-                    $stage['position'] = (int)$changeData['toPosition'];
-                    $stage->save();
-                    $changedStage = $stage;
-                } elseif (
-                    $stage['position'] > $changeData['fromPosition'] &&
-                    $stage['position'] <= $changeData['toPosition']
-                ) {
-                    $stage['position'] = $stage->position - 1;
-                    $stage->save();
-                }
-            } else {
-                if (
-                    $stage['position'] >= $changeData['toPosition'] &&
-                    $stage['position'] < $changeData['fromPosition']
-                ) {
-                    $stage['position'] = $stage->position + 1;
-                    $stage->save();
-                } elseif ($stage['position'] == $changeData['fromPosition']) {
-                    $stage['position'] = (int)$changeData['toPosition'];
-                    $stage->save();
-                    $changedStage = $stage;
-                }
-            }
-        }
-
-        do_action('fluent_boards/board_stage_dragged', $changedStage);
-    }
 
     public function repositionStages($boardId, $incomingList)
     {
@@ -357,11 +317,17 @@ class BoardService
         if (!$board) {
             return false;
         }
+        $isAlreadyMember = $this->isAlreadyMember($boardId, $memberId);
+        if($isAlreadyMember) {
+            return false;
+        }
         $settings = Constant::BOARD_USER_SETTINGS;
 
         if($isViewerOnly === 'yes') {
             $settings = Constant::BOARD_USER_VIEWER_ONLY_SETTINGS;
         }
+
+
 
         $board->users()->attach(
             $memberId,

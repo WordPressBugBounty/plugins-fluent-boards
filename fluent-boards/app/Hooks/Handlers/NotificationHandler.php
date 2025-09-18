@@ -133,7 +133,11 @@ class NotificationHandler
         if(count($userIdsWhoGetNotification) > 0){
             $new_board_id = Task::findOrFail($task->board_id)->board_id;
             $new_board_title = Board::findOrFail($new_board_id)->title;
-            $message = 'moved "' . $task->title . '" task to "' . $new_board_title . '" board.';
+            $message = sprintf(
+                __('moved %1$s task to %2$s board.','fluent-boards'),
+                $task->title,
+                $new_board_title
+            );
             $notification = $this->createNotification($oldBoardId, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $message);
             $notification->users()->attach($userIdsWhoGetNotification);
         }
@@ -143,7 +147,7 @@ class NotificationHandler
     {
         if($newAssigneeId != get_current_user_id()){
             $action = 'task_assignee_changed';
-            $message = 'has added you as an assignee.';
+            $message = __('has added you as an assignee.','fluent-boards');
             $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
             $notification->users()->attach($newAssigneeId);
         }
@@ -153,7 +157,7 @@ class NotificationHandler
     {
         if($newAssigneeId != get_current_user_id()){
             $action = 'task_assignee_changed';
-            $message = 'has removed you as an assignee.';
+            $message = __('has removed you as an assignee.','fluent-boards');
             $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
             $notification->users()->attach($newAssigneeId);
         }
