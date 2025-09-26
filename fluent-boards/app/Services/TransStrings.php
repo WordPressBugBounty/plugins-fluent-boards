@@ -875,6 +875,9 @@ class TransStrings
             'Task Archived' => __('Task Archived', 'fluent-boards'),
             'Comment Added' => __('Comment Added', 'fluent-boards'),
             'Assignee Added' => __('Assignee Added', 'fluent-boards'),
+            'Delete Task'   => __('Delete Task', 'fluent-boards'),
+            'You are about to delete this task.' => __('You are about to delete this task.', 'fluent-boards'),
+            'This action cannot be undone.' => __('This action cannot be undone.', 'fluent-boards'),
         ];
     }
 }

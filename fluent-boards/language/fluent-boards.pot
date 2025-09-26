@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Fluent Boards\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-09-18 10:12+0000\n"
+"POT-Creation-Date: 2025-09-25 12:41+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: \n"
@@ -80,7 +80,7 @@ msgstr ""
 msgid "A reply has been added to your comment on a task."
 msgstr ""
 
-#: app/Services/TransStrings.php:17 app/Hooks/Handlers/BoardMenuHandler.php:74
+#: app/Services/TransStrings.php:17 app/Hooks/Handlers/BoardMenuHandler.php:62
 msgid "About this Board"
 msgstr ""
 
@@ -358,7 +358,7 @@ msgid "Archive all tasks"
 msgstr ""
 
 #: app/Services/TransStrings.php:627
-#: app/Hooks/Handlers/BoardMenuHandler.php:179
+#: app/Hooks/Handlers/BoardMenuHandler.php:154
 msgid "Archive Board"
 msgstr ""
 
@@ -391,7 +391,7 @@ msgid "archived a task"
 msgstr ""
 
 #: app/Services/TransStrings.php:622
-#: app/Hooks/Handlers/BoardMenuHandler.php:109
+#: app/Hooks/Handlers/BoardMenuHandler.php:111
 msgid "Archived Items"
 msgstr ""
 
@@ -486,7 +486,7 @@ msgid "Associated CRM Contact Last Name"
 msgstr ""
 
 #: app/Services/TransStrings.php:624
-#: app/Hooks/Handlers/BoardMenuHandler.php:158
+#: app/Hooks/Handlers/BoardMenuHandler.php:125
 msgid "Associated CRM Contacts"
 msgstr ""
 
@@ -539,7 +539,7 @@ msgstr ""
 msgid "board"
 msgstr ""
 
-#: app/Services/TransStrings.php:620 app/Hooks/Handlers/BoardMenuHandler.php:81
+#: app/Services/TransStrings.php:620 app/Hooks/Handlers/BoardMenuHandler.php:69
 msgid "Board Activity"
 msgstr ""
 
@@ -604,7 +604,7 @@ msgstr ""
 msgid "Board is removed from pinned boards"
 msgstr ""
 
-#: app/Services/TransStrings.php:621 app/Hooks/Handlers/BoardMenuHandler.php:88
+#: app/Services/TransStrings.php:621 app/Hooks/Handlers/BoardMenuHandler.php:90
 msgid "Board Labels"
 msgstr ""
 
@@ -612,7 +612,7 @@ msgstr ""
 msgid "Board Managers & Members"
 msgstr ""
 
-#: app/Services/TransStrings.php:72 app/Hooks/Handlers/BoardMenuHandler.php:102
+#: app/Services/TransStrings.php:72 app/Hooks/Handlers/BoardMenuHandler.php:104
 msgid "Board Members"
 msgstr ""
 
@@ -699,8 +699,7 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
-#: app/Services/TransStrings.php:625
-#: app/Hooks/Handlers/BoardMenuHandler.php:144
+#: app/Services/TransStrings.php:625 app/Hooks/Handlers/BoardMenuHandler.php:76
 msgid "Change Background"
 msgstr ""
 
@@ -764,7 +763,7 @@ msgstr ""
 msgid "Clone Task"
 msgstr ""
 
-#: app/Services/TransStrings.php:786
+#: app/Services/TaskService.php:1172 app/Services/TransStrings.php:786
 msgid "cloned"
 msgstr ""
 
@@ -1052,7 +1051,7 @@ msgstr ""
 msgid "Custom Field"
 msgstr ""
 
-#: app/Services/TransStrings.php:813 app/Hooks/Handlers/BoardMenuHandler.php:95
+#: app/Services/TransStrings.php:813 app/Hooks/Handlers/BoardMenuHandler.php:97
 msgid "Custom Fields"
 msgstr ""
 
@@ -1127,7 +1126,7 @@ msgid "Delete"
 msgstr ""
 
 #: app/Services/TransStrings.php:629
-#: app/Hooks/Handlers/BoardMenuHandler.php:197
+#: app/Hooks/Handlers/BoardMenuHandler.php:161
 msgid "Delete Board"
 msgstr ""
 
@@ -1145,6 +1144,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:827
 msgid "Delete Option"
+msgstr ""
+
+#: app/Services/TransStrings.php:878
+msgid "Delete Task"
 msgstr ""
 
 #: app/Services/TransStrings.php:123
@@ -1241,7 +1244,7 @@ msgid "Duplicate"
 msgstr ""
 
 #: app/Services/TransStrings.php:626
-#: app/Hooks/Handlers/BoardMenuHandler.php:172
+#: app/Hooks/Handlers/BoardMenuHandler.php:132
 msgid "Duplicate Board"
 msgstr ""
 
@@ -1378,11 +1381,16 @@ msgid "Expand"
 msgstr ""
 
 #: app/Services/TransStrings.php:708
+#: app/Hooks/Handlers/BoardMenuHandler.php:146
 msgid "Export"
 msgstr ""
 
 #: app/Services/TransStrings.php:599
 msgid "Export as JSON"
+msgstr ""
+
+#: app/Services/TaskService.php:1234
+msgid "Failed to clone task: "
 msgstr ""
 
 #: app/Services/TransStrings.php:659
@@ -2476,8 +2484,7 @@ msgstr ""
 msgid "Notification is updated"
 msgstr ""
 
-#: app/Services/TransStrings.php:623
-#: app/Hooks/Handlers/BoardMenuHandler.php:130
+#: app/Services/TransStrings.php:623 app/Hooks/Handlers/BoardMenuHandler.php:83
 msgid "Notification Settings"
 msgstr ""
 
@@ -2879,7 +2886,7 @@ msgid "Restore"
 msgstr ""
 
 #: app/Services/TransStrings.php:628
-#: app/Hooks/Handlers/BoardMenuHandler.php:190
+#: app/Hooks/Handlers/BoardMenuHandler.php:139
 msgid "Restore Board"
 msgstr ""
 
@@ -3495,7 +3502,7 @@ msgstr ""
 msgid "Success"
 msgstr ""
 
-#: app/Http/Controllers/WebhookController.php:177
+#: app/Http/Controllers/WebhookController.php:194
 msgid "Successfully Created the Outgoing WebHook"
 msgstr ""
 
@@ -3503,7 +3510,7 @@ msgstr ""
 msgid "Successfully Created the WebHook"
 msgstr ""
 
-#: app/Http/Controllers/WebhookController.php:239
+#: app/Http/Controllers/WebhookController.php:273
 msgid "Successfully deleted the outgoing webhook"
 msgstr ""
 
@@ -3511,7 +3518,7 @@ msgstr ""
 msgid "Successfully deleted the webhook"
 msgstr ""
 
-#: app/Http/Controllers/WebhookController.php:217
+#: app/Http/Controllers/WebhookController.php:251
 msgid "Successfully updated the outgoing webhook"
 msgstr ""
 
@@ -3836,6 +3843,10 @@ msgstr ""
 
 #: app/Views/emails/subtask-reminder.php:33
 msgid "there"
+msgstr ""
+
+#: app/Services/TransStrings.php:880
+msgid "This action cannot be undone."
 msgstr ""
 
 #: app/Services/TransStrings.php:338
@@ -4253,7 +4264,7 @@ msgstr ""
 msgid "Webhook Name*"
 msgstr ""
 
-#: app/Hooks/Handlers/BoardMenuHandler.php:116
+#: app/Hooks/Handlers/BoardMenuHandler.php:118
 msgid "Webhooks"
 msgstr ""
 
@@ -4344,6 +4355,10 @@ msgstr ""
 
 #: app/Services/TransStrings.php:800
 msgid "You are about to delete this board."
+msgstr ""
+
+#: app/Services/TransStrings.php:879
+msgid "You are about to delete this task."
 msgstr ""
 
 #: app/Services/TransStrings.php:794

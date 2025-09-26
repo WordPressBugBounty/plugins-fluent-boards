@@ -7,10 +7,10 @@ use FluentBoards\App\Services\PermissionManager;
 
 class BoardMenuHandler
 {
-   public static function getMenuItems($board_id = null)
+   public static function getMenuItems()
     {
         // Get default menu items with positions
-        $defaultMenuItems = self::getDefaultMenuItems($board_id);
+        $defaultMenuItems = self::getDefaultMenuItems();
         
         /**
          * Menu Item Structure:
@@ -30,7 +30,7 @@ class BoardMenuHandler
          */
         
         // Apply filter to modify all menu items (default + custom)
-        $allMenuItems = apply_filters('fluent_boards/board_menu_items', $defaultMenuItems, $board_id);
+        $allMenuItems = apply_filters('fluent_boards/board_menu_items', $defaultMenuItems);
         
         // Sort by position
         /**
@@ -49,26 +49,14 @@ class BoardMenuHandler
         });
         
         // Apply server-side permission validation to prevent bypass
-        $allMenuItems = self::validateMenuPermissions($allMenuItems, $board_id);
+        $allMenuItems = self::validateMenuPermissions($allMenuItems);
         
         return $allMenuItems;
     }
     
-    private static function getDefaultMenuItems($board_id = null)
+    private static function getDefaultMenuItems()
     {
-        // $board = Board::find($board_id);
-        // if (!$board) {
-        //     return [];
-        // }
-
-        // // Cache permission and state checks
-        // $isAdmin = PermissionManager::isAdmin();
-        // $isManager = $isAdmin || PermissionManager::isBoardManager($board_id);
-        // $isArchived = (bool) $board->archived_at;
-        // $isViewerOnly = (bool) $board->isUserOnlyViewer;
-
-        // Non-conditional menu items (always shown)
-        $defaultItems = [
+        return [
             [
                 'key' => 'about_this_board',
                 'label' => __('About this Board', 'fluent-boards'),
@@ -81,6 +69,20 @@ class BoardMenuHandler
                 'label' => __('Board Activity', 'fluent-boards'),
                 'type' => 'default',
                 'position' => 2,
+                'role' => ''
+            ],
+            [
+                'key' => 'change_background',
+                'label' => __('Change Background', 'fluent-boards'),
+                'type' => 'default',
+                'position' => 3,
+                'role' => 'manager'
+            ],
+            [
+                'key' => 'notification_settings',
+                'label' => __('Notification Settings', 'fluent-boards'),
+                'type' => 'default',
+                'position' => 4,
                 'role' => ''
             ],
             [
@@ -118,104 +120,61 @@ class BoardMenuHandler
                 'position' => 9,
                 'role' => ''
             ],
+            [
+                'key' => 'associated_crm_contacts',
+                'label' => __('Associated CRM Contacts', 'fluent-boards'),
+                'type' => 'default',
+                'position' => 9,
+                'role' => ''
+            ],
+            [
+                'key' => 'duplicate_board',
+                'label' => __('Duplicate Board', 'fluent-boards'),
+                'type' => 'default',
+                'position' => 10,
+                'role' => 'manager'
+            ],
+            [
+                'key' => 'restore_board',
+                'label' => __('Restore Board', 'fluent-boards'),
+                'type' => 'default',
+                'position' => 10,
+                'role' => 'admin'
+            ],
+            [
+                'key' => 'export',
+                'label' => __('Export', 'fluent-boards'),
+                'type' => 'default',
+                'position' => 10.5,
+                'role' => 'manager',
+                'pro' => true
+            ],
+            [
+                'key' => 'archive_board',
+                'label' => __('Archive Board', 'fluent-boards'),
+                'type' => 'default',
+                'position' => 11,
+                'role' => 'admin'
+            ],
+            [
+                'key' => 'delete_board',
+                'label' => __('Delete Board', 'fluent-boards'),
+                'type' => 'default',
+                'position' => 11,
+                'role' => 'admin'
+            ]
         ];
-    
-        // Conditional items
-        
-        // Notification Settings (only if not viewer only)
-        // if (!$isViewerOnly) {
-            $notificationItems = [
-                [
-                    'key' => 'notification_settings',
-                    'label' => __('Notification Settings', 'fluent-boards'),
-                    'type' => 'default',
-                    'position' => 4,
-                    'role' => ''
-                ]
-            ];
-            $defaultItems = array_merge($defaultItems, $notificationItems);
-        // }
-        
-        // Change Background (only for admins/managers and non-archived boards)
-        // if ($isManager && !$isArchived) {
-            $backgroundItems = [
-                [
-                    'key' => 'change_background',
-                    'label' => __('Change Background', 'fluent-boards'),
-                    'type' => 'default',
-                    'position' => 3,
-                    'role' => 'manager'
-                ]
-            ];
-            $defaultItems = array_merge($defaultItems, $backgroundItems);
-        // }
-        
-        // Associated CRM Contacts (only if FluentCRM exists)
-        // if (!!defined('FLUENTCRM')) {
-            $crmItems = [
-                [
-                    'key' => 'associated_crm_contacts',
-                    'label' => __('Associated CRM Contacts', 'fluent-boards'),
-                    'type' => 'default',
-                    'position' => 9,
-                    'role' => ''
-                ]
-            ];
-            $defaultItems = array_merge($defaultItems, $crmItems);
-        // }
-        
-        // Admin/Manager only items for non-archived boards
-        // if ($isManager && !$isArchived) {
-            $adminItems = [
-                [
-                    'key' => 'duplicate_board',
-                    'label' => __('Duplicate Board', 'fluent-boards'),
-                    'type' => 'default',
-                    'position' => 10,
-                    'role' => 'manager'
-                ],
-                [
-                    'key' => 'archive_board',
-                    'label' => __('Archive Board', 'fluent-boards'),
-                    'type' => 'default',
-                    'position' => 11,
-                    'role' => 'manager'
-                ]
-            ];
-            $defaultItems = array_merge($defaultItems, $adminItems);
-        // } else if ($isManager && $isArchived) {
-            $archivedAdminItems = [
-                [
-                    'key' => 'restore_board',
-                    'label' => __('Restore Board', 'fluent-boards'),
-                    'type' => 'default',
-                    'position' => 10,
-                    'role' => 'manager'
-                ],
-                [
-                    'key' => 'delete_board',
-                    'label' => __('Delete Board', 'fluent-boards'),
-                    'type' => 'default',
-                    'position' => 11,
-                    'role' => 'admin'
-                ]
-            ];
-            $defaultItems = array_merge($defaultItems, $archivedAdminItems);
-        // }
-        
-        return $defaultItems;
     }
     
     /**
      * Validate menu permissions server-side to prevent bypass
      * Uses key-based validation with optimized permission checking
      */
-    private static function validateMenuPermissions($menuItems, $board_id)
+    private static function validateMenuPermissions($menuItems)
     {
         $validatedItems = [];
 
         $isAdmin = PermissionManager::isAdmin();
-        $isManager = $isAdmin || PermissionManager::isBoardManager($board_id);
 
         foreach ($menuItems as $item) {
             if (empty($item['key']) || empty($item['label'])) {
@@ -232,11 +191,8 @@ class BoardMenuHandler
             if (isset($item['type']) && $item['type'] === 'default') {
                 $requiredRole = $item['role'];
 
-                // Enforce role
+                // Enforce role - only check admin role, remove manager role checks
                 if ($requiredRole === 'admin' && !$isAdmin) {
-                    continue;
-                }
-                if ($requiredRole === 'manager' && !$isManager) {
                     continue;
                 }
 
@@ -250,9 +206,6 @@ class BoardMenuHandler
                 $requiredRole = $item['role'] ?? '';
 
                 if ($requiredRole === 'admin' && !$isAdmin) {
-                    continue;
-                }
-                if ($requiredRole === 'manager' && !$isManager) {
                     continue;
                 }
 

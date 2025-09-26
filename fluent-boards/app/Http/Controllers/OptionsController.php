@@ -565,7 +565,7 @@ class OptionsController extends Controller
     {
         $view = $request->getSafe('view', 'sanitize_text_field');
 
-        if ($view == 'cardview') {
+        if ($view == 'kanbanview') {
             $globalSettings = $this->optionService->getDashboardViewSettings();
         } elseif ($view == 'listview') {
             $globalSettings = $this->optionService->getListViewPreferences();

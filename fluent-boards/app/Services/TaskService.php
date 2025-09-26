@@ -2,6 +2,7 @@
 
 namespace FluentBoards\App\Services;
 
+use FluentBoards\App\App;
 use FluentBoards\App\Models\Attachment;
 use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Models\NotificationUser;
@@ -15,6 +16,7 @@ use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\BoardTerm;
 use FluentBoards\App\Models\CommentImage;
 use FluentBoards\Framework\Support\Arr;
+use FluentBoardsPro\App\Models\TaskAttachment;
 use FluentBoardsPro\App\Modules\TimeTracking\TimeTrackingHelper;
 use FluentBoardsPro\App\Services\AttachmentService;
 use FluentBoardsPro\App\Services\ProTaskService;
@@ -195,7 +197,7 @@ class TaskService
                 unset($value['cover']['imageId']);
                 unset($value['cover']['backgroundImage']);
             }
-            $task->{$col} = $value;
+            $task->{$col} = $value ?: null;
             $task->save();
             //            do_action('fluent_boards/task_prop_changed', $col, $task, $oldTask);
         } else {
@@ -551,29 +553,42 @@ class TaskService
 
     public function deleteTask($task)
     {
-        $deleted = $task->delete();
+        $dbInstance = App::getInstance('db');
+        $dbInstance->beginTransaction();
 
-        if ($deleted) {
+        $deletedTask = clone $task;
+         //cloning because after delete $task object will be useless
 
-            //task assignees watchers removed
-            $task->watchers()->detach();
-            $task->assignees()->detach();
+        try {
+            $deleted = $task->delete();
 
-            //removing all task related notifications
-            $notificationIds = $task->notifications->pluck('id');
-            $task->notifications()->delete();
-            NotificationUser::whereIn('notification_id', $notificationIds)->delete();
+            if ($deleted) {
+                //task assignees watchers removed
+                $task->watchers()->detach();
+                $task->assignees()->detach();
 
-            //task labels removed
-            $task->labels()->detach();
+                //removing all task related notifications
+                $notificationIds = $task->notifications->pluck('id');
+                $task->notifications()->delete();
+                NotificationUser::whereIn('notification_id', $notificationIds)->delete();
 
-            //task custom field value
-            $task->customFields()->detach();
-            $this->deleteTaskAttachments($task);
+                //task labels removed
+                $task->labels()->detach();
 
-            do_action('fluent_boards/task_deleted', $task);
-            TaskMeta::where('task_id', $task->id)->delete();
+                //task custom field value
+                $task->customFields()->detach();
+                $this->deleteTaskAttachments($task);
+
+                do_action('fluent_boards/task_deleted', $deletedTask);
+                TaskMeta::where('task_id', $task->id)->delete();
+            }
+
+            $dbInstance->commit();
+        } catch (\Exception $e) {
+            $dbInstance->rollBack();
+            throw $e; // Re-throw the exception after rolling back
         }
+
     }
 
     public function filterNullDate($date)
@@ -1144,7 +1159,9 @@ class TaskService
 
     private function deleteTaskAttachments($task)
     {
-        $attachments = Attachment::where('object_id', $task->id)->get();
+        $attachments = TaskAttachment::where('object_id', $task->id)
+            ->where('object_type', Constant::TASK_ATTACHMENT)
+            ->get();
         foreach ($attachments as $attachment) {
             $deletedAttachment = clone $attachment;
             $attachment->delete();
@@ -1194,6 +1211,9 @@ class TaskService
             $this->cloneTaskMeta($task, $clonedTask);
 
             $this->cloneTaskCustomFields($task, $clonedTask);
+
+            // Apply stage default assignees if any are set
+            $this->manageDefaultAssignees($clonedTask, $clonedTask->stage_id);
 
             if($taskData['assignee']) {
                 $this->cloneAssignees($task, $clonedTask);

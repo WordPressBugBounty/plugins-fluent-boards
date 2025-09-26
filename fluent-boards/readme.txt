@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.3
-Stable tag: 1.85
+Stable tag: 1.86
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,7 +169,16 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
-
+= v1.86 (Date: September 26, 2025) =
+- New: Easy task delete functionality
+- Improvement: Task reminder icon added when reminder active.
+- Improvement: Webhook data pattern improved , message key added for better handling
+- Improvement: Added a close icon to the label popover for easier closing
+- Fixed: Custom field select and multiselect error
+- Fixed: Kanban view preference error
+- Fixed: Task creation issue with default assignee in stage
+- Fixed: Duplicate member in assignee
+- Other Improvements & Bug Fixes
 
 = v1.85 (Date: September 18, 2025) =
 - New: Table View for tasks
