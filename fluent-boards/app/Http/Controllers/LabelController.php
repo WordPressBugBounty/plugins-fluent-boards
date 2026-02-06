@@ -20,6 +20,7 @@ class LabelController extends Controller
 
     public function getLabelsByBoard($board_id)
     {
+        $board_id = absint($board_id);
         try {
             $labels = $this->labelService->getLabelsByBoard($board_id);
 
@@ -33,6 +34,7 @@ class LabelController extends Controller
 
     public function getLabelsByBoardUsedInTasks($board_id)
     {
+        $board_id = absint($board_id);
         try {
             $labels = $this->labelService->getLabelsByBoardUsedInTasks($board_id);
 
@@ -46,7 +48,8 @@ class LabelController extends Controller
 
     public function createLabel(Request $request, $board_id)
     {
-        $labelData = $this->labelSanitizeAndValidate($request->all(), [
+        $board_id = absint($board_id);
+        $labelData = $this->labelSanitizeAndValidate($request->only(['bg_color', 'color', 'label']), [
             'bg_color' => 'required|string',
             'color' => 'required|string',
             'label' => 'nullable|string',
@@ -67,6 +70,7 @@ class LabelController extends Controller
 
     public function createLabelForTask(Request $request, $board_id)
     {
+        $board_id = absint($board_id);
         $requestData = [
             'task_id'    => $request->getSafe('taskId', 'intval'),
             'board_term_id' => $request->getSafe('labelId', 'intval'),
@@ -90,6 +94,8 @@ class LabelController extends Controller
 
     public function getLabelsByTask($board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         try {
             $labels = $this->labelService->getLabelsByTask($task_id);
 
@@ -103,6 +109,9 @@ class LabelController extends Controller
 
     public function deleteLabelOfTask($board_id, $task_id, $label_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
+        $label_id = absint($label_id);
         try {
             $this->labelService->deleteLabelOfTask($task_id, $label_id);
 
@@ -116,6 +125,8 @@ class LabelController extends Controller
 
     public function deleteLabelOfBoard($board_id, $label_id)
     {
+        $board_id = absint($board_id);
+        $label_id = absint($label_id);
         try {
             $this->labelService->deleteLabelOfBoard($label_id);
 
@@ -130,7 +141,9 @@ class LabelController extends Controller
 
     public function editLabelofBoard(Request $request, $board_id, $label_id)
     {
-        $labelData = $this->labelSanitizeAndValidate($request->all(), [
+        $board_id = absint($board_id);
+        $label_id = absint($label_id);
+        $labelData = $this->labelSanitizeAndValidate($request->only(['bg_color', 'color', 'label']), [
             'bg_color' => 'required|string',
             'color' => 'nullable|string',
             'label' => 'nullable|string',

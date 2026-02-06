@@ -2,203 +2,228 @@
 //if accessed directly exit
 if (!defined('ABSPATH')) exit;
 
+use FluentBoards\App\Http\Controllers\BoardController;
+use FluentBoards\App\Http\Controllers\CommentController;
+use FluentBoards\App\Http\Controllers\LabelController;
+use FluentBoards\App\Http\Controllers\NotificationController;
+use FluentBoards\App\Http\Controllers\OptionsController;
+use FluentBoards\App\Http\Controllers\ReportController;
+use FluentBoards\App\Http\Controllers\StageController;
+use FluentBoards\App\Http\Controllers\TaskController;
+use FluentBoards\App\Http\Controllers\UserController;
+use FluentBoards\App\Http\Controllers\WebhookController;
+
+
 /**
  * @var $router \FluentBoards\Framework\Http\Router
  */
 
 $router->prefix('tasks')->withPolicy('AuthPolicy')->group(function ($router) {
-    $router->get('/top-in-boards', 'TaskController@getTopTasksForBoards');
-    $router->get('/crm-associated-tasks/{associated_id}', 'TaskController@getAssociatedTasks')->int('associated_id');
-    $router->get('/stage/{task_id}', 'TaskController@getStageByTask'); //FUTURE: this api need to be relocated
+    $router->get('/top-in-boards', [TaskController::class, 'getTopTasksForBoards']);
+    $router->get('/crm-associated-tasks/{associated_id}', [TaskController::class, 'getAssociatedTasks'])->int('associated_id');
+    $router->get('/stage/{task_id}', [TaskController::class, 'getStageByTask']); //FUTURE: this api need to be relocated
 
-    $router->get('/boards-by-type/{type}', 'BoardController@getBoardsByType');
-    $router->get('/{task_id}/labels', 'TaskController@getLabelsByTask');
+    $router->get('/boards-by-type/{type}', [BoardController::class, 'getBoardsByType']);
+    $router->get('/{task_id}/labels', [TaskController::class, 'getLabelsByTask']);
 
     // Task tabs configuration
-    $router->get('/task-tabs/config', 'TaskController@getTaskTabsConfig');
-    $router->post('/task-tabs/config', 'TaskController@saveTaskTabsConfig');
+    $router->get('/task-tabs/config', [TaskController::class, 'getTaskTabsConfig']);
+    $router->post('/task-tabs/config', [TaskController::class, 'saveTaskTabsConfig']);
 });
 
 $router->withPolicy('BoardUserPolicy')->group(function ($router) {
-    $router->get('/member-associated-users/{id}', 'UserController@memberAssociatedTaskUsers');
-    $router->get('/search-member-users/{id}', 'UserController@searchMemberUser');
-    $router->get('get-user-permissions', 'OptionsController@getUserPermission');
-    $router->get('ajax-options', 'OptionsController@selectorOptions');
-    $router->put('update-user-permissions', 'OptionsController@updatedUserPermission');
-    $router->delete('remove-user-from-board', 'OptionsController@removeUserFromBoard');
-    $router->get('/fluent-boards-users', 'UserController@allFluentBoardsUsers');
-    $router->get('/search-fluent-boards-users', 'UserController@searchFluentBoardsUser');
-    $router->post('update-global-notification-settings', 'OptionsController@updateGlobalNotificationSettings');
-    $router->get('get-global-notification-settings', 'OptionsController@getGlobalNotificationSettings');
-    $router->put('update-dashboard-view-settings', 'OptionsController@updateDashboardViewSettings');
-    $router->get('get-dashboard-view-settings', 'OptionsController@getDashboardViewSettings');
-    $router->get('projects/reports', 'ReportController@getBoardReports');
-    $router->get('reports/timesheet', 'ReportController@getTimeSheetReport');
+
+    $router->get('/quick-search', [OptionsController::class, 'quickSearch']);
+
+    $router->get('/member-associated-users/{id}', [UserController::class, 'memberAssociatedTaskUsers']);
+    $router->get('ajax-options', [OptionsController::class, 'selectorOptions']);
+    $router->post('update-global-notification-settings', [OptionsController::class, 'updateGlobalNotificationSettings']);
+    $router->get('get-global-notification-settings', [OptionsController::class, 'getGlobalNotificationSettings']);
+    $router->put('update-dashboard-view-settings', [OptionsController::class, 'updateDashboardViewSettings']);
+    $router->get('get-dashboard-view-settings', [OptionsController::class, 'getDashboardViewSettings']);
+    $router->get('projects/reports', [ReportController::class, 'getBoardReports']);
+    $router->get('reports/timesheet', [ReportController::class, 'getTimeSheetReport']);
 
 });
 
 $router->prefix('projects')->withPolicy('AuthPolicy')->group(function ($router) {
-    $router->get('/', 'BoardController@getBoards');
-    $router->post('/', 'BoardController@create');
-    $router->get('/get-default-board-colors', 'BoardController@getBoardDefaultBackgroundColors');
-    $router->get('/list-of-boards', 'BoardController@getBoardsList'); // it is using for to get all boards by user
-    $router->get('/user-accessible-boards', 'BoardController@getOnlyBoardsByUser');
-    $router->get('/crm-associated-boards/{id}', 'BoardController@getAssociatedBoards')->int('associated_id');
-    $router->get('/currencies', 'BoardController@getCurrencies');
-    $router->get('/user-admin-in-boards', 'BoardController@getUsersOfBoards');
-    $router->get('/recent-boards', 'BoardController@getRecentBoards');
-    $router->post('/onboard', 'BoardController@createFirstBoard');
-    $router->put('/skip-onboarding', 'BoardController@skipOnboarding');
-    $router->get('/pinned-boards', 'BoardController@getPinnedBoards');
+    $router->get('/', [BoardController::class, 'getBoards']);
+    $router->post('/', [BoardController::class, 'create']);
+    $router->get('/get-default-board-colors', [BoardController::class, 'getBoardDefaultBackgroundColors']);
+    $router->get('/list-of-boards', [BoardController::class, 'getBoardsList']); // it is using for to get all boards by user
+    $router->get('/user-accessible-boards', [BoardController::class, 'getOnlyBoardsByUser']);
+    $router->get('/crm-associated-boards/{id}', [BoardController::class, 'getAssociatedBoards'])->int('associated_id');
+    $router->get('/currencies', [BoardController::class, 'getCurrencies']);
+    $router->get('/user-admin-in-boards', [BoardController::class, 'getUsersOfBoards']);
+    $router->get('/recent-boards', [BoardController::class, 'getRecentBoards']);
+    $router->get('/pinned-boards', [BoardController::class, 'getPinnedBoards']);
+
+    $router->post('/onboard', [BoardController::class, 'createFirstBoard']);
+    $router->put('/skip-onboarding', [BoardController::class, 'skipOnboarding']);
+
 
 });
 
 $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(function ($router) {
-    $router->get('/', 'BoardController@find')->int('board_id');
-    $router->get('/has-data-changed', 'BoardController@hasDataChanged')->int('board_id');
-    $router->put('/update-board-properties', 'BoardController@updateBoardProperties')->int('board_id');
-    $router->put('/', 'BoardController@update')->int('board_id');
-    $router->delete('/', 'BoardController@delete')->int('board_id');
-    $router->get('/labels', 'LabelController@getLabelsByBoard');
-    $router->post('/labels', 'LabelController@createLabel');
-    $router->get('/labels/used-in-tasks', 'LabelController@getLabelsByBoardUsedInTasks');
-    $router->get('/tasks/{task_id}/labels', 'LabelController@getLabelsByTask'); //FUTURE: these api need to be relocated
-    $router->post('/labels/task', 'LabelController@createLabelForTask');
-    $router->put('/labels/{label_id}', 'LabelController@editLabelofBoard');
-    $router->delete('/labels/{label_id}', 'LabelController@deleteLabelOfBoard');
-    $router->delete('/tasks/{task_id}/labels/{label_id}', 'LabelController@deleteLabelOfTask');
-    $router->put('/pin-board', 'BoardController@pinBoard');
-    $router->put('/unpin-board', 'BoardController@unpinBoard');
+    $router->get('/', [BoardController::class, 'find'])->int('board_id');
+    $router->get('/has-data-changed', [BoardController::class, 'hasDataChanged'])->int('board_id');
+    $router->put('/update-board-properties', [BoardController::class, 'updateBoardProperties'])->int('board_id');
+    $router->put('/', [BoardController::class, 'update'])->int('board_id');
+    $router->delete('/', [BoardController::class, 'delete'])->int('board_id');
+    $router->get('/labels', [LabelController::class, 'getLabelsByBoard']);
+    $router->post('/labels', [LabelController::class, 'createLabel']);
+    $router->get('/labels/used-in-tasks', [LabelController::class, 'getLabelsByBoardUsedInTasks']);
+    $router->get('/tasks/{task_id}/labels', [LabelController::class, 'getLabelsByTask']); //FUTURE: these api need to be relocated
+    $router->post('/labels/task', [LabelController::class, 'createLabelForTask']);
+    $router->put('/labels/{label_id}', [LabelController::class, 'editLabelofBoard']);
+    $router->delete('/labels/{label_id}', [LabelController::class, 'deleteLabelOfBoard']);
+    $router->delete('/tasks/{task_id}/labels/{label_id}', [LabelController::class, 'deleteLabelOfTask']);
+    $router->put('/pin-board', [BoardController::class, 'pinBoard']);
+    $router->put('/unpin-board', [BoardController::class, 'unpinBoard']);
 
-    $router->get('/users', 'BoardController@getBoardUsers');
-    $router->post('/user/{user_id}/remove', 'BoardController@removeUserFromBoard')->int('board_id')->int('user_id');
-    $router->post('/add-members', 'BoardController@addMembersInBoard');
+    $router->get('/users', [BoardController::class, 'getBoardUsers']);
+    $router->post('/user/{user_id}/remove', [BoardController::class, 'removeUserFromBoard'])->int('board_id')->int('user_id');
+    $router->post('/add-members', [BoardController::class, 'addMembersInBoard']);
 
-    $router->get('/assignees', 'BoardController@getAssigneesByBoard')->int('board_id');
-    $router->get('/activities', 'BoardController@getActivities')->int('board_id');
+    $router->get('/assignees', [BoardController::class, 'getAssigneesByBoard'])->int('board_id');
+    $router->get('/activities', [BoardController::class, 'getActivities'])->int('board_id');
 
-    $router->put('/stage-move-all-task', 'BoardController@moveAllTasks')->int('board_id');
-    $router->post('/stage-create', 'BoardController@createStage')->int('board_id');
-    $router->put('/stage/{stage_id}/sort-task', 'StageController@sortStageTasks')->int('board_id')->int('stage_id');
-    $router->put('/stage/{stage_id}/archive-all-task', 'BoardController@archiveAllTasksInStage')->int('board_id')->int('stage_id');
-    $router->put('/re-position-stages', 'BoardController@repositionStages')->int('board_id');
-    $router->put('/update-stage/{stage_id}', 'StageController@updateStage')->int('board_id'); //Todo:: will delete later
-    $router->put('/update-stage-property/{stage_id}', 'StageController@updateStageProperty')->int('board_id');
-    $router->put('/archive-stage/{stage_id}', 'BoardController@archiveStage')->int('board_id');
-    $router->put('/stage-view/{stage_id}', 'BoardController@changeStageView')->int('board_id');
-    $router->put('/restore-stage/{stage_id}', 'BoardController@restoreStage')->int('board_id');
-    $router->put('/drag-stage', 'StageController@dragStage')->int('board_id');
-    $router->get('/archived-stages', 'BoardController@getArchivedStage')->int('board_id');
-    $router->get('/archived-tasks', 'TaskController@getArchivedTasks')->int('board_id');
-    $router->get('/stage-task-available-positions/{stage_id}', 'BoardController@getStageTaskAvailablePositions')->int('board_id')->int('stage_id');
+    $router->put('/stage-move-all-task', [BoardController::class, 'moveAllTasks'])->int('board_id');
+    $router->post('/stage-create', [BoardController::class, 'createStage'])->int('board_id');
+    $router->put('/stage/{stage_id}/sort-task', [StageController::class, 'sortStageTasks'])->int('board_id')->int('stage_id');
+    $router->put('/stage/{stage_id}/archive-all-task', [BoardController::class, 'archiveAllTasksInStage'])->int('board_id')->int('stage_id');
+    $router->put('/re-position-stages', [BoardController::class, 'repositionStages'])->int('board_id');
+    $router->put('/update-stage/{stage_id}', [StageController::class, 'updateStage'])->int('board_id'); //Todo:: will delete later
+    $router->put('/update-stage-property/{stage_id}', [StageController::class, 'updateStageProperty'])->int('board_id');
+    $router->put('/archive-stage/{stage_id}', [BoardController::class, 'archiveStage'])->int('board_id');
+    $router->put('/stage-view/{stage_id}', [BoardController::class, 'changeStageView'])->int('board_id');
+    $router->put('/restore-stage/{stage_id}', [BoardController::class, 'restoreStage'])->int('board_id');
+    $router->put('/drag-stage', [StageController::class, 'dragStage'])->int('board_id');
+    $router->get('/archived-stages', [BoardController::class, 'getArchivedStage'])->int('board_id');
+    $router->get('/archived-tasks', [TaskController::class, 'getArchivedTasks'])->int('board_id');
+    $router->put('/bulk-restore-tasks', [TaskController::class, 'bulkRestoreTasks'])->int('board_id');
+    $router->delete('/bulk-delete-tasks', [TaskController::class, 'bulkDeleteTasks'])->int('board_id');
+    $router->get('/stage-task-available-positions/{stage_id}', [BoardController::class, 'getStageTaskAvailablePositions'])->int('board_id')->int('stage_id');
 
-    $router->post('/crm-contact', 'BoardController@updateAssociateCrmContact')->int('board_id');
-    $router->get('/crm-contacts', 'BoardController@getAssociateCrmContacts')->int('board_id');
-    $router->delete('/crm-contact/{contact_id}', 'BoardController@deleteAssociateCrmContact')->int('board_id')->int('contact_id');
+    $router->post('/crm-contact', [BoardController::class, 'updateAssociateCrmContact'])->int('board_id');
+    $router->get('/crm-contacts', [BoardController::class, 'getAssociateCrmContacts'])->int('board_id');
+    $router->delete('/crm-contact/{contact_id}', [BoardController::class, 'deleteAssociateCrmContact'])->int('board_id')->int('contact_id');
 
-    $router->get('/notification-settings', 'NotificationController@getBoardNotificationSettings')->int('board_id');
-    $router->put('/update-notification-settings', 'NotificationController@updateBoardNotificationSettings')->int('board_id');
+    $router->get('/notification-settings', [NotificationController::class, 'getBoardNotificationSettings'])->int('board_id');
+    $router->put('/update-notification-settings', [NotificationController::class, 'updateBoardNotificationSettings'])->int('board_id');
 
-    $router->post('/duplicate-board', 'BoardController@duplicateBoard')->int('board_id');
-    $router->post('/import-from-board', 'BoardController@importFromBoard')->int('board_id');
+    $router->post('/duplicate-board', [BoardController::class, 'duplicateBoard'])->int('board_id');
+    $router->post('/import-from-board', [BoardController::class, 'importFromBoard'])->int('board_id');
 
-    $router->put('/upload/background', 'BoardController@setBoardBackground')->int('board_id');
-    $router->post('/upload/background-image', 'BoardController@uploadBoardBackground')->int('board_id');
-    $router->put('/archive-board', 'BoardController@archiveBoard')->int('board_id');
-    $router->put('/restore-board', 'BoardController@restoreBoard')->int('board_id');
-    $router->get('/board-menu-items', 'BoardController@getBoardMenuItems')->int('board_id');
-    $router->get('/stage-wise-reports', 'ReportController@getStageWiseBoardReports')->int('board_id');
+    $router->put('/upload/background', [BoardController::class, 'setBoardBackground'])->int('board_id');
+    $router->post('/upload/background-image', [BoardController::class, 'uploadBoardBackground'])->int('board_id');
+    $router->put('/archive-board', [BoardController::class, 'archiveBoard'])->int('board_id');
+    $router->put('/restore-board', [BoardController::class, 'restoreBoard'])->int('board_id');
+    $router->get('/board-menu-items', [BoardController::class, 'getBoardMenuItems'])->int('board_id');
+    $router->get('/stage-wise-reports', [ReportController::class, 'getStageWiseBoardReports'])->int('board_id');
 
 
     //# Tasks under a single board routes
     //# Route prefix: /projects/{id}/tasks
     $router->prefix('/tasks')->group(function ($router) {
-        $router->get('/', 'TaskController@getTasksByBoard')->int('board_id');
-        $router->get('/by-stage', 'TaskController@getTasksByBoardStage')->int('board_id');
-        $router->post('/', 'TaskController@create');
-        $router->post('/create-task-from-image', 'TaskController@createTaskFromImage')->int('board_id');
-        $router->get('/archived', 'TaskController@getArchivedTasks')->int('board_id');
-        $router->get('/{task_id}', 'TaskController@find')->int('board_id')->int('task_id')->int('task_id');
-        $router->put('/{task_id}', 'TaskController@updateTaskProperties')->int('board_id')->int('task_id');
-        $router->post('/{task_id}/dates', 'TaskController@updateTaskDates')->int('board_id')->int('task_id');
-        $router->put('/{task_id}/move-task', 'TaskController@moveTask')->int('board_id')->int('task_id');
-        $router->post('/update-cover-photo/{task_id}', 'TaskController@updateTaskCoverPhoto')->int('task_id');
-        $router->post('/status-update/{task_id}', 'TaskController@taskStatusUpdate')->int('task_id');
-        $router->delete('/{task_id}', 'TaskController@deleteTask')->int('board_id')->int('task_id');
-        $router->put('/{task_id}/move-to-next-stage', 'TaskController@moveTaskToNextStage')->int('board_id')->int('task_id');
+        $router->get('/', [TaskController::class, 'getTasksByBoard'])->int('board_id');
+        $router->get('/by-stage', [TaskController::class, 'getTasksByBoardStage'])->int('board_id');
+        $router->post('/', [TaskController::class, 'create']);
+        $router->post('/create-task-from-image', [TaskController::class, 'createTaskFromImage'])->int('board_id');
+        $router->get('/archived', [TaskController::class, 'getArchivedTasks'])->int('board_id');
+        $router->get('/{task_id}', [TaskController::class, 'find'])->int('board_id')->int('task_id')->int('task_id');
+        $router->put('/{task_id}', [TaskController::class, 'updateTaskProperties'])->int('board_id')->int('task_id');
+        $router->post('/{task_id}/dates', [TaskController::class, 'updateTaskDates'])->int('board_id')->int('task_id');
+        $router->put('/{task_id}/move-task', [TaskController::class, 'moveTask'])->int('board_id')->int('task_id');
+        $router->post('/bulk-actions', [TaskController::class, 'bulkActions'])->int('board_id');
+        $router->post('/update-cover-photo/{task_id}', [TaskController::class, 'updateTaskCoverPhoto'])->int('task_id');
+        $router->post('/status-update/{task_id}', [TaskController::class, 'taskStatusUpdate'])->int('task_id');
+        $router->delete('/{task_id}', [TaskController::class, 'deleteTask'])->int('board_id')->int('task_id');
+        $router->put('/{task_id}/move-to-next-stage', [TaskController::class, 'moveTaskToNextStage'])->int('board_id')->int('task_id');
 
         // Comments Routes Area
-        $router->get('/{task_id}/comments', 'CommentController@getComments')->int('board_id')->int('task_id');
-        $router->post('/{task_id}/comments', 'CommentController@create')->int('board_id')->int('task_id');
-        $router->put('/comments/{comment_id}', 'CommentController@update')->int('board_id')->int('comment_id');
-        $router->put('/reply/{reply_id}', 'CommentController@updateReply')->int('board_id')->int('reply_id');
-        $router->delete('/comments/{comment_id}', 'CommentController@deleteComment')->int('board_id')->int('comment_id');
-        $router->delete('/reply/{reply_id}', 'CommentController@deleteReply')->int('board_id')->int('reply_id');
-        $router->put('/comments/{comment_id}/privacy', 'CommentController@updateCommentPrivacy')->int('board_id')->int('comment_id');
+        $router->get('/{task_id}/comments', [CommentController::class, 'getComments'])->int('board_id')->int('task_id');
+        $router->post('/{task_id}/comments', [CommentController::class, 'create'])->int('board_id')->int('task_id');
+        $router->put('/comments/{comment_id}', [CommentController::class, 'update'])->int('board_id')->int('comment_id');
+        $router->put('/reply/{reply_id}', [CommentController::class, 'updateReply'])->int('board_id')->int('reply_id');
+        $router->delete('/comments/{comment_id}', [CommentController::class, 'deleteComment'])->int('board_id')->int('comment_id');
+        $router->delete('/reply/{reply_id}', [CommentController::class, 'deleteReply'])->int('board_id')->int('reply_id');
+        $router->put('/comments/{comment_id}/privacy', [CommentController::class, 'updateCommentPrivacy'])->int('board_id')->int('comment_id');
 
 
         // Activities Area
-        $router->get('/{task_id}/activities', 'TaskController@getActivities')->int('board_id')->int('task_id');
+        $router->get('/{task_id}/activities', [TaskController::class, 'getActivities'])->int('board_id')->int('task_id');
 
-        $router->post('/{task_id}/assign-yourself', 'TaskController@assignYourselfInTask')->int('board_id')->int('task_id');
-        $router->post('/{task_id}/detach-yourself', 'TaskController@detachYourselfFromTask')->int('board_id')->int('task_id');
-        $router->get('/{task_id}/comments-and-activities', 'TaskController@getCommentsAndActivities')->int('board_id')->int('task_id');
-        $router->post('/{task_id}/comment-image-upload', 'CommentController@handleImageUpload')->int('board_id')->int('task_id');
-        $router->post('/{task_id}/task-cover-image-upload', 'TaskController@handleTaskCoverImageUpload')->int('board_id')->int('task_id');
-        $router->post('/{task_id}/remove-task-cover', 'TaskController@removeTaskCover')->int('board_id')->int('task_id');
-        $router->post('/{task_id}/wp-editor-media-file-upload', 'TaskController@uploadMediaFileFromWpEditor')->int('board_id')->int('task_id');
-        $router->post('/{task_id}/clone-task', 'TaskController@cloneTask')->int('board_id')->int('task_id');
+        $router->post('/{task_id}/assign-yourself', [TaskController::class, 'assignYourselfInTask'])->int('board_id')->int('task_id');
+        $router->post('/{task_id}/detach-yourself', [TaskController::class, 'detachYourselfFromTask'])->int('board_id')->int('task_id');
+        $router->get('/{task_id}/comments-and-activities', [TaskController::class, 'getCommentsAndActivities'])->int('board_id')->int('task_id');
+        $router->post('/{task_id}/comment-image-upload', [CommentController::class, 'handleImageUpload'])->int('board_id')->int('task_id');
+        $router->post('/{task_id}/task-cover-image-upload', [TaskController::class, 'handleTaskCoverImageUpload'])->int('board_id')->int('task_id');
+        $router->post('/{task_id}/remove-task-cover', [TaskController::class, 'removeTaskCover'])->int('board_id')->int('task_id');
+        $router->post('/{task_id}/wp-editor-media-file-upload', [TaskController::class, 'uploadMediaFileFromWpEditor'])->int('board_id')->int('task_id');
+        $router->post('/{task_id}/clone-task', [TaskController::class, 'cloneTask'])->int('board_id')->int('task_id');
     });
 });
 
 $router->prefix('admin')->withPolicy('AdminPolicy')->group(function ($router) {
 
-    $router->get('/feature-modules', 'OptionsController@getAddonsSettings');
-    $router->post('/feature-modules', 'OptionsController@saveAddonsSettings');
-    $router->post('/feature-modules/install-plugin', 'OptionsController@installPlugin');
+    $router->get('/feature-modules', [OptionsController::class, 'getAddonsSettings']);
+    $router->post('/feature-modules', [OptionsController::class, 'saveAddonsSettings']);
+    $router->post('/feature-modules/install-plugin', [OptionsController::class, 'installPlugin']);
 
-    $router->get('/general-settings', 'OptionsController@getGeneralSettings');
-    $router->post('/general-settings', 'OptionsController@saveGeneralSettings');
+    $router->get('/general-settings', [OptionsController::class, 'getGeneralSettings']);
+    $router->post('/general-settings', [OptionsController::class, 'saveGeneralSettings']);
 
-    $router->get('pages', 'OptionsController@getPages');
+    $router->get('pages', [OptionsController::class, 'getPages']);
 
 });
 
 $router->prefix('webhooks')->withPolicy('WebhookPolicy')->group(function ($router) {
-    $router->get('/', 'WebhookController@index');
-    $router->post('/', 'WebhookController@create');
-    $router->put('/{id}', 'WebhookController@update')->int('id');
-    $router->delete('/{id}', 'WebhookController@delete')->int('id');
+    $router->get('/', [WebhookController::class, 'index']);
+    $router->post('/', [WebhookController::class, 'create']);
+    $router->put('/{id}', [WebhookController::class, 'update'])->int('id');
+    $router->delete('/{id}', [WebhookController::class, 'delete'])->int('id');
 });
 
 // Add outgoing webhook routes
 $router->prefix('outgoing-webhooks')->withPolicy('WebhookPolicy')->group(function ($router) {
-    $router->get('/', 'WebhookController@outgoingWebhooks');
-    $router->post('/', 'WebhookController@createOutgoingWebhook');
-    $router->put('/{id}', 'WebhookController@updateOutgoingWebhook')->int('id');
-    $router->delete('/{id}', 'WebhookController@deleteOutgoingWebhook')->int('id');
+    $router->get('/', [WebhookController::class, 'outgoingWebhooks']);
+    $router->post('/', [WebhookController::class, 'createOutgoingWebhook']);
+    $router->put('/{id}', [WebhookController::class, 'updateOutgoingWebhook'])->int('id');
+    $router->delete('/{id}', [WebhookController::class, 'deleteOutgoingWebhook'])->int('id');
 });
 
 
 $router->prefix('member/{id}')->withPolicy('UserPolicy')->group(function ($router) {
-    $router->get('/', 'UserController@getMemberInfo');
-    $router->get('/projects', 'UserController@getMemberBoards');
-    $router->get('/tasks', 'UserController@getMemberAssociatedTasks');
-    $router->get('/activities', 'UserController@getMemberRelatedAcitivies');
+    $router->get('/', [UserController::class, 'getMemberInfo']);
+    $router->get('/projects', [UserController::class, 'getMemberBoards']);
+    $router->get('/tasks', [UserController::class, 'getMemberAssociatedTasks']);
+    $router->get('/activities', [UserController::class, 'getMemberRelatedAcitivies']);
 });
 
 /*
 * TODO: I guess we can minimize the number of routes. and Backend code needs to be refactored
 */
 
-$router->withPolicy('UserPolicy')->get('/all-notifications', 'NotificationController@getAllNotifications');
-$router->withPolicy('UserPolicy')->get('/all-unread-notifications', 'NotificationController@getAllUnreadNotifications');
-$router->withPolicy('UserPolicy')->get('notification/unread-count', 'NotificationController@newNotificationNumber');
-$router->withPolicy('UserPolicy')->put('notification/read', 'NotificationController@readNotification');
-$router->withPolicy('UserPolicy')->get('quick-search', 'OptionsController@quickSearch');
-$router->withPolicy('UserPolicy')->get('contacts/{board_id}', 'TaskController@getAssociatedCrmContacts')->int('board_id');
+// Notification routes
+$router->prefix('notifications')->withPolicy('UserPolicy')->group(function ($router) {
+    $router->get('/', [NotificationController::class, 'getAllNotifications']);
+    $router->get('/unread', [NotificationController::class, 'getAllUnreadNotifications']);
+    $router->get('/unread-count', [NotificationController::class, 'newNotificationNumber']);
+    $router->put('/read', [NotificationController::class, 'readNotification']);
+});
+
+$router->prefix('contacts/{board_id}')->withPolicy('SingleBoardPolicy')->group(function ($router) {
+    $router->get('/', [TaskController::class, 'getAssociatedCrmContacts'])->int('board_id');
+});
+
+// User utility routes
+$router->withPolicy('UserPolicy')->group(function ($router) {
+    $router->get('/quick-search', [OptionsController::class, 'quickSearch']);
+});
+
 
 $router->prefix('options')->withPolicy('AuthPolicy')->group(function ($router) {
-    $router->get('members', 'OptionsController@getBoardMembers');
-    $router->get('projects', 'OptionsController@getBoards');
+    $router->get('members', [OptionsController::class, 'getBoardMembers']);
+    $router->get('projects', [OptionsController::class, 'getBoards']);
 });

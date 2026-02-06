@@ -247,7 +247,7 @@ class PermissionManager
 
     /**
      * Get array of board Ids for logged-in user
-     * @param null $userId
+     * @param int $userId
      * @return array
      */
     public static function getBoardIdsForUser($userId = null, $boardId = null)
@@ -369,5 +369,26 @@ class PermissionManager
 
         // Deny access if the user is a viewer only and trying to modify data
         return !($boardPermissions->settings['is_viewer_only'] ?? false);
+    }
+
+    public static function userHasBoardCreationPermission($userId = null)
+    {
+        if (!$userId) {
+            $userId = get_current_user_id();
+            if (!$userId) {
+                return false;
+            }
+        }
+
+        $iAdmin = static::isAdmin($userId);
+
+        // currently only wp-admin or fluent-boards-admin can create boards // 
+
+        // use this filter to add custom permission check for board creation
+        // @param bool $iAdmin
+        // @param int $userId
+        // @return bool
+        // @since 1.91.1
+        return apply_filters('fluent_boards/can_create_board', $iAdmin, $userId);
     }
 }

@@ -54,7 +54,8 @@ class Stages
         }
 
         $query = Stage::where('board_id', $boardId)
-                      ->whereNull('archived_at');
+                      ->whereNull('archived_at')
+                      ->orderBy('position', 'asc');
 
         if ( ! empty($with)) {
             $query->with($with);
@@ -177,7 +178,7 @@ class Stages
             return call_user_func_array([$this->instance, $method], $params);
         }
 
-        throw new \Exception("Method {$method} does not exist.");
+        throw new \Exception(sprintf('Method %s does not exist.', esc_html($method)));
     }
 
 

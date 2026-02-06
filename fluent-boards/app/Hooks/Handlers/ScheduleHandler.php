@@ -53,22 +53,16 @@ class ScheduleHandler
                             .htmlspecialchars($board->title).'</a>';
 
             // Consolidated translation with placeholders
-            $preparedBody = sprintf(
-                __('commented on %1$s on %2$s board.', 'fluent-boards'),
-                $taskLinkTag,
-                $boardLinkTag
-            );
+            // translators: %1$s is the task link, %2$s is the board link
+            $preparedBody = sprintf(__('commented on %1$s on %2$s board.', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
             $preHeader = __('New comment has been added on task','fluent-boards');
             $mailSubject = __('New comment has been added on task','fluent-boards');
 
 
             if ($comment->type == 'reply')
             {
-                $preparedBody = sprintf(
-                    __('replied on your comment on %1$s on %2$s board.', 'fluent-boards'),
-                    $taskLinkTag,
-                    $boardLinkTag
-                );
+                // translators: %1$s is the task link, %2$s is the board link
+                $preparedBody = sprintf(__('replied on your comment on %1$s on %2$s board.', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
 
                 $preHeader = __('A reply has been added to your comment on a task.','fluent-boards');
                 $mailSubject = __('New Reply on Your Task Comment','fluent-boards');
@@ -137,12 +131,11 @@ class ScheduleHandler
 
             $commentLink = $taskUrl . '?comment='.$comment->id;
 
+            // translators: %1$s is the task link, %2$s is the board link
+            $bodyText = sprintf(__('mentioned you in a comment on %1$s on %2$s board.', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
+
             $data = [
-                'body'        => sprintf(
-                    __('mentioned you in a comment on %1$s on %2$s board.', 'fluent-boards'),
-                    $taskLinkTag,
-                    $boardLinkTag
-                ),
+                'body'        => $bodyText,
                 'comment_link' => $page_url,
                 'pre_header'  => __('You are mentioned in a comment','fluent-boards'),
                 'show_footer' => true,
@@ -190,12 +183,11 @@ class ScheduleHandler
                 $taskLinkTag = '<a target="_blank" href="'
                                .htmlspecialchars($taskUrl).'">'
                                .htmlspecialchars($task->title).'</a>';
+                // translators: %1$s is the task link, %2$s is the board link
+                $bodyText = sprintf(__('has assigned you to task %1$s on %2$s board.', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
+                
                 $data        = [
-                    'body'        => sprintf(
-                        __('has assigned you to task %1$s on %2$s board.', 'fluent-boards'),
-                        $taskLinkTag,
-                        $boardLinkTag
-                    ),
+                    'body'        => $bodyText,
                     'pre_header'  => __('you have been assigned to task','fluent-boards'),
                     'show_footer' => true,
                     'userData'    => $userData,
@@ -213,12 +205,11 @@ class ScheduleHandler
                                .htmlspecialchars($taskUrl).'">'
                                .htmlspecialchars($task->title).'</a>';
 
+                // translators: %1$s is the subtask title, %2$s is the task link, %3$s is the board link
+                $bodyText = sprintf(__('has assigned you to subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'), $task->title, $taskLinkTag, $boardLinkTag);
+
                 $data = [
-                    'body'        => sprintf(
-                                __('has assigned you to subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'),
-                                $task->title,
-                                $taskLinkTag,
-                                $boardLinkTag),
+                    'body'        => $bodyText,
                     'pre_header'  => __('you have been assigned to subtask','fluent-boards'),
                     'show_footer' => true, 'user' => $assignee,
                     'userData'    => $userData,
@@ -236,7 +227,7 @@ class ScheduleHandler
             \wp_mail($assignee->user_email, $mailSubject, $message, $headers);
 
         } catch (\Exception $e) {
-            throw new \Exception('Error in sending mail to new assignees', 1);
+            throw new \Exception(esc_html__('Error in sending mail to new assignees', 'fluent-boards'), 1);
         }
     }
 
@@ -266,12 +257,11 @@ class ScheduleHandler
                 $taskLinkTag = '<a target="_blank" href="'
                                .htmlspecialchars($taskUrl).'">'
                                .htmlspecialchars($task->title).'</a>';
+                // translators: %1$s is the task link, %2$s is the board link
+                $bodyText = sprintf(__('has removed you from task %1$s on the board %2$s', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
+                
                 $data        = [
-                    'body'        => sprintf(
-                                __('has removed you from task %1$s on the board %2$s', 'fluent-boards'),
-                                $taskLinkTag,
-                                $boardLinkTag
-                    ),
+                    'body'        => $bodyText,
                     'pre_header'  => __('you have been removed from task','fluent-boards'),
                     'show_footer' => true,
                     'userData'    => $userData,
@@ -289,12 +279,11 @@ class ScheduleHandler
                                .htmlspecialchars($taskUrl).'">'
                                .htmlspecialchars($task->title).'</a>';
 
+                // translators: %1$s is the subtask title, %2$s is the task link, %3$s is the board link
+                $bodyText = sprintf(__('has removed you from subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'), $task->title, $taskLinkTag, $boardLinkTag);
+
                 $data = [
-                    'body'        => sprintf(
-                                __('has removed you from subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'),
-                                $task->title,
-                                $taskLinkTag,
-                                $boardLinkTag),
+                    'body'        => $bodyText,
                     'pre_header'  => __('you have been removed from subtask','fluent-boards'),
                     'show_footer' => true,
                     'userData'    => $userData,
@@ -308,7 +297,7 @@ class ScheduleHandler
             \wp_mail($assignee->user_email, $mailSubject, $message, $headers);
 
         } catch (\Exception $e) {
-            throw new \Exception('Error in sending mail to new assignees', 1);
+            throw new \Exception(esc_html__('Error in sending mail to new assignees', 'fluent-boards'), 1);
         }
     }
 
@@ -336,13 +325,11 @@ class ScheduleHandler
                            .htmlspecialchars($taskUrl).'">'
                            .htmlspecialchars($task->title).'</a>';
 
+            // translators: %1$s is the task link, %2$s is the stage title, %3$s is the board link
+            $bodyText = sprintf(__('has moved %1$s task to <strong>%2$s</strong> stage of board %3$s', 'fluent-boards'), $taskLinkTag, $task->stage->title, $boardLinkTag);
+
             $data = [
-                'body'        => sprintf(
-                    __('has moved %1$s task to <strong>%2$s</strong> stage of board %3$s', 'fluent-boards'),
-                    $taskLinkTag,
-                    $task->stage->title,
-                    $boardLinkTag
-                ),
+                'body'        => $bodyText,
                 'pre_header'  => __('Task stage has been changed','fluent-boards'),
                 'show_footer' => true,
                 'userData'    => $userData,
@@ -360,7 +347,7 @@ class ScheduleHandler
                 \wp_mail($assignee_email, $mailSubject, $message, $headers);
             }
         } catch (\Exception $e) {
-            error_log($e->getMessage() ." Error in sending mail to new assignees");
+            // Silent fail for email sending
         }
     }
 
@@ -387,12 +374,11 @@ class ScheduleHandler
                            .htmlspecialchars($taskUrl).'">'
                            .htmlspecialchars($task->title).'</a>';
 
+            // translators: %1$s is the task link, %2$s is the due date, %3$s is the board link
+            $bodyText = sprintf(__('has updated due date of %1$s task to <strong>%2$s</strong> of board %3$s', 'fluent-boards'), $taskLinkTag, $task->due_at, $boardLinkTag);
+
             $data = [
-                'body'        => sprintf(
-                                __('has updated due date of %1$s task to <strong>%2$s</strong> of board %3$s', 'fluent-boards'),
-                                $taskLinkTag,
-                                $task->due_at,
-                                $boardLinkTag),
+                'body'        => $bodyText,
                 'pre_header'  => __('Task due date has been changed','fluent-boards'),
                 'show_footer' => true,
                 'userData'    => $userData,
@@ -410,7 +396,7 @@ class ScheduleHandler
                 \wp_mail($assignee_email, $mailSubject, $message, $headers);
             }
         } catch (\Exception $e) {
-            throw new \Exception('Error in sending mail to new assignees', 1);
+            throw new \Exception(esc_html__('Error in sending mail to new assignees', 'fluent-boards'), 1);
         }
     }
 
@@ -437,11 +423,11 @@ class ScheduleHandler
                            .htmlspecialchars($taskUrl).'">'
                            .htmlspecialchars($task->title).'</a>';
 
+            // translators: %1$s is the task link, %2$s is the board link
+            $bodyText = sprintf(__('has archived %1$s task of board %2$s', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
+
             $data = [
-                'body'        => sprintf(
-                                __('has archived %1$s task of board %2$s', 'fluent-boards'),
-                                $taskLinkTag,
-                                $boardLinkTag),
+                'body'        => $bodyText,
                 'pre_header'  => __('Task has been archived','fluent-boards'),
                 'show_footer' => true,
                 'userData'    => $userData,
@@ -459,7 +445,7 @@ class ScheduleHandler
                 \wp_mail($assignee_email, $mailSubject, $message, $headers);
             }
         } catch (\Exception $e) {
-            throw new \Exception('Error in sending mail to new assignees', 1);
+            throw new \Exception(esc_html__('Error in sending mail to new assignees', 'fluent-boards'), 1);
         }
     }
 

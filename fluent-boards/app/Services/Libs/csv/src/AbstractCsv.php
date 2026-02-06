@@ -315,7 +315,7 @@ abstract class AbstractCsv implements JsonSerializable, IteratorAggregate
     protected function filterInteger($int, $minValue, $errorMessage)
     {
         if (false === ($int = filter_var($int, FILTER_VALIDATE_INT, ['options' => ['min_range' => $minValue]]))) {
-            throw new InvalidArgumentException($errorMessage);
+            throw new InvalidArgumentException(esc_html($errorMessage));
         }
 
         return $int;

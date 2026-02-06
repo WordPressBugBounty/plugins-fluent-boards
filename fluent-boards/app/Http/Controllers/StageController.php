@@ -17,8 +17,10 @@ class StageController extends Controller
     }
     public function updateStageProperty(Request $request, $board_id, $stage_id)
     {
-        $col = $request->getSafe('property');
-        $value = $request->getSafe('value');
+        $board_id = absint($board_id);
+        $stage_id = absint($stage_id);
+        $col = $request->getSafe('property', 'sanitize_text_field');
+        $value = $request->getSafe('value', 'sanitize_text_field');
 
         try {
             $validatedData = $this->updateStagePropValidationAndSanitation($col, $value);
@@ -56,7 +58,8 @@ class StageController extends Controller
 
     public function sortStageTasks(Request $request, $board_id, $stage_id)
     {
-
+        $board_id = absint($board_id);
+        $stage_id = absint($stage_id);
         $order   = $request->getSafe('order', 'sanitize_text_field');
         $orderBy = $request->getSafe('orderBy', 'sanitize_text_field');
 
@@ -69,8 +72,9 @@ class StageController extends Controller
 
     public function dragStage(Request $request, $board_id)
     {
-        $stage_id = $request->getSafe('stageId');
-        $position = $request->getSafe('newPosition');
+        $board_id = absint($board_id);
+        $stage_id = $request->getSafe('stageId', 'intval');
+        $position = $request->getSafe('newPosition', 'intval');
         try{
             $stage = Stage::findOrFail($stage_id);
             $stage->moveToNewPosition($position);
@@ -86,7 +90,13 @@ class StageController extends Controller
 
     public function updateStage(Request $request, $board_id, $stage_id)
     {
-        $updatedStage = $this->stageSanitizeAndValidate($request->stage, [
+        $board_id = absint($board_id);
+        $stage_id = absint($stage_id);
+        $stageData = $request->getSafe('stage');
+        if (!is_array($stageData)) {
+            $stageData = [];
+        }
+        $updatedStage = $this->stageSanitizeAndValidate($stageData, [
             'title'    => 'required|string',
             'cover_bg' => 'nullable'
         ]);

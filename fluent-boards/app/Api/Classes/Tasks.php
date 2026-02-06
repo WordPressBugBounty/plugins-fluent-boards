@@ -8,6 +8,7 @@ use Exception;
 use FluentBoards\App\Models\Label;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
+use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Services\BoardService;
 use FluentBoards\App\Services\Helper;
@@ -549,8 +550,59 @@ class Tasks
         $data['board_id'] = $boardId;
         $data['parent_id'] = $task->id;
 
+        // Ensure group_id is provided and valid
+        if (!empty($data['group_id'])) {
+            // Validate that the group belongs to the parent task
+            $group = TaskMeta::where('id', $data['group_id'])
+                ->where('task_id', $task->id)
+                ->where('key', Constant::SUBTASK_GROUP_NAME)
+                ->first();
 
-        return $this->create($data);
+            if (!$group) {
+                // Invalid group_id provided, create a default group instead
+                $group = TaskMeta::where('task_id', $task->id)
+                    ->where('key', Constant::SUBTASK_GROUP_NAME)
+                    ->first();
+
+                if (!$group) {
+                    $group = TaskMeta::create([
+                        'task_id' => $task->id,
+                        'key' => Constant::SUBTASK_GROUP_NAME,
+                        'value' => __('Subtask Group 1', 'fluent-boards')
+                    ]);
+                }
+
+                $data['group_id'] = $group->id;
+            }
+        } else {
+            // No group_id provided, find or create a default group
+            $group = TaskMeta::where('task_id', $task->id)
+                ->where('key', Constant::SUBTASK_GROUP_NAME)
+                ->first();
+
+            if (!$group) {
+                $group = TaskMeta::create([
+                    'task_id' => $task->id,
+                    'key' => Constant::SUBTASK_GROUP_NAME,
+                    'value' => __('Subtask Group 1', 'fluent-boards')
+                ]);
+            }
+
+            $data['group_id'] = $group->id;
+        }
+
+        $subtask = $this->create($data);
+
+        if ($subtask) {
+            // Link subtask to group
+            TaskMeta::create([
+                'task_id' => $subtask->id,
+                'key' => Constant::SUBTASK_GROUP_CHILD,
+                'value' => $data['group_id']
+            ]);
+        }
+
+        return $subtask;
     }
 
 
@@ -618,6 +670,6 @@ class Tasks
             return call_user_func_array([$this->instance, $method], $params);
         }
 
-        throw new \Exception("Method {$method} does not exist.");
+        throw new \Exception(esc_html(sprintf('Method %s does not exist.', $method)));
     }
 }

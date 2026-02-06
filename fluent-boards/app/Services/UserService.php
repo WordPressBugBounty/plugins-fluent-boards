@@ -224,7 +224,11 @@ class UserService
         $page = $requestData['page'] ?? 1;
         $user = User::find($user_id);
 
-        if (!$user) {
+        $loggedInUserId = get_current_user_id();
+
+        $allowedBoardIds = PermissionManager::getBoardIdsForUser($loggedInUserId);
+
+        if (!$user || empty($allowedBoardIds)) {
             return [
                 'tasks' => [],
                 'paginationInfo' => [
@@ -236,25 +240,29 @@ class UserService
         }
 
         if($taskType == 'assigned') {
-            $tasksQuery = $user->assignedTasks()->with(['stage', 'board'])->whereNull('archived_at')->whereNull('parent_id');
+            $tasksQuery = $user->assignedTasks()->with(['stage', 'board'])->whereNull('archived_at')->whereNull('parent_id')->whereIn('board_id', $allowedBoardIds);
         } else if($taskType == 'mentioned') {
-            $tasksQuery = $user->mentionedTasks()->with(['stage', 'board'])->whereNull('archived_at')->whereNull('parent_id');
+            $tasksQuery = $user->mentionedTasks()->with(['stage', 'board'])->whereNull('archived_at')->whereNull('parent_id')->whereIn('board_id', $allowedBoardIds);
         } else {
             // Get the task assigned to the user
-        $tasksQuery = $user->tasks()->with(['stage', 'board'])->whereNull('archived_at');
+        $tasksQuery = $user->tasks()->with(['stage', 'board'])->whereNull('archived_at') ->whereIn('board_id', $allowedBoardIds);
 
         switch ($taskType) {
             case 'upcoming':
-                $tasksQuery->upcoming();
+                $tasksQuery->upcoming()
+                ->whereIn('board_id', $allowedBoardIds);
                 break;
             case 'overdue':
-                $tasksQuery->overdue();
+                $tasksQuery->overdue()
+                ->whereIn('board_id', $allowedBoardIds);
                 break;
             case 'completed':
-                $tasksQuery->where('status', 'closed');
+                $tasksQuery->where('status', 'closed')
+                ->whereIn('board_id', $allowedBoardIds);
                 break;
             default:
-                $tasksQuery->whereNull('due_at');
+                $tasksQuery->whereNull('due_at')
+                ->whereIn('board_id', $allowedBoardIds);
                 break;
         }
         }
@@ -283,7 +291,7 @@ class UserService
 
         // Validate order and orderBy parameters
         if (!in_array($order, $orderOptions) || !in_array($orderBy, $sortOptions)) {
-            throw new \Exception(__('Invalid sort or orderBy parameter', 'fluent-boards'));
+            throw new \Exception(esc_html__('Invalid sort or orderBy parameter', 'fluent-boards'));
         }
 
         // Apply ordering based on the specified order and orderBy

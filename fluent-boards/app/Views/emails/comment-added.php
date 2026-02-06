@@ -36,8 +36,8 @@
     </div>
 
     <div class="fbs_email_notification_footer">
-        <?php $footer_text = ''; ?>
-        <?php echo apply_filters('fluent_boards/email_footer', $footer_text); ?>
+        <?php $fluent_boards_footer_text = ''; ?>
+        <?php echo wp_kses_post(apply_filters('fluent_boards/email_footer', $fluent_boards_footer_text)); ?>
     </div>
 </div>
 </body>

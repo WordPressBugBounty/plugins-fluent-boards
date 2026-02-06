@@ -769,8 +769,6 @@ class TransStrings
             'Enter subtask group name'                                           => __('Enter subtask group name', 'fluent-boards'),
             'Add a more detailed description...'                                 => __('Add a more detailed description...', 'fluent-boards'),
             'Add to Folder'                                                      => __('Add to Folder', 'fluent-boards'),
-            'Board Info'                                                         => __('Board Info', 'fluent-boards'),
-            'Boards'                                                             => __('Boards', 'fluent-boards'),
             'Color'                                                              => __('Color', 'fluent-boards'),
             'Create Folder'                                                      => __('Create Folder', 'fluent-boards'),
             'Enter folder name'                                                  => __('Enter folder name', 'fluent-boards'),
@@ -803,6 +801,7 @@ class TransStrings
             'Archived Stages' => __('Archived Stages', 'fluent-boards'),
             'Make Public'                                               => __('Make Public', 'fluent-boards'),
             'Make Private'                                              => __('Make Private', 'fluent-boards'),
+            // translators: %s is the privacy setting (public or private)
             'This comment is now %s' => __('This comment is now %s', 'fluent-boards'),
             'public'                => __('public', 'fluent-boards'),
             'private'               => __('private', 'fluent-boards'),
@@ -856,28 +855,94 @@ class TransStrings
             'Join Board' => __('Join Board', 'fluent-boards'),
             'Subtask' => __('Subtask', 'fluent-boards'),
             'Custom Field' => __('Custom Field', 'fluent-boards'),
+            // translators: %1$s is the task link, %2$s is the board name
             'commented on %1$s on %2$s board.' => __('commented on %1$s on %2$s board.', 'fluent-boards'),
+            // translators: %1$s is the task link, %2$s is the board name
             'replied on your comment on %1$s on %2$s board.' => __('replied on your comment on %1$s on %2$s board.', 'fluent-boards'),
+            // translators: %1$s is the task link, %2$s is the board name
             'mentioned you in a comment on %1$s on %2$s board.' => __('mentioned you in a comment on %1$s on %2$s board.', 'fluent-boards'),
+            // translators: %1$s is the subtask title, %2$s is the task link, %3$s is the board name
             'has assigned you to subtask <strong>%1$s</strong> of task %2$s on the board %3$s' => __('has assigned you to subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'),
+            // translators: %1$s is the task link, %2$s is the board name
             'has removed you from task %1$s on the board %2$s' => __('has removed you from task %1$s on the board %2$s', 'fluent-boards'),
+            // translators: %1$s is the subtask title, %2$s is the task link, %3$s is the board name
             'has removed you from subtask <strong>%1$s</strong> of task %2$s on the board %3$s' => __('has removed you from subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'),
+            // translators: %1$s is the task link, %2$s is the stage name, %3$s is the board name
             'has moved %1$s task to <strong>%2$s</strong> stage of board %3$s' => __('has moved %1$s task to <strong>%2$s</strong> stage of board %3$s', 'fluent-boards'),
+            // translators: %1$s is the task link, %2$s is the due date, %3$s is the board name
             'has updated due date of %1$s task to <strong>%2$s</strong> of board %3$s' => __('has updated due date of %1$s task to <strong>%2$s</strong> of board %3$s', 'fluent-boards'),
+            // translators: %1$s is the task link, %2$s is the board name
             'has archived %1$s task of board %2$s' => __('has archived %1$s task of board %2$s', 'fluent-boards'),
+            // translators: %1$s is the task title, %2$s is the board name
             'moved %1$s task to %2$s board.' => __('moved %1$s task to %2$s board.', 'fluent-boards'),
             'Learn about' => __('Learn about', 'fluent-boards'),
+            // translators: %1$s is the task link, %2$s is the board name
             'has assigned you to task %1$s on %2$s board.' => __('has assigned you to task %1$s on %2$s board.', 'fluent-boards'),
             'Assigned' => __('Assigned', 'fluent-boards'),
             'Task Created' => __('Task Created', 'fluent-boards'),
             'Task Stage Changed' => __('Task Stage Changed', 'fluent-boards'),
             'Task Closed' => __('Task Closed', 'fluent-boards'),
-            'Task Archived' => __('Task Archived', 'fluent-boards'),
             'Comment Added' => __('Comment Added', 'fluent-boards'),
             'Assignee Added' => __('Assignee Added', 'fluent-boards'),
             'Delete Task'   => __('Delete Task', 'fluent-boards'),
             'You are about to delete this task.' => __('You are about to delete this task.', 'fluent-boards'),
             'This action cannot be undone.' => __('This action cannot be undone.', 'fluent-boards'),
+            'Bulk Actions' => __('Bulk Actions', 'fluent-boards'),
+            'Move to Stage' => __('Move to Stage', 'fluent-boards'),
+            'Archive Tasks' => __('Archive Tasks', 'fluent-boards'),
+            'Change Priority' => __('Change Priority', 'fluent-boards'),
+            'Assign Members' => __('Assign Members', 'fluent-boards'),
+            'Add Labels' => __('Add Labels', 'fluent-boards'),
+            'Select Stage' => __('Select Stage', 'fluent-boards'),
+            'Select Priority' => __('Select Priority', 'fluent-boards'),
+            'Select Members' => __('Select Members', 'fluent-boards'),
+            'Please select a stage' => __('Please select a stage', 'fluent-boards'),
+            'Please select a priority' => __('Please select a priority', 'fluent-boards'),
+            'Please select at least one member' => __('Please select at least one member', 'fluent-boards'),
+            'Please select at least one label' => __('Please select at least one label', 'fluent-boards'),
+            'Are you sure you want to archive' => __('Are you sure you want to archive', 'fluent-boards'),
+            'tasks?' => __('tasks?', 'fluent-boards'),
+            'Bulk action completed successfully' => __('Bulk action completed successfully', 'fluent-boards'),
+            'Selected' => __('Selected', 'fluent-boards'),
+            'No Labels Found.' => __('No Labels Found.', 'fluent-boards'),
+            'Cannot process more than 150 tasks at once. Please select fewer tasks.' => __('Cannot process more than 150 tasks at once. Please select fewer tasks.', 'fluent-boards'),
+            'Partial Success' => __('Partial Success', 'fluent-boards'),
+            // translators: %d is the number of tasks archived successfully
+            '%d tasks archived successfully' => __('%d tasks archived successfully', 'fluent-boards'),
+            // translators: %d is the number of tasks that failed to archive
+            'Failed to archive %d tasks' => __('Failed to archive %d tasks', 'fluent-boards'),
+            // translators: 1: number of tasks archived successfully; 2: number of tasks failed to archive
+            '%1$d tasks archived successfully, %2$d failed' => __('%1$d tasks archived successfully, %2$d failed', 'fluent-boards'),
+            // translators: %d is the number of tasks moved to stage successfully
+            '%d tasks moved to stage successfully' => __('%d tasks moved to stage successfully', 'fluent-boards'),
+            // translators: %d is the number of tasks that failed to move to stage
+            'Failed to move %d tasks to stage' => __('Failed to move %d tasks to stage', 'fluent-boards'),
+            // translators: 1: number of tasks moved successfully; 2: number of tasks failed to move
+            '%1$d tasks moved successfully, %2$d failed' => __('%1$d tasks moved successfully, %2$d failed', 'fluent-boards'),
+            // translators: %d is the number of tasks whose priorities were updated successfully
+            '%d task priorities updated successfully' => __('%d task priorities updated successfully', 'fluent-boards'),
+            // translators: %d is the number of tasks whose priorities failed to update
+            'Failed to update %d task priorities' => __('Failed to update %d task priorities', 'fluent-boards'),
+            // translators: 1: number of tasks priorities updated successfully; 2: number of tasks priorities failed to update
+            '%1$d task priorities updated successfully, %2$d failed' => __('%1$d task priorities updated successfully, %2$d failed', 'fluent-boards'),
+            // translators: %d is the number of tasks where members were assigned successfully
+            '%d tasks assigned members successfully' => __('%d tasks assigned members successfully', 'fluent-boards'),
+            // translators: %d is the number of tasks where assigning members failed
+            'Failed to assign members to %d tasks' => __('Failed to assign members to %d tasks', 'fluent-boards'),
+            // translators: 1: number of tasks with members assigned successfully; 2: number of tasks where assigning members failed
+            '%1$d tasks assigned members successfully, %2$d failed' => __('%1$d tasks assigned members successfully, %2$d failed', 'fluent-boards'),
+            // translators: %d is the number of tasks labeled successfully
+            '%d tasks labeled successfully' => __('%d tasks labeled successfully', 'fluent-boards'),
+            // translators: %d is the number of tasks that failed to label
+            'Failed to label %d tasks' => __('Failed to label %d tasks', 'fluent-boards'),
+            // translators: 1: number of tasks labeled successfully; 2: number of tasks failed to label
+            '%1$d tasks labeled successfully, %2$d failed' => __('%1$d tasks labeled successfully, %2$d failed', 'fluent-boards'),
+            'Actions' => __('Actions', 'fluent-boards'),
+            'Restore Selected' => __('Restore Selected', 'fluent-boards'),
+            'Restoring...' => __('Restoring...', 'fluent-boards'),
+            'Delete Selected' => __('Delete Selected', 'fluent-boards'),
+            'You are about to delete' => __('You are about to delete', 'fluent-boards'),
+            'tasks.' => __('tasks.', 'fluent-boards'),
         ];
     }
 }

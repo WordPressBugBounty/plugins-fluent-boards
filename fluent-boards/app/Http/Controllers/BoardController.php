@@ -216,9 +216,11 @@ class BoardController extends Controller
 
             return $this->sendSuccess([
                 'boards' => $relatedBoards
-            ], 200);
+            ]);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError([
+                'message' => $e->getMessage()
+            ]);
         }
     }
 
@@ -253,7 +255,7 @@ class BoardController extends Controller
 
         return $this->sendSuccess([
             'boards' => $boards,
-        ], 200);
+        ]);
     }
 
     public function createFirstBoard(Request $request)
@@ -266,9 +268,12 @@ class BoardController extends Controller
             'crm_contact_id' => 'nullable|numeric',
         ]);
 
-        $installFluentCRM = $request->get('withFluentCRM') == 'yes' ? true : false;
+        $installFluentCRM = $request->getSafe('withFluentCRM', 'sanitize_text_field') == 'yes' ? true : false;
 
         $postStages = $request->get('stages');
+        if (!is_array($postStages)) {
+            $postStages = [];
+        }
         $stageData = array();
         foreach ($postStages as $stage) {
             $temp = $this->stageSanitizeAndValidate($stage, [
@@ -337,7 +342,18 @@ class BoardController extends Controller
             $type = ucfirst($boardData['type']);
 
             if (isset($boardData['type']) && $boardData['type'] == 'roadmap') {
-                $this->stageService->createRoadmapStages($board, $request->get('stages'));
+                $stages = $request->get('stages');
+                $sanitizedStages = [];
+                if (is_array($stages) && !empty($stages)) {
+                    foreach ($stages as $stage) {
+                        $sanitizedStages[] = $this->stageSanitizeAndValidate($stage, [
+                            'title' => 'required|string',
+                            'slug' => 'nullable|string',
+                            'position' => 'nullable|numeric'
+                        ]);
+                    }
+                }
+                $this->stageService->createRoadmapStages($board, $sanitizedStages);
             } else {
                 $this->stageService->createDefaultStages($board);
             }
@@ -351,21 +367,22 @@ class BoardController extends Controller
 
 
             if(defined('FLUENT_BOARDS_PRO')) {
-                if ($request->get('folder_id')) {
-                    // do sanitize folder ID
-                    $folderId = $request->get('folder_id');
+                $folderId = $request->getSafe('folder_id', 'intval');
+                if ($folderId) {
                     (new \FluentBoardsPro\App\Services\FolderService())->addBoardToFolder($folderId, [$board->id]);
                 }
             }
 
             $message = __('Board has been created successfully', 'fluent-boards');
 
-            return $this->sendSuccess([
+            return $this->send([
                 'message' => $message,
                 'board'   => $board,
             ], 201);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 400);
+            return $this->sendError([
+                'message' => $e->getMessage()
+            ]);
         }
     }
 
@@ -492,6 +509,10 @@ class BoardController extends Controller
     public function repositionStages(Request $request, $board_id)
     {
         $incomingList = $request->get('list');
+        if (!is_array($incomingList)) {
+            $incomingList = [];
+        }
+        $incomingList = array_map('intval', $incomingList);
         try {
             $this->boardService->repositionStages($board_id, $incomingList);
             return $this->sendSuccess([
@@ -514,7 +535,7 @@ class BoardController extends Controller
     {
         try {
             if (!PermissionManager::isAdmin()) {
-                throw new \Exception('You do not have permission to delete this board', 400);
+                throw new \Exception(esc_html__('You do not have permission to delete this board', 'fluent-boards'), 400);
             }
             $this->boardService->deleteBoard($board_id);
 
@@ -534,7 +555,10 @@ class BoardController extends Controller
     public function getActivities(Request $request, $board_id)
     {
         try {
-            $activities = $this->boardService->getActivities($board_id, $request->all());
+            $activities = $this->boardService->getActivities($board_id, [
+                'per_page' => $request->getSafe('per_page', 'intval', 40),
+                'page' => $request->getSafe('page', 'intval', 1),
+            ]);
             return $this->sendSuccess([
                 'activities' => $activities,
             ], 200);
@@ -803,7 +827,7 @@ class BoardController extends Controller
         try {
             if (!$board_id) {
                 $errorMessage = __('Board id is required', 'fluent-boards');
-                throw new \Exception($errorMessage, 400);
+                throw new \Exception(esc_html($errorMessage), 400);
             }
 
             return $this->sendSuccess([
@@ -839,7 +863,7 @@ class BoardController extends Controller
                 if (!$stage_id) {
                     $message = 'Stage ';
                 }
-                throw new \Exception($message . 'is required', 400);
+                throw new \Exception(esc_html($message . 'is required'), 400);
             }
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
@@ -974,7 +998,7 @@ class BoardController extends Controller
         try {
             if(!PermissionManager::isAdmin()) {
                 $errorMessage = __('You do not have permission to duplicate board', 'fluent-boards');
-                throw new \Exception($errorMessage, 400);
+                throw new \Exception(esc_html($errorMessage), 400);
             }
             //create board
             $newBoard = $this->boardService->copyBoard($boardData);
@@ -1005,7 +1029,13 @@ class BoardController extends Controller
     public function importFromBoard(Request $request, $board_id)
     {
         $selectedStages = $request->getSafe('selectedStages');
-        $position = $request->getSafe('position');
+        $position = $request->getSafe('position', 'intval');
+
+        // Validate and sanitize selectedStages array
+        if (!is_array($selectedStages)) {
+            $selectedStages = [$selectedStages];
+        }
+        $selectedStages = array_filter(array_map('intval', $selectedStages));
 
         try {
             $this->stageService->importStagesFromBoard($board_id, $selectedStages, $position);
@@ -1117,7 +1147,7 @@ class BoardController extends Controller
             'meta' => $UrlMeta
         ] : '';
         $fileUploadedData->driver = 'local';
-        $fileUploadedData->file_hash = md5($uid . mt_rand(0, 1000));
+        $fileUploadedData->file_hash = md5($uid . wp_rand(0, 1000));
         $fileUploadedData->save();
         if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
             $mediaData = (new AttachmentService())->processMediaData($fileData, $file);

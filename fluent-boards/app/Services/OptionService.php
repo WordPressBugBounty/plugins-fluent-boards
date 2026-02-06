@@ -78,6 +78,9 @@ class OptionService
             Constant::GLOBAL_EMAIL_NOTIFICATION_DUE_DATE => true,
             Constant::GLOBAL_EMAIL_NOTIFICATION_REMOVE_FROM_TASK => true,
             Constant::GLOBAL_EMAIL_NOTIFICATION_TASK_ARCHIVE => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENTING => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_ASSIGNING => true
         ];
 
         //if no settings found of this user then store default

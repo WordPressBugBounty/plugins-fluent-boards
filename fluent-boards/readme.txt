@@ -2,9 +2,9 @@
 Contributors: techjewel,adreastrian,wpmanageninja
 Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
-Tested up to: 6.8
+Tested up to: 6.9
 Requires PHP: 7.3
-Stable tag: 1.86
+Stable tag: 1.91.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,43 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+=v1.91.2 (Date: January 26, 2025) =
+-Improvement: Auth policy update for better security.
+-Fixed: Digital Ocean file upload issue.
+
+
+= v1.91.1 (Date: January 08, 2025) =
+- Fixed: Task description formatting . 
+- Fixed: Task cover change error .
+
+= v1.91 (Date: December 24, 2025) =
+- Improvement: Global add button moved for better user experience. 
+- Improvement: Internal security improved.
+- Improvement: Improved button color consistency.
+- Fixed: Resolved an issue with Cloudflare R2 file uploads.
+- Fixed: Resolved the problem where stages in a board were not reordering properly.
+- Fixed: Fixed the issue with the edit button in comments.
+- Other Improvements & Bug Fixes
+
+= v1.90 (Date: November 13, 2025) =
+- New: Bulk actions in Table View
+- New: Bulk restore and delete for archived tasks
+- New: Additional webhook triggers
+- Improvement: Better cross-board task movement handling
+- Improvement: WordPress Guidelines and coding standards compliance
+- Improvement: Enhanced error handling and dependency check
+- Fixed: Stages ordering issues in board duplication
+- Fixed: Board description rendering issue with ampersands
+- Fixed: Task deletion issue
+- Fixed: Parent ID falsy (zero) value handling
+- Fixed: Default preferences not applied to newly added settings
+- Fixed: Subtask group assignment inconsistencies
+- Fixed: Microsoft office files attachment upload issue
+- Other Improvements & Bug Fixes
+
+= v1.86.1 (Date: November 06, 2025) =
+- Fixed: WordPress Guidelines Compliance Issues
+
 = v1.86 (Date: September 26, 2025) =
 - New: Easy task delete functionality
 - Improvement: Task reminder icon added when reminder active.

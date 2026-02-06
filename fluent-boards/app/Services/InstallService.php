@@ -87,20 +87,20 @@ class InstallService
                     );
 
                     if (is_wp_error($plugin_information)) {
-                        throw new \Exception($plugin_information->get_error_message());
+                        throw new \Exception(esc_html($plugin_information->get_error_message()));
                     }
 
                     $package = $plugin_information->download_link;
                     $download = $upgrader->download_package($package);
 
                     if (is_wp_error($download)) {
-                        throw new \Exception($download->get_error_message());
+                        throw new \Exception(esc_html($download->get_error_message()));
                     }
 
                     $working_dir = $upgrader->unpack_package($download, true);
 
                     if (is_wp_error($working_dir)) {
-                        throw new \Exception($working_dir->get_error_message());
+                        throw new \Exception(esc_html($working_dir->get_error_message()));
                     }
 
                     $result = $upgrader->install_package(
@@ -118,7 +118,7 @@ class InstallService
                     );
 
                     if (is_wp_error($result)) {
-                        throw new \Exception($result->get_error_message());
+                        throw new \Exception(esc_html($result->get_error_message()));
                     }
 
                     $activate = true;
@@ -138,7 +138,7 @@ class InstallService
                     $result = activate_plugin($installed ? $installed_plugins[$plugin_file] : $plugin_slug . '/' . $plugin_file);
 
                     if (is_wp_error($result)) {
-                        throw new \Exception($result->get_error_message());
+                        throw new \Exception(esc_html($result->get_error_message()));
                     }
                 } catch (\Exception $e) {
                 }

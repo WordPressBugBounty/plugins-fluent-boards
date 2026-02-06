@@ -46,6 +46,10 @@ class Comment extends Model
                 $model->type = 'comment';
             }
 
+            if ($model->parent_id < 1) {
+                $model->parent_id = Null;
+            }
+
             if (empty($model->privacy)) {
                 $model->privacy = 'private';
             }
@@ -71,6 +75,16 @@ class Comment extends Model
                     $task->comments_count = (int) $task->comments_count + 1;
                     $task->save();
                 }
+            }
+        });
+
+        static::deleting(function ($model) {
+            // Delete comment/reply images and their files
+            $images = $model->images()->get();
+            foreach ($images as $image) {
+                $deletedImage = clone $image;
+                $image->delete();
+                $model->commentImageDeleted($deletedImage);
             }
         });
 
@@ -161,6 +175,13 @@ class Comment extends Model
     {
         return $this->hasMany(CommentImage::class, 'object_id', 'id')
             ->where('object_type', Constant::COMMENT_IMAGE);
+    }
+
+    
+    private function commentImageDeleted($deletedImage)
+    {
+            $deleteUrl = $deletedImage->full_url;
+            (new \FluentBoards\App\Hooks\Handlers\FileHandler())->deleteFileByUrl($deleteUrl);
     }
 
 }

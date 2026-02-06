@@ -26,13 +26,13 @@ class UploadService
     public function validateFile($file)
     {
         if (!$file) {
-            throw new \Exception('File is empty.');
+            throw new \Exception(esc_html__('File is empty.', 'fluent-boards'));
         }
         if (!$this->isFileTypeSupported($file)) {
-            throw new \Exception('File type not supported');
+            throw new \Exception(esc_html__('File type not supported', 'fluent-boards'));
         }
         if ($file['size_in_bytes'] > $this->getFileUploadLimit()) {
-            throw new \Exception('File size is too large');
+            throw new \Exception(esc_html__('File size is too large', 'fluent-boards'));
         }
     }
 

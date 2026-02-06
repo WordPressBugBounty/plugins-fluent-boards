@@ -14,24 +14,26 @@ class ExternalPages
 {
     public function view_uploaded_comment_image()
     {
-        $attachmentHash = sanitize_text_field($_REQUEST['fbs_comment_image']);
-        $boardId  = sanitize_text_field($_REQUEST['fbs_bid']);
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public file serving endpoint, security validated via hash
+        $attachmentHash = isset($_REQUEST['fbs_comment_image']) ? sanitize_text_field(wp_unslash($_REQUEST['fbs_comment_image'])) : '';
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public file serving endpoint, security validated via hash
+        $boardId = isset($_REQUEST['fbs_bid']) ? sanitize_text_field(wp_unslash($_REQUEST['fbs_bid'])) : '';
 
         if (empty($attachmentHash)) {
-            die('Invalid Attachment Hash');
+            die(esc_html__('Invalid Attachment Hash', 'fluent-boards'));
         }
 
         $attachment = $this->getUploadedImageByHash($attachmentHash);
 
         if (!$attachment) {
-            die('Invalid Attachment Hash');
+            die(esc_html__('Invalid Attachment Hash', 'fluent-boards'));
         }
 
         if ('local' !== $attachment->driver) {
             if(!empty($attachment->file_path)){
                 $this->redirectToExternalAttachment($attachment->full_url);
             }else{
-                die('File could not be found');
+                die(esc_html__('File could not be found', 'fluent-boards'));
             }
             return;
         }
@@ -43,7 +45,7 @@ class ExternalPages
         }
 
         if (!file_exists($filePath)) {
-            die('File could not be found.');
+            die(esc_html__('File could not be found.', 'fluent-boards'));
         }
 
         $this->serveLocalAttachment($attachment, $filePath);
@@ -51,10 +53,11 @@ class ExternalPages
 
     public function view_comment_image()
     {
-        $attachmentHash = sanitize_text_field($_REQUEST['fbs_comment_image']);
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public file serving endpoint, security validated via hash and signature
+        $attachmentHash = isset($_REQUEST['fbs_comment_image']) ? sanitize_text_field(wp_unslash($_REQUEST['fbs_comment_image'])) : '';
 
         if (empty($attachmentHash)) {
-            die('Invalid Attachment Hash');
+            die(esc_html__('Invalid Attachment Hash', 'fluent-boards'));
         }
 
         $attachment = $this->getUploadedImageByHash($attachmentHash);
@@ -66,13 +69,12 @@ class ExternalPages
         }
 
         if (!$attachment) {
-            die('Invalid Attachment Hash');
+            die(esc_html__('Invalid Attachment Hash', 'fluent-boards'));
         }
 
         // check signature hash
         if (!$this->validateAttachmentSignature($attachment)) {
-            $dieMessage = __('Sorry, Your secure sign is invalid, Please reload the previous page and get new signed url', 'fluent-boards');
-            die($dieMessage);
+            die(esc_html__('Sorry, Your secure sign is invalid, Please reload the previous page and get new signed url', 'fluent-boards'));
         }
 
         //If external file
@@ -80,7 +82,7 @@ class ExternalPages
             if(!empty($attachment->file_path)){
                 $this->redirectToExternalAttachment($attachment->full_url);
             }else{
-                die('File could not be found');
+                die(esc_html__('File could not be found', 'fluent-boards'));
             }
         }
 
@@ -99,7 +101,7 @@ class ExternalPages
         }
 
         if (!file_exists($filePath)) {
-            die('File could not be found.');
+            die(esc_html__('File could not be found.', 'fluent-boards'));
         }
 
         $this->serveLocalAttachment($attachment, $filePath);
@@ -115,19 +117,28 @@ class ExternalPages
         ob_get_clean();
         header("Content-Type: {$attachment->attachment_type}");
         header("Content-Disposition: inline; filename=\"{$attachment->title}\"");;
-        echo readfile($filePath);
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile -- Serving binary file content directly to browser, WP_Filesystem not suitable for this use case
+        readfile($filePath);
         die();
     }
 
     private function validateAttachmentSignature($attachment)
     {
-        $sign = md5($attachment->id . date('YmdH'));
-        return $sign === $_REQUEST['secure_sign'];
+        $sign = md5($attachment->id . gmdate('YmdH'));
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Signature validation serves as security mechanism
+        $requestSign = isset($_REQUEST['secure_sign']) ? sanitize_text_field(wp_unslash($_REQUEST['secure_sign'])) : '';
+        return $sign === $requestSign;
     }
 
     public function redirectToPage()
     {
-        $taskId = $_GET['taskId'];
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public redirect endpoint, no sensitive operations
+        $taskId = isset($_GET['taskId']) ? absint(wp_unslash($_GET['taskId'])) : 0;
+        
+        if (!$taskId) {
+            wp_die(esc_html__('Invalid task ID', 'fluent-boards'));
+        }
+        
         $task = Task::findOrFail($taskId);
         if ($this->isFrontendEnabled() == 'no') {
             $urlBase = apply_filters('fluent_boards/app_url', admin_url('admin.php?page=fluent-boards#/'));

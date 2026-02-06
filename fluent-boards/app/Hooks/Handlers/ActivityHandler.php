@@ -180,7 +180,7 @@ class ActivityHandler
             $parentDescription = $parent->description;
             $this->createLogActivity($comment->task_id, 'added', 'a reply'); 
         }else{
-            $commentPlainText = strip_tags($comment->description);
+            $commentPlainText = wp_strip_all_tags($comment->description);
             $this->createLogActivity($comment->task_id, 'added', 'comment', null, $commentPlainText, null);
         }
     }
@@ -193,7 +193,7 @@ class ActivityHandler
     }
     public function logCommentDeleteActivity($comment)
     {
-        $commentDescription = strip_tags($comment->settings['raw_description'] ?? $comment->description );
+        $commentDescription = wp_strip_all_tags($comment->settings['raw_description'] ?? $comment->description );
         $taskId = $comment->task_id;
 
         $this->createLogActivity($taskId, 'removed', 'comment', null, $commentDescription, null);
@@ -442,7 +442,7 @@ class ActivityHandler
             case 'date':
                 // If it's already formatted as Y-m-d H:i:s, convert to readable format
                 if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) {
-                    return date('M j, Y g:i A', strtotime($value));
+                    return gmdate('M j, Y g:i A', strtotime($value));
                 }
                 return $value;
             case 'select':

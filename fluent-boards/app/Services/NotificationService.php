@@ -43,7 +43,7 @@ class NotificationService
     {
         $userId = get_current_user_id();
         if (!$userId) {
-            throw new \Exception('You are not allowed to do that', 403);
+            throw new \Exception(esc_html__('You are not allowed to do that', 'fluent-boards'), 403);
         }
         $unreadNotifications = Notification::where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
             ->whereHas('users', function($q) use ($userId) {
@@ -238,7 +238,7 @@ class NotificationService
     {
         $userId = get_current_user_id();
         if (!$userId) {
-            throw new \Exception('You are not allowed to do that', 403);
+            throw new \Exception(esc_html__('You are not allowed to do that', 'fluent-boards'), 403);
         }
         $unreadNotifications = Notification::where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
             ->whereHas('users', function($q) use ($userId) {

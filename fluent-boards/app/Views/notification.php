@@ -145,9 +145,11 @@
                                     style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; width: 100%;"
                                     width="100%">
                                     <tr>
-                                        <?php echo "<img src= '". $user->photo ."' title='hello'/>" ?>
-
-                                        <span class="fbs-no-user">A</span>
+                                        <?php if (!empty($user->photo)) : ?>
+                                            <?php echo '<img src="' . esc_url($user->photo) . '" alt="' . esc_attr($user->display_name ?? '') . '" title="' . esc_attr(__('User avatar', 'fluent-boards')) . '" />'; ?>
+                                        <?php else: ?>
+                                            <span class="fbs-no-user">A</span>
+                                        <?php endif; ?>
                                         
                                         <td style="font-family: sans-serif; font-size: 14px; vertical-align: top;"
                                             valign="top">
@@ -173,8 +175,8 @@
                             width="100%">
                             <tr>
                                 <td>
-                                    <h3 style="margin-bottom: 0">
-                                        <?php echo sprintf(__('We are here for you', 'fluent-boards'), 'Fluent Boards', esc_url(site_url())); ?>
+                                        <h3 style="margin-bottom: 0">
+                                        <?php echo esc_html__('We are here for you', 'fluent-boards'); ?>
                                     </h3>
                                 </td>
                             </tr>
@@ -182,14 +184,12 @@
                                 <td class="content-block"
                                     style="font-family: sans-serif; vertical-align: top; padding-bottom: 10px; padding-top: 10px; color: #999999; font-size: 12px; text-align: center;"
                                     valign="top" align="center">
-                                    <span class="apple-link"
+                                        <span class="apple-link"
                                         style="color: #999999; font-size: 12px; text-align: center;">
-                                        <?php
-                                            echo sprintf(__('Feel free to contact us with any additional questions at support@fluentboards.com', 'fluent-boards'), 'Fluent Boards', esc_url(site_url()));
-                                        ?>
+                                        <?php echo esc_html__('Feel free to contact us with any additional questions at support@fluentboards.com', 'fluent-boards'); ?>
                                     </span>
                                     <span class="apple-link" style="color: #6268F1; font-size: 12px; text-align: center;">
-                                        <?php echo sprintf(__('support@fluentboards.com', 'fluent-boards'), 'Fluent Boards', esc_url(site_url())); ?>
+                                        <?php echo esc_html__('support@fluentboards.com', 'fluent-boards'); ?>
                                     </span>
                                 </td>
                             </tr>

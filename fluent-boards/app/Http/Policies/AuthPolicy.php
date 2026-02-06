@@ -9,7 +9,7 @@ class AuthPolicy extends BasePolicy
 {
     /**
      * Check user permission for any method
-     * @param \FluentBoards\Framework\Request\Request $request
+     * @param \FluentBoards\Framework\Http\Request\Request $request
      * @return bool
      */
     public function verifyRequest(Request $request)
@@ -19,6 +19,21 @@ class AuthPolicy extends BasePolicy
 
     public function create()
     {
-        return PermissionManager::hasAppAccess();
+        return PermissionManager::userHasBoardCreationPermission();
+    }
+
+    public function skipOnboarding()
+    {
+        return PermissionManager::isAdmin();
+    }
+
+    public function createFirstBoard()
+    {
+        return PermissionManager::isAdmin();
+    }
+
+    public function getUsersOfBoards()
+    {
+        return PermissionManager::userHasAnyBoardAccess();
     }
 }

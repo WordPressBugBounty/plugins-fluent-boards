@@ -55,6 +55,7 @@ class NotificationController extends Controller
 
     public function getBoardNotificationSettings($board_id)
     {
+        $board_id = absint($board_id);
         try {
             $userId = get_current_user_id();
             $currentSettings = [];
@@ -77,8 +78,19 @@ class NotificationController extends Controller
 
     public function updateBoardNotificationSettings(Request $request, $board_id)
     {
+        $board_id = absint($board_id);
         try {
-            $newSettings = $request->getSafe('updatedSettings', 'sanitize_text_field');
+            // updatedSettings is an array, sanitize each element
+            $rawSettings = $request->getSafe('updatedSettings');
+            $newSettings = [];
+            if (is_array($rawSettings)) {
+                foreach ($rawSettings as $key => $value) {
+                    // Sanitize key and value
+                    $sanitizedKey = sanitize_text_field($key);
+                    $sanitizedValue = sanitize_text_field($value);
+                    $newSettings[$sanitizedKey] = $sanitizedValue;
+                }
+            }
             $this->notificationService->updateBoardNotificationSettings($newSettings, $board_id);
             return $this->sendSuccess([
                 'message' => __('Board notification settings have been updated', 'fluent-boards'),
@@ -91,7 +103,7 @@ class NotificationController extends Controller
     public function readNotification(Request $request)
     {
         try {
-            $notificationId = $request->getSafe('notification_id');
+            $notificationId = $request->getSafe('notification_id', 'intval');
 
             if ($notificationId) {
                 $notification = $this->notificationService->markNotificationRead($notificationId);

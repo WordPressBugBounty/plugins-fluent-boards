@@ -9,7 +9,7 @@ class BoardUserPolicy extends BasePolicy
 {
     /**
      * Check user permission for any method
-     * @param  \FluentBoards\Framework\Request\Request $request
+     * @param  \FluentBoards\Framework\Http\Request\Request $request
      * @return bool
      */
     public function verifyRequest(Request $request)

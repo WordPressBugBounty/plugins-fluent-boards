@@ -164,7 +164,7 @@ class StageService
 
     public function copyStagesOfBoard($board, $fromBoardId, $isWithTemplates='no')
     {
-        $stages = Stage::where('board_id', $fromBoardId)->where('type', 'stage')->whereNull('archived_at')->get();
+        $stages = Stage::where('board_id', $fromBoardId)->where('type', 'stage')->whereNull('archived_at')->orderBy('position', 'asc')->get();
         $stageMapForCopyingTask = array();
         foreach($stages as $key => $stage)
         {
@@ -393,7 +393,7 @@ class StageService
 
     public function stagesByBoardId($boardId)
     {
-        return Stage::where('board_id', $boardId)->whereNull('archived_at')->get();
+        return Stage::where('board_id', $boardId)->whereNull('archived_at')->orderBy('position', 'asc')->get();
     }
 
 
@@ -405,7 +405,7 @@ class StageService
 
         // Validate order and orderBy parameters
         if (!in_array($order, $sortOptions) || !in_array($orderBy, $orderOptions)) {
-            throw new \Exception(__('Invalid sort or orderBy parameter', 'fluent-boards'));
+            throw new \Exception(esc_html__('Invalid sort or orderBy parameter', 'fluent-boards'));
         }
 
         $tasksQuery = Task::where('stage_id', $stage_id)

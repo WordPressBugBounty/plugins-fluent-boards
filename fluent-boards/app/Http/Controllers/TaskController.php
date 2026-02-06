@@ -48,6 +48,7 @@ class TaskController extends Controller
 
     public function getTasksByBoard($board_id)
     {
+        $board_id = absint($board_id);
         $board = Board::findOrFail($board_id);
 
         // Get stage IDs
@@ -78,6 +79,7 @@ class TaskController extends Controller
 
     public function getTasksByBoardStage($board_id)
     {
+        $board_id = absint($board_id);
         $board = Board::findOrFail($board_id);
 
         // Get stage IDs
@@ -148,7 +150,8 @@ class TaskController extends Controller
 
     public function create(Request $request, $board_id)
     {
-        $taskData = $this->taskSanitizeAndValidate($request->get('task'), [
+        $board_id = absint($board_id);
+        $taskData = $this->taskSanitizeAndValidate($request->getSafe('task'), [
             'title'          => 'required|string',
             'board_id'       => 'required|numeric',
             'stage_id'       => 'required|numeric',
@@ -159,7 +162,7 @@ class TaskController extends Controller
 
         try {
             if ($taskData['board_id'] != $board_id) {
-                throw new \Exception(__('Board id is not valid', 'fluent-boards'));
+                throw new \Exception(esc_html__('Board id is not valid', 'fluent-boards'));
             }
 
             $task = $this->taskService->createTask($taskData, $board_id);
@@ -176,6 +179,8 @@ class TaskController extends Controller
 
     public function find($board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         try {
 
             $stageService = new StageService();
@@ -187,7 +192,7 @@ class TaskController extends Controller
             }
 
             if(!$task) {
-                throw new \Exception(__('Task not found', 'fluent-boards'));
+                throw new \Exception(esc_html__('Task not found', 'fluent-boards'));
             }
 
             if (defined('FLUENT_BOARDS_PRO')) {
@@ -222,7 +227,8 @@ class TaskController extends Controller
 
     public function getStageType(Request $request)
     {
-        $stage = Stage::findOrFail($request->stage_id);
+        $stage_id = $request->getSafe('stage_id', 'intval');
+        $stage = Stage::findOrFail($stage_id);
 
         return [
             'stage' => $stage,
@@ -231,7 +237,9 @@ class TaskController extends Controller
 
     public function getActivities(Request $request, $board_id, $task_id)
     {
-        $filter = $request->getSafe('filter');
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
+        $filter = $request->getSafe('filter', 'sanitize_text_field');
         $per_page = 15; // Apparently, let's use a fixed number of items per page.
 
         return [
@@ -242,7 +250,13 @@ class TaskController extends Controller
 
     public function getArchivedTasks(Request $request, $board_id)
     {
-        $tasks = $this->taskService->getArchivedTasks($request->all(), $board_id);
+        $board_id = absint($board_id);
+        // Sanitize request parameters before passing to service
+        $sanitizedParams = [
+            'per_page' => $request->getSafe('per_page', 'intval', 20),
+            'page' => $request->getSafe('page', 'intval', 1),
+        ];
+        $tasks = $this->taskService->getArchivedTasks($sanitizedParams, $board_id);
 
         foreach ($tasks as $task) {
             $task->assignees = Helper::sanitizeUserCollections($task->assignees);
@@ -253,13 +267,184 @@ class TaskController extends Controller
         ];
     }
 
+    public function bulkRestoreTasks(Request $request, $board_id)
+    {
+        $board_id = absint($board_id);
+        try {
+            $rawTaskIds = $request->getSafe('task_ids');
+            // Sanitize task_ids array to integers
+            $task_ids = [];
+            if (is_array($rawTaskIds)) {
+                $task_ids = array_filter(array_map('intval', $rawTaskIds));
+            }
+            
+            if (empty($task_ids)) {
+                return $this->response->sendError('No task IDs provided', 400);
+            }
+
+            $tasks = Task::where('board_id', $board_id)
+                ->whereIn('id', $task_ids)
+                ->whereNotNull('archived_at')
+                ->get();
+
+            if ($tasks->isEmpty()) {
+                return $this->response->sendError('No archived tasks found with provided IDs', 404);
+            }
+
+            $restored_count = 0;
+            $failed_count = 0;
+            $failed_tasks = [];
+            
+            foreach ($tasks as $task) {
+                try {
+                    // Use TaskService to properly restore the task (same as single task restoration)
+                    $this->taskService->updateTaskProperty('archived_at', null, $task);
+                    
+                    // Prepare task for response (same as single task update)
+                    $task->isOverdue = $task->isOverdue();
+                    $task->isUpcoming = $task->upcoming();
+                    $task->contact = Helper::crm_contact($task->crm_contact_id);
+                    $task->is_watching = $task->isWatching();
+                    $task->assignees = Helper::sanitizeUserCollections($task->assignees);
+                    
+                    $restored_count++;
+                } catch (\Exception $e) {
+                    // Track failed tasks but continue processing others
+                    $failed_count++;
+                    $failed_tasks[] = [
+                        'id' => $task->id,
+                        'title' => $task->title,
+                        'error' => $e->getMessage()
+                    ];
+                }
+            }
+
+            // Get recently updated tasks (same as single task operations)
+            $recentlyUpdatedTasks = $this->taskService->getLastOneMinuteUpdatedTasks($board_id);
+
+            // Build response with detailed results
+            $response = [
+                'restored_count' => $restored_count,
+                'failed_count' => $failed_count,
+                'updatedTasks' => $recentlyUpdatedTasks
+            ];
+
+            if ($failed_count > 0) {
+                $response['failed_tasks'] = $failed_tasks;
+                if ($restored_count > 0) {
+                    $response['message'] = $restored_count . ' ' . ($restored_count === 1 ? 'task' : 'tasks') . ' restored successfully, ' . $failed_count . ' ' . ($failed_count === 1 ? 'task' : 'tasks') . ' failed';
+                } else {
+                    $response['message'] = 'Failed to restore ' . $failed_count . ' ' . ($failed_count === 1 ? 'task' : 'tasks');
+                }
+            } else {
+                $response['message'] = $restored_count . ' ' . ($restored_count === 1 ? 'task' : 'tasks') . ' restored successfully';
+            }
+
+            return $this->response->sendSuccess($response, 200);
+
+        } catch (\Exception $e) {
+            return $this->response->sendError($e->getMessage(), 500);
+        }
+    }
+
+    public function bulkDeleteTasks(Request $request, $board_id)
+    {
+        $board_id = absint($board_id);
+        try {
+            $rawTaskIds = $request->getSafe('task_ids');
+            // Sanitize task_ids array to integers
+            $task_ids = [];
+            if (is_array($rawTaskIds)) {
+                $task_ids = array_filter(array_map('intval', $rawTaskIds));
+            }
+            
+            if (empty($task_ids)) {
+                return $this->response->sendError('No task IDs provided', 400);
+            }
+
+            $tasks = Task::where('board_id', $board_id)
+                ->whereIn('id', $task_ids)
+                ->get();
+
+            if ($tasks->isEmpty()) {
+                return $this->response->sendError('No tasks found with provided IDs', 404);
+            }
+
+            $deleted_count = 0;
+            $failed_count = 0;
+            $failed_tasks = [];
+            $options = null;
+            
+            foreach ($tasks as $task) {
+                try {
+                    // This handles all cleanup: subtasks, watchers, assignees, labels, notifications, attachments, etc.
+                    $this->taskService->deleteTaskForBulk($task);
+                    $deleted_count++;
+                } catch (\Exception $e) {
+                    // Track failed tasks but continue processing others
+                    $failed_count++;
+                    $failed_tasks[] = [
+                        'id' => $task->id,
+                        'title' => $task->title,
+                        'error' => $e->getMessage()
+                    ];
+                }
+            }
+
+            // Get recently updated tasks (same as single task operations)
+            $recentlyUpdatedTasks = $this->taskService->getLastOneMinuteUpdatedTasks($board_id);
+
+            // Build response with detailed results
+            $response = [
+                'deleted_count' => $deleted_count,
+                'failed_count' => $failed_count,
+                'updatedTasks' => $recentlyUpdatedTasks
+            ];
+
+            if ($failed_count > 0) {
+                $response['failed_tasks'] = $failed_tasks;
+                if ($deleted_count > 0) {
+                    $response['message'] = $deleted_count . ' ' . ($deleted_count === 1 ? 'task' : 'tasks') . ' deleted successfully, ' . $failed_count . ' ' . ($failed_count === 1 ? 'task' : 'tasks') . ' failed';
+                } else {
+                    $response['message'] = 'Failed to delete ' . $failed_count . ' ' . ($failed_count === 1 ? 'task' : 'tasks');
+                }
+            } else {
+                $response['message'] = $deleted_count . ' ' . ($deleted_count === 1 ? 'task' : 'tasks') . ' deleted successfully';
+            }
+
+            return $this->response->sendSuccess($response, 200);
+
+        } catch (\Exception $e) {
+            return $this->response->sendError($e->getMessage(), 500);
+        }
+    }
+
     public function updateTaskProperties(Request $request, $board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
+        //Properties in col: settings, assignees,crm_contact_id, archived_at(AUTO_SET_TIMESTAMP) , status, title, description, priority, is_watching, is_template
         $col = $request->getSafe('property', 'sanitize_text_field');
-        $value = $request->get('value');
+        if ($col === 'description') {
+            $value = $request->getSafe('value', 'wp_kses_post');
+        } elseif ($col === 'settings') {
+            $value = $request->get('value');
+            if (is_array($value) && isset($value['cover']) && is_array($value['cover'])) {
+                if (isset($value['cover']['backgroundColor'])) {
+                    $value['cover']['backgroundColor'] = sanitize_text_field($value['cover']['backgroundColor']);
+                }
+            }
+        } else {
+            $value = $request->getSafe('value', 'sanitize_text_field');
+        }
 
         $validatedData = $this->updateTaskPropValidationAndSanitation($col, $value);
         $task = Task::with(['board', 'labels', 'assignees'])->findOrFail($task_id);
+
+        $oldDateValue = null;
+        if (in_array($col, ['due_at', 'started_at'])) {
+            $oldDateValue = $task->{$col};
+        }
 
         if ($task->parent_id && !$task->board_id) {
             $task->board_id = $board_id;
@@ -301,7 +486,15 @@ class TaskController extends Controller
 
     public function updateTaskDates(Request $request, $board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         $task = Task::findOrFail($task_id);
+
+        // Capture old dates before updating
+        $oldDates = [
+            'due_at' => $task->due_at,
+            'started_at' => $task->started_at,
+        ];
 
         $startAt = $request->getSafe('started_at', 'sanitize_text_field', NULL);
         $dueAt = $request->getSafe('due_at', 'sanitize_text_field', NULL);
@@ -321,6 +514,23 @@ class TaskController extends Controller
         $task = $this->taskService->updateTaskProperty('reminder_type', $reminderType, $task);
         $task = $this->taskService->updateTaskProperty('remind_at', $remindAt, $task);
 
+        $datesChanged = false;
+        $changedDates = [];
+        
+        if ($oldDates['due_at'] !== $task->due_at) {
+            $datesChanged = true;
+            $changedDates['due_at'] = $oldDates['due_at'];
+        }
+        
+        if ($oldDates['started_at'] !== $task->started_at) {
+            $datesChanged = true;
+            $changedDates['started_at'] = $oldDates['started_at'];
+        }
+        
+        if ($datesChanged) {
+            do_action('fluent_boards/task_date_changed', $task, $changedDates);
+        }
+
         return [
             'task'         => $task,
             'message'      => __('Dates have been updated', 'fluent-boards'),
@@ -330,7 +540,9 @@ class TaskController extends Controller
 
     public function updateTaskCoverPhoto(Request $request, $board_id, $task_id)
     {
-        $imagePath = $request->thumbnail;
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
+        $imagePath = $request->getSafe('thumbnail', 'sanitize_text_field');
         $task = $this->taskService->taskCoverPhotoUpdate($task_id, $imagePath);
 
         return [
@@ -342,14 +554,19 @@ class TaskController extends Controller
 
     public function taskStatusUpdate(Request $request, $board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
+        $integrationType = $request->getSafe('integrationType', 'sanitize_text_field');
         return [
             'message' => __('Task status has been updated', 'fluent-boards'),
-            'task'    => $this->taskService->taskStatusUpdate($task_id, $request->integrationType),
+            'task'    => $this->taskService->taskStatusUpdate($task_id, $integrationType),
         ];
     }
 
     public function deleteTask($board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         $task = Task::findOrFail($task_id);
         $options = null;
         //if we need to do something before a task is deleted
@@ -421,11 +638,13 @@ class TaskController extends Controller
         }
 
         // If the column is not found in the rules array, throw an exception
-        throw new \Exception(sprintf(__('Invalid property: %s', 'fluent-boards'), $col));
+        // translators: %s is the property name
+        throw new \Exception(sprintf(esc_html__('Invalid property: %s', 'fluent-boards'), esc_html($col)));
     }
 
     public function getLabelsByTask($task_id)
     {
+        $task_id = absint($task_id);
         $labels = $this->taskService->getLabelsByTask($task_id);
 
         return $this->sendSuccess([
@@ -435,6 +654,7 @@ class TaskController extends Controller
 
     public function getStageByTask($task_id)
     {
+        $task_id = absint($task_id);
         $stage = $this->taskService->getStageByTask($task_id);
 
         return [
@@ -444,6 +664,8 @@ class TaskController extends Controller
 
     public function assignYourselfInTask($board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         $task = $this->taskService->assignYourselfInTask($board_id, $task_id);
         $task->is_watching = $task->isWatching();
 
@@ -454,6 +676,8 @@ class TaskController extends Controller
 
     public function detachYourselfFromTask($board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         $task = $this->taskService->detachYourselfFromTask($board_id, $task_id);
         $task->assignees = Helper::sanitizeUserCollections($task->assignees);
         $task->is_watching = $task->isWatching();
@@ -472,6 +696,8 @@ class TaskController extends Controller
 
     public function moveTaskToNextStage($board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         $task = $this->taskService->moveTaskToNextStage($task_id);
 
         return [
@@ -484,6 +710,8 @@ class TaskController extends Controller
      */
     public function moveTask(Request $request, $board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         $task = Task::findOrFail($task_id);
         $oldStageId = $task->stage_id;
         $newStageId = $request->getSafe('newStageId', 'intval');
@@ -491,16 +719,18 @@ class TaskController extends Controller
         $newBoardId = $request->getSafe('newBoardId', 'intval');
 
         if ((!is_numeric($newStageId) || $newStageId == 0)) {
-            throw new \Exception(__('Invalid Stage', 'fluent-boards'));
+            throw new \Exception(esc_html__('Invalid Stage', 'fluent-boards'));
         }
 //        if ((!is_numeric($newIndex) || $newIndex == 0)) {
 //            throw new \Exception(__('Invalid Value', 'fluent-boards'));
 //        }
         if ($newBoardId) {
             if ((!is_numeric($newBoardId) || $newBoardId == 0)) {
-                throw new \Exception(__('Invalid Board', 'fluent-boards'));
+                throw new \Exception(esc_html__('Invalid Board', 'fluent-boards'));
             }
             $task = $this->taskService->changeBoardByTask($task, $newBoardId);
+            // Load relationships to ensure frontend gets updated data after board move
+            $task->load(['assignees', 'labels', 'watchers', 'attachments']);
         }
 
         $task->stage_id = $newStageId;
@@ -526,7 +756,8 @@ class TaskController extends Controller
 
         do_action('fluent_boards/task_updated', $task, 'position');
 
-        $updatedTasks = $this->taskService->getLastOneMinuteUpdatedTasks($task->board_id, $request->get('last_boards_updated'));
+        $lastBoardsUpdated = $request->getSafe('last_boards_updated', 'sanitize_text_field');
+        $updatedTasks = $this->taskService->getLastOneMinuteUpdatedTasks($task->board_id, $lastBoardsUpdated);
 
         return [
             'message'      => __('Task has been updated', 'fluent-boards'),
@@ -546,11 +777,13 @@ class TaskController extends Controller
      */
     public function getCommentsAndActivities( Request $request, $board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         try {
             // Pagination parameters
-            $page = $request->get('page', 1);
-            $perPage = $request->get('per_page', 10);
-            $filter = $request->get('filter', 'newest'); // Filter for comments and activities
+            $page = $request->getSafe('page', 'intval', 1);
+            $perPage = $request->getSafe('per_page', 'intval', 10);
+            $filter = $request->getSafe('filter', 'sanitize_text_field', 'newest'); // Filter for comments and activities
 
             $commentsAndActivities = $this->taskService->getCommentsAndActivities($task_id, $perPage, $page, $filter);
             // Return the response with the task, paginated comments and activities, total count, current page, and items per page
@@ -572,6 +805,7 @@ class TaskController extends Controller
     }
     public function getAssociatedTasks($associated_id)
     {
+        $associated_id = absint($associated_id);
         return [
             'tasks' => $this->taskService->getAssociatedTasks($associated_id)
         ];
@@ -585,6 +819,8 @@ class TaskController extends Controller
      */
     public function uploadMediaFileFromWpEditor(Request $request, $board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         try {
 
 
@@ -617,7 +853,8 @@ class TaskController extends Controller
 
     public function createTaskFromImage(Request $request, $board_id)
     {
-        $stageId = $request->getSafe('stage_id');
+        $board_id = absint($board_id);
+        $stageId = $request->getSafe('stage_id', 'intval');
         $file = Arr::get($request->files(), 'file')->toArray();
         (new \FluentBoards\App\Services\UploadService)->validateFile($file);
 
@@ -633,6 +870,8 @@ class TaskController extends Controller
 
     public function handleTaskCoverImageUpload(Request $request, $board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         try {
 
             $file = Arr::get($request->files(), 'file')->toArray();
@@ -674,6 +913,8 @@ class TaskController extends Controller
     }
     public function removeTaskCover($board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         try {
             $task = Task::find($task_id);
             $settings = $task->settings;
@@ -786,19 +1027,35 @@ class TaskController extends Controller
      */
     public function saveTaskTabsConfig(Request $request)
     {
-        $config = $request->get('tabs');
+        $rawConfig = $request->getSafe('tabs');
+        
+        if (empty($rawConfig) || !is_array($rawConfig)) {
+            return $this->sendError([
+                'message' => __('Invalid data format', 'fluent-boards')
+            ], 400);
+        }
+        
+        // Sanitize config array
+        $config = [];
+        foreach ($rawConfig as $tab) {
+            if (!is_array($tab)) {
+                continue;
+            }
+            $sanitizedTab = [
+                'name' => isset($tab['name']) ? sanitize_text_field($tab['name']) : '',
+                'label' => isset($tab['label']) ? sanitize_text_field($tab['label']) : '',
+                'visible' => isset($tab['visible']) ? sanitize_text_field($tab['visible']) : 'false',
+                'order' => isset($tab['order']) ? absint($tab['order']) : 0,
+            ];
+            $config[] = $sanitizedTab;
+        }
 
         if (count(array_filter($config, fn($tab) => $tab['visible'] == 'true')) == 0) {
             return $this->sendError([
                 'message' => __('At least one tab must be visible', 'fluent-boards')
             ], 400);
         }
-
-        if (empty($config) || !is_array($config)) {
-            return $this->sendError([
-                'message' => __('Invalid data format', 'fluent-boards')
-            ], 400);
-        }
+        
         $userId = get_current_user_id();
 
         $exit = Meta::where('object_id', $userId)->where('key', 'fbs_task_tabs_config')->first();
@@ -823,12 +1080,13 @@ class TaskController extends Controller
     }
     public function getAssociatedCrmContacts($board_id)
     {
+        $board_id = absint($board_id);
         $contactsInTasks = Task::where('board_id', $board_id)
                                 ->whereNotNull('crm_contact_id')
                                 ->get();
         
         if ($contactsInTasks->isEmpty()) {
-            return $this->sendSuccess([], 200);
+            return $this->sendSuccess([]);
         }
                         
         $contactIds = $contactsInTasks->pluck('crm_contact_id')
@@ -838,7 +1096,7 @@ class TaskController extends Controller
         $allContacts = Subscriber::whereIn('id', $contactIds)->get();
                         
          if ($allContacts->isEmpty()) {
-            return $this->sendSuccess([], 200);
+            return $this->sendSuccess([]);
         }
                         
         $formattedContacts = [];
@@ -858,12 +1116,14 @@ class TaskController extends Controller
             });
         }
                         
-    return $this->sendSuccess($formattedContacts, 200);
+    return $this->sendSuccess($formattedContacts);
     }
     
     public function cloneTask(Request $request, $board_id, $task_id) 
     {
-        $taskData = $this->taskSanitizeAndValidate($request->all(), [
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
+        $taskData = $this->taskSanitizeAndValidate($request->only(['title', 'stage_id', 'assignee', 'subtask', 'label', 'attachment', 'comment']), [
             'title'          => 'required|string',
             'stage_id'       => 'required|numeric',
             'assignee'       => 'required',
@@ -883,6 +1143,48 @@ class TaskController extends Controller
             ], 200);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
+        }
+    }
+
+    public function bulkActions(Request $request, $board_id)
+    {
+        $board_id = absint($board_id);
+        try {
+            $rawTaskIds = $request->getSafe('task_ids');
+            // Sanitize task_ids array to integers
+            $taskIds = [];
+            if (is_array($rawTaskIds)) {
+                $taskIds = array_filter(array_map('intval', $rawTaskIds));
+            }
+            $action = $request->getSafe('action', 'sanitize_text_field');
+            // Sanitize params array
+            $rawParams = $request->except(['task_ids', 'action']);
+            // Ensure rawParams is sanitized
+            if (!is_array($rawParams)) {
+                $rawParams = [];
+            }
+            $params = [];
+            foreach ($rawParams as $key => $value) {
+                $sanitizedKey = sanitize_text_field($key);
+                if (is_array($value)) {
+                    $params[$sanitizedKey] = array_map('sanitize_text_field', $value);
+                } else {
+                    $params[$sanitizedKey] = sanitize_text_field($value);
+                }
+            }
+
+            $result = $this->taskService->bulkActions($taskIds, $action, $params, $board_id);
+
+            // Process successful tasks the same way as getTasksByBoard
+            if (!empty($result['successful_tasks'])) {
+                $board = Board::findOrFail($board_id);
+                $this->processTasks($result['successful_tasks'], $board);
+            }
+
+            return $this->sendSuccess($result);
+
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 500);
         }
     }
 }

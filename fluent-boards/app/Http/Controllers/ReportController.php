@@ -10,13 +10,39 @@ class ReportController extends Controller
 {
     public function getTimeSheetReport(Request $request)
     {
-        $startDate = $request->get('start_date');
-        $endDate = $request->get('end_date');
+        // Sanitize date inputs - validate they are valid date strings
+        $startDate = $request->getSafe('start_date', 'sanitize_text_field');
+        $endDate = $request->getSafe('end_date', 'sanitize_text_field');
+        
+        // Validate date format (YYYY-MM-DD) and ensure dates are actually valid
+        if ($startDate) {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate)) {
+                $startDate = null;
+            } else {
+                // Validate that the date is actually valid (e.g., not "2024-13-45")
+                $dateParts = explode('-', $startDate);
+                if (count($dateParts) !== 3 || !checkdate((int)$dateParts[1], (int)$dateParts[2], (int)$dateParts[0])) {
+                    $startDate = null;
+                }
+            }
+        }
+        if ($endDate) {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
+                $endDate = null;
+            } else {
+                // Validate that the date is actually valid (e.g., not "2024-13-45")
+                $dateParts = explode('-', $endDate);
+                if (count($dateParts) !== 3 || !checkdate((int)$dateParts[1], (int)$dateParts[2], (int)$dateParts[0])) {
+                    $endDate = null;
+                }
+            }
+        }
 
         $authUser = wp_get_current_user();
         $boardIds = PermissionManager::getBoardIdsForUser($authUser->ID);
-        if (!empty($request->get('board_id'))) {
-            $boardIds = PermissionManager::getBoardIdsForUser($authUser->ID, $request->get('board_id'));
+        $boardId = $request->getSafe('board_id', 'intval');
+        if (!empty($boardId)) {
+            $boardIds = PermissionManager::getBoardIdsForUser($authUser->ID, $boardId);
         }
         $timings = TimeTrack::where('status', 'commited')->whereIn('board_id', $boardIds);
         if ($startDate && $endDate) {
@@ -75,9 +101,10 @@ class ReportController extends Controller
     {
         try {
             $boardService = new BoardService();
-            if (!empty($request->get('board_id')))
+            $boardId = $request->getSafe('board_id', 'intval');
+            if (!empty($boardId))
             {
-                $boardReport = $boardService->getBoardReports($request->get('board_id'));
+                $boardReport = $boardService->getBoardReports($boardId);
             } else {
                 $boardReport = $boardService->getAllBoardReports();
             }
@@ -91,6 +118,7 @@ class ReportController extends Controller
 
     public function getStageWiseBoardReports($board_id)
     {
+        $board_id = absint($board_id);
         try {
             $boardService = new BoardService();
             $stages = $boardService->getStageWiseBoardReports($board_id);

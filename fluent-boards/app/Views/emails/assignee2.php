@@ -14,6 +14,5 @@ ob_start(); // Start output buffering
 
 <!--end your code here -->
 <?php
-$content = ob_get_clean(); // Get the content and clean the buffer
-// Include the template and pass the content
+$fluent_boards_email_content = ob_get_clean();
 include 'template.php';

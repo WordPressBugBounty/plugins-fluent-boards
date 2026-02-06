@@ -68,7 +68,6 @@ class CommentService
     {
         try {
             if (empty($url)) {
-                // error_log('Empty URL provided');
                 return false;
             }
 
@@ -76,7 +75,6 @@ class CommentService
 
             // Early return for obviously invalid formats
             if ($url === 'http://' || $url === 'https://') {
-                // error_log('Invalid URL format (just protocol)');
                 return false;
             }
 
@@ -89,7 +87,7 @@ class CommentService
                 $url = 'https://' . $url;
             }
 
-            $components = parse_url($url);
+            $components = wp_parse_url($url);
             
             if (empty($components) || !isset($components['host'])) {
                 return false;
@@ -113,7 +111,6 @@ class CommentService
             if (preg_match_all($urlPattern, $text, $matches)) {
                 $urls = array_filter($matches[0], function($url) {
                     $trimmed = trim($url);
-                    // error_log('Found URL candidate: ' . $trimmed);
                     return !empty($trimmed);
                 });
                 return array_values($urls); // Re-index array
@@ -282,7 +279,9 @@ class CommentService
 
         foreach ($commentImages as $commentImage) {
             if(!in_array($commentImage->id, $imageIds)) {
+                $deletedImage = clone $commentImage;
                 $commentImage->delete();
+                //do_action('fluent_boards/comment_image_deleted', $deletedImage);
             }
         }
     }
@@ -330,21 +329,16 @@ class CommentService
     public function delete($comment_id)
     {
         $comment = Comment::findOrFail($comment_id);
-        $taskId = $comment->task_id;
 
         if ($comment->created_by != get_current_user_id()) {
             return false;
         }
 
-        $deleted = $comment->delete();
-
-        if ($deleted) {
-            $this->relatedReplyDelete($comment_id);
-            $comment->images()->delete();
-            $task = Task::findOrFail($taskId);
-            $task->comments_count = $task->comments_count - 1;
-            $task->save();
-        }
+        // Delete related replies first (model event will handle their images)
+        $this->relatedReplyDelete($comment_id);
+        
+        // Delete the comment (model deleting event will handle images and comments_count)
+        $comment->delete();
 
         do_action('fluent_boards/comment_deleted', $comment);
     }
@@ -355,6 +349,7 @@ class CommentService
             ->type('reply')
             ->get();
         foreach ($replies as $reply) {
+            // Delete reply (model deleting event will handle images)
             $reply->delete();
         }
     }
@@ -384,6 +379,7 @@ class CommentService
             return false;
         }
 
+        // Delete reply (model deleting event will handle images)
         $reply->delete();
 
 //        do_action('fluent_boards/comment_deleted', $taskId);

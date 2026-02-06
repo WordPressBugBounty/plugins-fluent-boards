@@ -16,7 +16,7 @@ class NotificationHandler
             $task = Task::findOrFail($comment->task_id);
             $userIdsWhoGetNotification = $this->findUsersWhoWillGetNotification($task);
             if(count($userIdsWhoGetNotification) > 0){
-                $plainDescription = strip_tags($comment->description);
+                $plainDescription = wp_strip_all_tags($comment->description);
                 $action = $comment->parent_id ? 'task_reply_added' : 'comment_created';
                 $message = $plainDescription;
                 $settings = [ 'comment_id' => $comment->parent_id ?? $comment->id ];
@@ -30,7 +30,7 @@ class NotificationHandler
     {
         if($comment){
             $task = Task::findOrFail($comment->task_id);
-            $plainDescription = strip_tags($comment->description);
+            $plainDescription = wp_strip_all_tags($comment->description);
             $action = 'task_comment_mentioned';
             $message = $plainDescription;
             $settings = [ 'comment_id' => $comment->parent_id ?? $comment->id ];
@@ -133,11 +133,8 @@ class NotificationHandler
         if(count($userIdsWhoGetNotification) > 0){
             $new_board_id = Task::findOrFail($task->board_id)->board_id;
             $new_board_title = Board::findOrFail($new_board_id)->title;
-            $message = sprintf(
-                __('moved %1$s task to %2$s board.','fluent-boards'),
-                $task->title,
-                $new_board_title
-            );
+            // translators: %1$s is the task title, %2$s is the board title
+            $message = sprintf(__('moved %1$s task to %2$s board.','fluent-boards'), $task->title, $new_board_title);
             $notification = $this->createNotification($oldBoardId, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $message);
             $notification->users()->attach($userIdsWhoGetNotification);
         }

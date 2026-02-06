@@ -13,10 +13,9 @@ class WebhookController extends Controller
     public function index(Request $request, Webhook $webhook)
     {
         $fields = $webhook->getFields();
-        $search = $request->getSafe('search', '');
+        $search = $request->getSafe('search', 'sanitize_text_field', '');
 
         $webhooks = $webhook->latest()->get()->toArray();
-
         if ( ! empty($search)) {
             $search   = strtolower($search);
             $webhooks = array_map(function ($row) use ($search) {
@@ -47,12 +46,21 @@ class WebhookController extends Controller
 
     public function create(Request $request, Webhook $webhook)
     {
-        $webhook = $webhook->store(
-            $this->validate(
-                $request->all(),
-                ['name' => 'required']
-            )
-        );
+        $name = $request->name;
+        $boardId = $request->getSafe('board', 'intval');
+        $stageId = $request->getSafe('stage', 'intval');
+        // Sanitize name field
+        $name = sanitize_text_field($name);
+
+        if(!$name || !$boardId || !$stageId) {
+            return $this->sendError('Name, board and stage are required');
+        }
+
+        $webhook = $webhook->store([
+            'name' => $name,
+            'board' => $boardId,
+            'stage' => $stageId,
+        ]);
 
         return [
             'id'       => $webhook->id,
@@ -64,7 +72,13 @@ class WebhookController extends Controller
 
     public function update(Request $request, Webhook $webhook, $id)
     {
-        $webhook->find($id)->saveChanges($request->all());
+        $id = absint($id);
+        $data = $request->only(['name']);
+        // Sanitize data if needed based on webhook structure
+        if (isset($data['name'])) {
+            $data['name'] = sanitize_text_field($data['name']);
+        }
+        $webhook->find($id)->saveChanges($data);
 
         return [
             'webhooks' => $webhook->latest()->get(),
@@ -74,6 +88,7 @@ class WebhookController extends Controller
 
     public function delete(Webhook $webhook, $id)
     {
+        $id = absint($id);
         $webhook->where('id', $id)->delete();
 
         return [
@@ -85,8 +100,8 @@ class WebhookController extends Controller
     // Outgoing Webhook Methods
     public function outgoingWebhooks(Request $request, Meta $meta)
     {
-        $search = $request->getSafe('search', '');
-        $boardId = $request->getSafe('board_id', 'intval'); // Add this line
+        $search = $request->getSafe('search', 'sanitize_text_field', '');
+        $boardId = $request->getSafe('board_id', 'intval');
     
         $webhooks = $meta->where('object_type', 'outgoing_webhook')
                          ->latest()
@@ -138,7 +153,7 @@ class WebhookController extends Controller
     public function createOutgoingWebhook(Request $request)
     {
         $data = $this->validate(
-            $request->all(),
+            $request->only(['name', 'url', 'board_id', 'triggered_events', 'header_type', 'headers']),
             [
                 'name' => 'required',
                 'url' => 'required',
@@ -149,8 +164,13 @@ class WebhookController extends Controller
 
         $data['name'] = sanitize_text_field($data['name']);
         $data['url'] = sanitize_url($data['url']);
+        
+        // Sanitize header_type if present
+        if (isset($data['header_type'])) {
+            $data['header_type'] = sanitize_text_field($data['header_type']);
+        }
 
-        if($data['header_type'] == 'with_headers') {
+        if(isset($data['header_type']) && $data['header_type'] == 'with_headers') {
             // sanitize all headers key and value 
             if (!empty($data['headers']) && is_array($data['headers'])) {
                 foreach ($data['headers'] as $index => $header) {
@@ -169,7 +189,18 @@ class WebhookController extends Controller
             return $this->sendError('At least one event must be selected for the webhook to be triggered.');
         }
 
+        // Sanitize triggered_events array
+        if (is_array($data['triggered_events'])) {
+            $data['triggered_events'] = array_filter(array_map('sanitize_text_field', $data['triggered_events']));
+        }
         $data['triggered_events'] = array_values($data['triggered_events']);
+
+        // Sanitize board_id array to integers
+        if (!empty($data['board_id']) && is_array($data['board_id'])) {
+            $data['board_id'] = array_filter(array_map('intval', $data['board_id']));
+        } else {
+            $data['board_id'] = [];
+        }
 
         $webhook = Meta::create([
             'object_type' => 'outgoing_webhook',
@@ -177,6 +208,7 @@ class WebhookController extends Controller
         ]);
 
         foreach ($data['board_id'] as $boardId) {
+            $boardId = absint($boardId);
             Relation::create([
                 'object_id' => $webhook->id,
                 'object_type' => 'outgoing_webhook_board',
@@ -197,6 +229,7 @@ class WebhookController extends Controller
 
     public function updateOutgoingWebhook(Request $request, $id)
     {
+        $id = absint($id);
         $data = $this->validate(
             $request->all(),
             [
@@ -209,8 +242,13 @@ class WebhookController extends Controller
 
         $data['name'] = sanitize_text_field($data['name']);
         $data['url'] = sanitize_url($data['url']);
+        
+        // Sanitize header_type if present
+        if (isset($data['header_type'])) {
+            $data['header_type'] = sanitize_text_field($data['header_type']);
+        }
 
-        if($data['header_type'] == 'with_headers') {
+        if(isset($data['header_type']) && $data['header_type'] == 'with_headers') {
             // sanitize all headers key and value 
             if (!empty($data['headers']) && is_array($data['headers'])) {
                 foreach ($data['headers'] as $index => $header) {
@@ -222,6 +260,18 @@ class WebhookController extends Controller
                     }
                 }
             }
+        }
+
+        // Sanitize triggered_events array
+        if (is_array($data['triggered_events'])) {
+            $data['triggered_events'] = array_filter(array_map('sanitize_text_field', $data['triggered_events']));
+        }
+
+        // Sanitize board_id array to integers
+        if (!empty($data['board_id']) && is_array($data['board_id'])) {
+            $data['board_id'] = array_filter(array_map('intval', $data['board_id']));
+        } else {
+            $data['board_id'] = [];
         }
     
         $webhook = Meta::find($id);
@@ -236,6 +286,7 @@ class WebhookController extends Controller
 
         // Recreate relations
         foreach ($data['board_id'] as $boardId) {
+            $boardId = absint($boardId);
             Relation::create([
                 'object_id' => $webhook->id,
                 'object_type' => 'outgoing_webhook_board',
@@ -254,6 +305,7 @@ class WebhookController extends Controller
 
     public function deleteOutgoingWebhook($id)
     {
+        $id = absint($id);
         $webhook =  Meta::find($id);
 
         if (!$webhook || $webhook->object_type !== 'outgoing_webhook') {

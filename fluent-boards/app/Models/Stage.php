@@ -87,18 +87,12 @@ class Stage extends BoardTerm
             return $this;
         }
 
-        $newPosition = ($prevTask->position + $nextItem->position) / 2;
-
-        // check if new position is already taken
-        $exist = $stageQuery
-            ->where('position', $newPosition)
-            ->where('id', '!=', $this->id)
-            ->first();
-
-        if ($exist) {
+        if ($nextItem->position - $prevTask->position < 0.02) {
             self::reIndexStagesPositions($this->toArray());
             return $this->moveToNewPosition($newIndex);
         }
+
+        $newPosition = ($prevTask->position + $nextItem->position)/ 2;
 
         $this->position = $newPosition;
         $this->save();

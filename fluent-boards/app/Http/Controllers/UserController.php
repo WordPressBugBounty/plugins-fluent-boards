@@ -31,6 +31,7 @@ class UserController extends Controller
 
     public function memberAssociatedTaskUsers($user_id)
     {
+        $user_id = absint($user_id);
         try {
             $uniqueUsers = $this->userService->memberAssociatedTaskUsers($user_id);
 
@@ -46,7 +47,7 @@ class UserController extends Controller
     public function searchFluentBoardsUser(Request $request)
     {
         try {
-            $search_input = $request->searchInput . trim('');
+            $search_input = $request->getSafe('searchInput', 'sanitize_text_field', '');
 
             $boardUsers = $this->userService->searchFluentBoardsUser($search_input);
 
@@ -58,8 +59,9 @@ class UserController extends Controller
 
     public function searchMemberUser(Request $request, $user_id)
     {
+        $user_id = absint($user_id);
         try {
-            $search_input = $request->searchInput . trim('');
+            $search_input = $request->getSafe('searchInput', 'sanitize_text_field', '');
             $searchResult = $this->userService->searchMemberUser($search_input, $user_id);
 
             return $this->sendSuccess([
@@ -72,10 +74,18 @@ class UserController extends Controller
 
     public function getMemberAssociatedTasks(Request $request, $user_id)
     {
+        $user_id = absint($user_id);
+        // Sanitize boardIds array
+        $rawBoardIds = $request->getSafe('boardIds');
+        $boardIds = [];
+        if (is_array($rawBoardIds)) {
+            $boardIds = array_filter(array_map('intval', $rawBoardIds));
+        }
+        
         $requestData = [
-            'page' =>$request->getSafe('page', 'intval'),
+            'page' => $request->getSafe('page', 'intval', 1),
             'taskType' => $request->getSafe('taskType', 'sanitize_text_field'),
-            'boardIds' => $boardIds = $request->getSafe('boardIds'),
+            'boardIds' => $boardIds,
             'orderBy' => $request->getSafe('orderBy', 'sanitize_text_field'),
             'order' => $request->getSafe('order', 'sanitize_text_field'),
         ];
@@ -90,7 +100,8 @@ class UserController extends Controller
 
     public function getMemberRelatedAcitivies(Request $request, $user_id)
     {
-        $page = $request->getSafe('page');
+        $user_id = absint($user_id);
+        $page = $request->getSafe('page', 'intval', 1);
         try {
             return $this->sendSuccess(
                 $this->userService->getMemberRelatedAcitivies($user_id, $page)
@@ -102,6 +113,18 @@ class UserController extends Controller
 
     public function getMemberInfo($user_id)
     {
+        if(!PermissionManager::isFluentBoardsUser($user_id)) {
+            return $this->sendError(
+                [
+                    'message' => __('You are not authorized to access this resource', 'fluent-boards'),
+                    'code' => 'fluent_boards_unauthorized',
+                    'status' => 403
+                ],
+                403
+            );
+        }
+
+        $user_id = absint($user_id);
         $user = User::findOrFail($user_id);
 
         $user = Helper::sanitizeUserCollections($user);
@@ -122,6 +145,7 @@ class UserController extends Controller
 
     public function getMemberBoards($user_id)
     {
+        $user_id = absint($user_id);
         try {
             return $this->sendSuccess(
                 [

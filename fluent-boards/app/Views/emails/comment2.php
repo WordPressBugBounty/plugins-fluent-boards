@@ -11,13 +11,12 @@ ob_start(); // Start output buffering
     <p class="fbs_email_details"><?php echo wp_kses_post($body); ?></p>
     <div class="fbs_email_comment"><?php echo wp_kses_post($comment); ?></div>
     <div class="fbs_invitation_button">
-        <a style="background: none; text-decoration: none; color: #FFF" target="_blank" href=" <?php echo $comment_link ?> "> Go To Comment </a>
+        <a style="background: none; text-decoration: none; color: #FFF" target="_blank" href="<?php echo esc_url($comment_link); ?>"><?php echo esc_html__('Go To Comment', 'fluent-boards'); ?></a>
     </div>
 </div>
 
 
 <!--end your code here -->
 <?php
-$content = ob_get_clean(); // Get the content and clean the buffer
-// Include the template and pass the content
+$fluent_boards_email_content = ob_get_clean();
 include 'template.php';

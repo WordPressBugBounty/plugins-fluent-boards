@@ -4,6 +4,7 @@ namespace FluentBoards\App\Services;
 
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\Board;
+use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Models\Stage;
@@ -34,6 +35,9 @@ class BoardService
         $taskRelatedRelations->delete();
         TaskMeta::whereIn('task_id', $allTaskIdsInBoard)->delete();
 
+        // Delete time tracking records for all tasks in the board
+        (new TaskService())->deleteTimeTrackingRecords($allTaskIdsInBoard->toArray());
+
         Task::whereIn('id', $allTaskIdsInBoard)->delete();
         
         // delete all activities
@@ -52,8 +56,17 @@ class BoardService
         //removing add board labels
         $board->labels()->delete();
 
-        //removing add board comment
-        $board->comments()->delete();
+        //removing all board comments (delete individually to fire model events and clean up images)
+        $comments = $board->comments()->get();
+        foreach ($comments as $comment) {
+            $comment->delete();
+        }
+      
+        //removing add board custom fields
+        if (defined('FLUENT_BOARDS_PRO')) {
+            $board->customFields()->delete();
+        }
+
 
         foreach ($board->notifications as $notification) {
             $notification->users()->detach();
@@ -67,6 +80,9 @@ class BoardService
         //delete from recently viewed
         $this->deleteFromRecentlyViewed($boardId);
 
+        //delete webhook data
+        $this->deleteWebhookData($boardId);
+        
         $board->delete();
         FileSystem::deleteDir('board_'.$boardId);
 //        do_action('fluent_boards/board_deleted', $board);
@@ -209,7 +225,7 @@ class BoardService
         if ($data['title']) {
             $data['title'] = $data['title'];
         } else {
-            throw new \Exception('Title cannot be empty');
+            throw new \Exception(esc_html__('Title cannot be empty', 'fluent-boards'));
         }
         if (isset($data['description'])) {
             $data['description'] = $data['description'];
@@ -710,7 +726,7 @@ class BoardService
 
         $board = Board::find($boardId);
         if (!$board) {
-            throw new \Exception("Board doesn't exists");
+            throw new \Exception(esc_html__("Board doesn't exists", 'fluent-boards'));
         }
         // if stage in this board has been deleted
         $stageDeleted = Activity::where('object_id', $boardId)->where('updated_at', '>=', $oneMinuteAgo)->where('action', 'deleted')->where('column', 'stage')->exists();
@@ -781,7 +797,6 @@ class BoardService
 
     public function getAssociatedBoards($associatedId)
     {
-
         $boardIds = Meta::query()->where('value', $associatedId)
             ->where('object_type', Constant::OBJECT_TYPE_BOARD)
             ->where('key', Constant::BOARD_ASSOCIATED_CRM_CONTACT)
@@ -1131,5 +1146,50 @@ class BoardService
         }
 
         return Folder::findOrFail($relation->object_id);
+    }
+
+    public function deleteWebhookData($boardId)
+    {
+        $outgoingRelations = Relation::where('object_type', 'outgoing_webhook_board')
+            ->where('foreign_id', $boardId)
+            ->get();
+
+        foreach ($outgoingRelations as $relation) {
+            $webhookMetaId = (int) $relation->object_id;
+
+            $linkedCount = Relation::where('object_type', 'outgoing_webhook_board')
+                ->where('object_id', $webhookMetaId)
+                ->count();
+
+            if ($linkedCount === 1) {
+                Meta::where('id', $webhookMetaId)
+                    ->where('object_type', 'outgoing_webhook')
+                    ->delete();
+            } else if ($linkedCount > 1) {
+                $meta = Meta::find($webhookMetaId);
+                if ($meta && $meta->object_type === 'outgoing_webhook') {
+                    $value = $meta->value; 
+
+                    if (isset($value['board_id'])) {
+                        $boards = $value['board_id'];
+
+                        if (is_array($boards)) {
+                            $boards = array_values(array_filter($boards, function ($id) use ($boardId) {
+                                return intval($id) !== intval($boardId);
+                            }));
+                            $value['board_id'] = $boards;
+                        } else {
+                            if ($boards !== null && intval($boards) === intval($boardId)) {
+                                $value['board_id'] = [];
+                            }
+                        }
+
+                        $meta->value = $value; 
+                        $meta->save();
+                    }
+                }
+            }
+            $relation->delete();
+        }
     }
 }

@@ -173,8 +173,18 @@ function fluentBoardsDb()
     return fluentBoards('db');
 }
 
-
+/**
+ * Retrieves features configuration.
+ *
+ * @deprecated 1.90 Use fluent_boards_get_features_config() instead.
+ */
 function fbsGetFeaturesConfig()
+{
+    _deprecated_function(__FUNCTION__, '1.90', 'fluent_boards_get_features_config');
+    return fluent_boards_get_features_config();
+}
+
+function fluent_boards_get_features_config()
 {
     $features = fluent_boards_get_option('_fbs_features', []);
 
@@ -190,15 +200,28 @@ function fbsGetFeaturesConfig()
     return wp_parse_args($features, $defaults);
 }
 
+/**
+ * Updates an option value.
+ *
+ * @deprecated 1.90 Use fluent_boards_get_option() instead.
+ */
 function fbsGetOption($key, $default = null)
 {
+    _deprecated_function(__FUNCTION__, '1.90', 'fluent_boards_get_option');
     return fluent_boards_get_option($key, $default);
 }
 
+/**
+ * Updates an option value.
+ *
+ * @deprecated 1.90 Use fluent_boards_update_option() instead.
+ */
 function fbsUpdateOption($key, $value)
 {
+    _deprecated_function(__FUNCTION__, '1.90', 'fluent_boards_update_option');
     return fluent_boards_update_option($key, $value);
 }
+
 
 function fluentboardsCsvMimes()
 {
@@ -207,7 +230,7 @@ function fluentboardsCsvMimes()
      *
      * @return array array of CSV mimes
      */
-    return apply_filters('fluenboards_csv_mimes', [
+    return apply_filters('fluent_boards_csv_mimes', [
         'text/csv',
         'text/plain',
         'application/csv',

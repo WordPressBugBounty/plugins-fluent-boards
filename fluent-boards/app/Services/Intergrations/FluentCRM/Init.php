@@ -36,7 +36,7 @@ class Init
             $assets = $app['url.assets'];
 
             $slug = $app->config->get('app.slug');
-            wp_enqueue_script( $slug . '_in_crm', FLUENT_BOARDS_PLUGIN_URL . 'assets/crm-contact-app.js', [], FLUENT_BOARDS_PLUGIN_VERSION);
+            wp_enqueue_script( $slug . '_in_crm', FLUENT_BOARDS_PLUGIN_URL . 'assets/crm-contact-app.js', [], FLUENT_BOARDS_PLUGIN_VERSION, true);
             $isRtl = is_rtl();
             $crmContactCss = 'assets/admin/crm-contact-app.css';
             if($isRtl) {

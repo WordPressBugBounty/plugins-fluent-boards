@@ -17,7 +17,9 @@ class TeamMigrator
         $charsetCollate = $wpdb->get_charset_collate();
         $table = $wpdb->prefix . 'fbs_teams';
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Schema check query, caching not applicable for migrations
         if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) != $table || $isForced) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Table name cannot be prepared in CREATE TABLE
             $sql = "CREATE TABLE $table (
                 `id` INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
                 `parent_id` INT UNSIGNED NULL COMMENT 'Parent Team',

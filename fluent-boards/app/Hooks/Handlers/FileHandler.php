@@ -52,7 +52,7 @@ class FileHandler
         // Check if the file exists
         if (file_exists($file_path)) {
             // Delete the file
-            $deleted = unlink($file_path);
+            $deleted = wp_delete_file($file_path);
 
             // Optionally, you can also remove the file from the media library
             // Note: This won't delete the file physically, but it will remove it from the media library
@@ -90,11 +90,29 @@ class FileHandler
      */
     public function handleMediaFileUpload($data)
     {
+        // Check if file was uploaded
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification handled by REST API/controller layer
+        if (!isset($_FILES['file']['tmp_name']) || !isset($_FILES['file']['name'])) {
+            throw new Exception(esc_html__('No file was uploaded. Please try again.', 'fluent-boards'));
+        }
+
+        // Sanitize filename from request for validation
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification handled by REST API/controller layer
+        $filename = sanitize_file_name(wp_unslash($_FILES['file']['name']));
+
+        // Validate and sanitize tmp_name before use
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification handled by REST API/controller layer
+        $tmp_name = sanitize_text_field(wp_unslash($_FILES['file']['tmp_name']));
+
+        if (empty($tmp_name) || !file_exists($tmp_name) || !is_uploaded_file($tmp_name)) {
+            throw new Exception(esc_html__('Invalid upload. Please try again.', 'fluent-boards'));
+        }
+
         // Check if the uploaded file is an image
-        $wp_filetype = wp_check_filetype_and_ext( $_FILES['file']['tmp_name'], $_FILES['file']['name'] );
+        $wp_filetype = wp_check_filetype_and_ext($tmp_name, $filename);
 
         if ( ! wp_match_mime_types( 'image', $wp_filetype['type'] ) ) {
-            throw new Exception('The uploaded file is not a valid image. Please try again.');
+            throw new Exception(esc_html__('The uploaded file is not a valid image. Please try again.', 'fluent-boards'));
         }
         require_once(ABSPATH . 'wp-admin/includes/image.php');
         require_once( ABSPATH . 'wp-admin/includes/file.php' );
@@ -103,7 +121,7 @@ class FileHandler
 
         $attachment = wp_prepare_attachment_for_js( $attachment_id);
         if(!$attachment) {
-            throw new Exception('The uploaded file is not a valid image. Please try again.');
+            throw new Exception(esc_html__('The uploaded file is not a valid image. Please try again.', 'fluent-boards'));
         } else {
             return $attachment;
         }

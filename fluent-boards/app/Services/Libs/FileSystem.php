@@ -24,9 +24,17 @@ class FileSystem
         if ($this->subDir) {
             $fileName = $this->subDir . DIRECTORY_SEPARATOR . $fileName;
         }
-        return file_get_contents(
-            $this->getDir() . DIRECTORY_SEPARATOR . $fileName
-        );
+        
+        $filePath = $this->getDir() . DIRECTORY_SEPARATOR . $fileName;
+        
+        // Use WordPress Filesystem API
+        global $wp_filesystem;
+        if (!function_exists('WP_Filesystem')) {
+            require_once(ABSPATH . 'wp-admin/includes/file.php');
+        }
+        WP_Filesystem();
+        
+        return $wp_filesystem->get_contents($filePath);
     }
 
     /**
@@ -114,7 +122,10 @@ class FileSystem
         foreach ($files as $file) {
             $arr = explode('/', $file);
             $fileName = end($arr);
-            @unlink($this->getDir() . '/' . $fileName);
+            $filePath = $this->getDir() . '/' . $fileName;
+            if (file_exists($filePath)) {
+                wp_delete_file($filePath);
+            }
         }
     }
 
@@ -148,6 +159,7 @@ class FileSystem
         if ($this->subDir) {
             $fbsUploadDir .= DIRECTORY_SEPARATOR . $this->subDir;
             if (!is_dir($param['basedir'] . $fbsUploadDir)) {
+                // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Creating custom upload subdirectory during upload process, WP_Filesystem not initialized
                 @mkdir($param['basedir'] . $fbsUploadDir, 0755);
             }
         }
@@ -197,10 +209,12 @@ class FileSystem
                 $this->deleteContents("$dir/$file");
             } else {
                 // Delete file
+                // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Recursive directory cleanup, direct file operations required
                 unlink("$dir/$file");
             }
         }
         // Delete the directory itself. If the directory is not empty, it will not be deleted.
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Recursive directory removal, WP_Filesystem not suitable for this operation
         return rmdir($dir);
     }
 

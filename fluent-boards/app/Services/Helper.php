@@ -324,6 +324,10 @@ class Helper
 
     public static function sanitizeUserCollections($users)
     {
+        if (empty($users) || !is_array($users)) {
+            return $users;
+        }
+        
         foreach ($users as $key => $user) {
             if (is_object($user) && isset($user->pivot)) {
                 $settings = maybe_unserialize($user->pivot->settings);

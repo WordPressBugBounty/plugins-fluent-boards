@@ -109,6 +109,7 @@ $app->addCustomAction('one_time_schedule_send_email_for_removed_from_task', 'Sch
 $app->addCustomAction('task_attachment_added', 'ActivityHandler@taskAttachmentAdded', 10, 1);
 $app->addCustomAction('task_attachment_deleted', 'ActivityHandler@taskAttachmentDeleted', 10, 1);
 $app->addCustomAction('task_attachment_deleted', 'TaskHandler@taskAttachmentDeleted', 10, 1);
+// Removed: direct call is made from Comment::deleting to TaskHandler@commentImageDeleted
 $app->addAction('deleted_user', 'BoardHandler@deleteUserRelatedData', 10, 3);
 $app->addAction('delete_attachment', 'FileHandler@mediaFileDeleted', 10, 1);
 
@@ -125,27 +126,31 @@ if (defined('WP_CLI') && WP_CLI) {
 
 
 add_action('init', function () {
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public routing parameter check, no data modification
     if (!isset($_REQUEST['fbs'])) {
         return;
     }
 });
-
 
 /*
  * IMPORTANT
  * External Pages Handler
  * Each Request must have fbs=1 as a query parameter, then the plugin will handle the request.
  */
+// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public routing logic, security validated in individual handlers
 if(isset($_GET['fbs']) && $_GET['fbs'] == 1) {
 
     // For viewing attachment
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public routing logic, security validated in handler
     if(isset($_GET['route']) && ($_GET['route'] == 'task')) {
         add_action('init', function() {
             (new \FluentBoardsPro\App\Hooks\Handlers\ExternalPages())->handleTaskWebhook();
         });
     }
 
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public file serving endpoint, security validated by hash in handler
     if(isset($_GET['fbs_comment_image'])) {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public routing check, security validated in handler
         if(isset($_GET['fbs_type']) == 'public_url') {
             add_action('init', function() {
                 (new \FluentBoards\App\Hooks\Handlers\ExternalPages())->view_uploaded_comment_image();
@@ -160,7 +165,9 @@ if(isset($_GET['fbs']) && $_GET['fbs'] == 1) {
 
 }
 
+// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public redirect endpoint, no sensitive operations
 if(isset($_GET['redirect']) && $_GET['redirect'] == 'to_task') {
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public redirect endpoint, validation performed in handler
     if (isset($_GET['taskId'])) {
         add_action('init', function() {
             (new \FluentBoards\App\Hooks\Handlers\ExternalPages())->redirectToPage();

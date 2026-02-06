@@ -17,7 +17,9 @@ class BoardTermMigrator
         /*
          * This Schema is for the Board Labels and Stages
          */
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Schema check query, caching not applicable for migrations
         if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) != $table || $isForced) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Table name cannot be prepared in CREATE TABLE
             $sql = "CREATE TABLE $table (
                 `id` INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
                 `board_id` INT UNSIGNED NOT NULL,
@@ -41,12 +43,16 @@ class BoardTermMigrator
         } else {
             // change column type from int to decimal - for already installed sites
             $column_name = 'position';
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name and column name cannot be prepared
             $preparedQuery = $wpdb->prepare("DESCRIBE $table %s", $column_name);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Variable contains prepared query, schema check, caching not applicable
             $dataType = $wpdb->get_row($preparedQuery);
             if (strpos($dataType->Type, 'int') !== false) {
                 $sql = $wpdb->prepare(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name and column name cannot be prepared
                     "ALTER TABLE $table MODIFY $column_name decimal(10,2) NOT NULL DEFAULT '1' COMMENT 'Position: 1 = top/first, 2 = second/second in top, etc.';"
                 );
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Variable contains prepared query, schema modification, caching not applicable
                 $wpdb->query($sql);
             }
         }

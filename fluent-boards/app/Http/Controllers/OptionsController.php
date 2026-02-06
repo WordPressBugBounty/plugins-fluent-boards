@@ -32,16 +32,16 @@ class OptionsController extends Controller
     public function selectorOptions(Request $request)
     {
         try {
-            $optionKey = $request->getSafe('option_key');
-            $search = $request->getSafe('search');
+            $optionKey = $request->getSafe('option_key', 'sanitize_text_field');
+            $search = $request->getSafe('search', 'sanitize_text_field');
             $includedIds = $request->getSafe('values');
-            $boardId = $request->getSafe('board_id');
+            $boardId = $request->getSafe('board_id', 'intval');
 
             $options = [];
             if ('users' === $optionKey || 'task_assignees' === $optionKey) {  // no ajax/code is designed to handle this eventually will goto else
 
                 if (!PermissionManager::isBoardManager($boardId)) {
-                    throw new \Exception('You do not have permission to access this route');
+                    throw new \Exception(esc_html__('You do not have permission to access this route', 'fluent-boards'));
                 }
 
                 if (!defined('FLUENT_BOARDS_PRO')) {
@@ -60,6 +60,7 @@ class OptionsController extends Controller
             } elseif ('boards' === $optionKey) {
                 $boards = Board::query()
                     ->when($search, function ($query) use ($search) {
+                        // $search is already sanitized with sanitize_text_field above
                         return $query->where('title', 'LIKE', '%' . $search . '%');
                     })->take(20)->get();
 
@@ -72,10 +73,12 @@ class OptionsController extends Controller
                     ];
                 }
             } elseif ('tasks' === $optionKey) {
+                // $boardId is already sanitized with intval above
                 $tasks = Task::where('board_id', $boardId)
                     ->whereNull('archived_at')
                     ->whereNull('parent_id')
                     ->when($search, function ($query) use ($search) {
+                        // $search is already sanitized with sanitize_text_field above
                         return $query->where('title', 'LIKE', '%' . $search . '%');
                     })->take(20)->get();
 
@@ -141,8 +144,8 @@ class OptionsController extends Controller
     public function getUserPermission(Request $request)
     {
         try {
-            $boardId = $request->getSafe('boardId');
-            $userId = $request->getSafe('userId');
+            $boardId = $request->getSafe('boardId', 'intval');
+            $userId = $request->getSafe('userId', 'intval');
 
             $boardUser = Relation::where('board_id', $boardId)
                 ->where('user_id', $userId)
@@ -162,10 +165,10 @@ class OptionsController extends Controller
     public function updatedUserPermission(Request $request)
     {
         try {
-            $permission = $request->getSafe('userPermission');
-            $updateType = $request->getSafe('updateType');
-            $boardId = $request->getSafe('boardId');
-            $userId = $request->getSafe('userId');
+            $permission = $request->getSafe('userPermission', 'sanitize_text_field');
+            $updateType = $request->getSafe('updateType', 'sanitize_text_field');
+            $boardId = $request->getSafe('boardId', 'intval');
+            $userId = $request->getSafe('userId', 'intval');
 
             $boardUser = Relation::where('board_id', $boardId)->where('user_id', $userId)->status('ACTIVE')->first();
 
@@ -199,6 +202,7 @@ class OptionsController extends Controller
 
     public function SetUserSuperAdmin($userId)
     {
+        $userId = absint($userId);
         try {
             $this->optionService->createSuperAdmin($userId);
             return $this->sendSuccess([
@@ -212,6 +216,7 @@ class OptionsController extends Controller
 
     public function removeUserSuperAdmin($userId)
     {
+        $userId = absint($userId);
         try {
             $this->optionService->removeUserSuperAdmin($userId);
 
@@ -226,7 +231,7 @@ class OptionsController extends Controller
     public function IsUserAllBoardAdmin(Request $request)
     {
         try {
-            $userId = $request->getSafe('id');
+            $userId = $request->getSafe('id', 'intval');
             $isSuperAdmin = false;
             $superAdmin = Relation::where('board_id', null)->where('user_id', $userId)->where('status', 'ACTIVE')->first();
             $totalSuperAdmin = Relation::where('board_id', null)->where('status', 'ACTIVE')->count();
@@ -248,8 +253,9 @@ class OptionsController extends Controller
 
     public function RemoveUserFromSuperAdmin(Request $request, $id)
     {
+        $id = absint($id);
         try {
-            $userId = $request->getSafe('id');
+            $userId = $request->getSafe('id', 'intval');
 
             $superAdmin = Relation::where('board_id', null)->where('user_id', $userId)->first();
             $superAdmin->status = 'INACTIVE';
@@ -266,8 +272,8 @@ class OptionsController extends Controller
     public function removeUserFromBoard(Request $request)
     {
         try {
-            $boardId = $request->getSafe('boardId');
-            $userId = $request->getSafe('userId');
+            $boardId = $request->getSafe('boardId', 'intval');
+            $userId = $request->getSafe('userId', 'intval');
 
             $this->boardService->removeUserFromBoard($boardId, $userId);
 
@@ -286,7 +292,12 @@ class OptionsController extends Controller
     public function addAsSuperAdmin(Request $request)
     {
         try {
-            $userIds = $request->getSafe('memberIds');
+            $rawUserIds = $request->getSafe('memberIds');
+            // Sanitize array of user IDs
+            $userIds = [];
+            if (is_array($rawUserIds)) {
+                $userIds = array_filter(array_map('intval', $rawUserIds));
+            }
             foreach ($userIds as $userId) {
                 $this->createSuperAdmin($userId);
             }
@@ -317,8 +328,18 @@ class OptionsController extends Controller
     public function addMembersInBoards(Request $request)
     {
         try {
-            $userIds = $request->getSafe('memberIds');
-            $boardIds = $request->getSafe('boardIds');
+            $rawUserIds = $request->getSafe('memberIds');
+            $rawBoardIds = $request->getSafe('boardIds');
+            
+            // Sanitize arrays of IDs
+            $userIds = [];
+            if (is_array($rawUserIds)) {
+                $userIds = array_filter(array_map('intval', $rawUserIds));
+            }
+            $boardIds = [];
+            if (is_array($rawBoardIds)) {
+                $boardIds = array_filter(array_map('intval', $rawBoardIds));
+            }
 
             foreach ($userIds as $userId) {
                 foreach ($boardIds as $boardId) {
@@ -338,7 +359,16 @@ class OptionsController extends Controller
     public function updateGlobalNotificationSettings(Request $request)
     {
         try {
-            $newSettings = $request->getSafe('updatedSettings');
+            // updatedSettings is an array, sanitize each element
+            $rawSettings = $request->get('updatedSettings');
+            $newSettings = [];
+            if (is_array($rawSettings)) {
+                foreach ($rawSettings as $key => $value) {
+                    $sanitizedKey = sanitize_text_field($key);
+                    $sanitizedValue = sanitize_text_field($value);
+                    $newSettings[$sanitizedKey] = $sanitizedValue;
+                }
+            }
 
             $this->optionService->updateGlobalNotificationSettings($newSettings);
 
@@ -443,12 +473,17 @@ class OptionsController extends Controller
     {
         $currentUserId = get_current_user_id();
 
-        $query = strtolower(sanitize_text_field($_REQUEST['query']));
-        $scope = sanitize_text_field($_REQUEST['scope']);
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
+        $query = isset($_REQUEST['query']) ? strtolower(sanitize_text_field(wp_unslash($_REQUEST['query']))) : '';
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
+        $scope = isset($_REQUEST['scope']) ? sanitize_text_field(wp_unslash($_REQUEST['scope'])) : 'all';
 
         // Pagination parameters
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
         $taskPage = isset($_REQUEST['task_page']) ? max(1, (int)$_REQUEST['task_page']) : 0;
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
         $boardPage = isset($_REQUEST['board_page']) ? max(1, (int)$_REQUEST['board_page']) : 0;
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
         $perPage = isset($_REQUEST['per_page']) ? (int)$_REQUEST['per_page'] : 20;
 
         // Build base queries
@@ -480,7 +515,7 @@ class OptionsController extends Controller
             // For 'current_board' scope, we don't search boards
             $boardQuery->where('id', -1);
 
-            $inBoard = (int)$scope;
+            $inBoard = absint($scope);
             if ($isUserAdmin || in_array($inBoard, PermissionManager::getBoardIdsForUser($currentUserId))) {
                 $tasksQuery->where('board_id', $inBoard);
             } else {
@@ -586,17 +621,37 @@ class OptionsController extends Controller
 
     public function updateDashboardViewSettings(Request $request)
     {
-        $newSettings = $request->getSafe('updatedSettings');
+        // updatedSettings is an array, sanitize each element
+        $rawSettings = $request->get('updatedSettings');
+        $newSettings = [];
+        if (is_array($rawSettings)) {
+            foreach ($rawSettings as $key => $value) {
+                $sanitizedKey = sanitize_text_field($key);
+                // Value could be string, boolean, or number - sanitize appropriately
+                if (is_string($value)) {
+                    $sanitizedValue = sanitize_text_field($value);
+                } elseif (is_bool($value) || is_numeric($value)) {
+                    $sanitizedValue = $value;
+                } else {
+                    $sanitizedValue = sanitize_text_field((string)$value);
+                }
+                $newSettings[$sanitizedKey] = $sanitizedValue;
+            }
+        }
         $view = $request->getSafe('view', 'sanitize_text_field');
 
         $this->optionService->updateDashboardViewSettings($newSettings, $view);
 
+        if ($view == 'listview') {
+            $message = __("List view settings updated successfully", 'fluent-boards');
+        } elseif ($view == 'tableview') {
+            $message = __("Table view settings updated successfully", 'fluent-boards');
+        } else {
+            $message = __("Card view settings updated successfully", 'fluent-boards');
+        }
+
         return $this->sendSuccess([
-            'message' => __(
-                $view == 'listview' ? "List view settings updated successfully" :
-                ($view == 'tableview' ? "Table view settings updated successfully" :
-                "Card view settings updated successfully"), 'fluent-boards'
-            ),
+            'message' => $message,
         ], 201);
     }
 
@@ -671,14 +726,25 @@ class OptionsController extends Controller
             ]);
         }
 
-        $settings = $request->get('settings', []);
+        $rawSettings = $request->get('settings', []);
+        
+        // Validate that settings is an array
+        if (!is_array($rawSettings)) {
+            return $this->sendError([
+                'message' => __('Invalid settings format', 'fluent-boards')
+            ], 400);
+        }
 
         $prefSettings = fluent_boards_get_pref_settings(false);
 
-        $settings = wp_parse_args($settings, $prefSettings);
+        $settings = wp_parse_args($rawSettings, $prefSettings);
 
         $settings = Arr::only($settings, array_keys($prefSettings));
-        $settings['frontend']['slug'] = sanitize_title($settings['frontend']['slug']);
+        
+        // Sanitize slug if it exists
+        if (isset($settings['frontend']['slug'])) {
+            $settings['frontend']['slug'] = sanitize_title($settings['frontend']['slug']);
+        }
 
         if (empty($settings['frontend']['slug'])) {
             $settings['frontend']['slug'] = 'projects';
@@ -803,20 +869,20 @@ class OptionsController extends Controller
                     );
 
                     if (is_wp_error($plugin_information)) {
-                        throw new \Exception($plugin_information->get_error_message());
+                        throw new \Exception(esc_html($plugin_information->get_error_message()));
                     }
 
                     $package = $plugin_information->download_link;
                     $download = $upgrader->download_package($package);
 
                     if (is_wp_error($download)) {
-                        throw new \Exception($download->get_error_message());
+                        throw new \Exception(esc_html($download->get_error_message()));
                     }
 
                     $working_dir = $upgrader->unpack_package($download, true);
 
                     if (is_wp_error($working_dir)) {
-                        throw new \Exception($working_dir->get_error_message());
+                        throw new \Exception(esc_html($working_dir->get_error_message()));
                     }
 
                     $result = $upgrader->install_package(
@@ -834,7 +900,7 @@ class OptionsController extends Controller
                     );
 
                     if (is_wp_error($result)) {
-                        throw new \Exception($result->get_error_message());
+                        throw new \Exception(esc_html($result->get_error_message()));
                     }
 
                     $activate = true;
@@ -854,7 +920,7 @@ class OptionsController extends Controller
                     $result = activate_plugin($installed ? $installed_plugins[$plugin_file] : $plugin_slug . '/' . $plugin_file);
 
                     if (is_wp_error($result)) {
-                        throw new \Exception($result->get_error_message());
+                        throw new \Exception(esc_html($result->get_error_message()));
                     }
                 } catch (\Exception $e) {
                 }
@@ -925,7 +991,23 @@ class OptionsController extends Controller
                 'message' => __('This feature is only available in Fluent Boards Pro. Please upgrade.', 'fluent-boards')
             ]);
         }
-        $settings = $request->getSafe('updatedSettings', []);
+        // updatedSettings is an array, sanitize each element
+        $rawSettings = $request->get('updatedSettings', []);
+        $settings = [];
+        if (is_array($rawSettings)) {
+            foreach ($rawSettings as $key => $value) {
+                $sanitizedKey = sanitize_text_field($key);
+                // Value could be string, boolean, or number - sanitize appropriately
+                if (is_string($value)) {
+                    $sanitizedValue = sanitize_text_field($value);
+                } elseif (is_bool($value) || is_numeric($value)) {
+                    $sanitizedValue = $value;
+                } else {
+                    $sanitizedValue = sanitize_text_field((string)$value);
+                }
+                $settings[$sanitizedKey] = $sanitizedValue;
+            }
+        }
 
         $settings = apply_filters('fluent_boards/save_general_settings', $settings);
 

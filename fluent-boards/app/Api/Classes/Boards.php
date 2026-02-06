@@ -121,7 +121,7 @@ class Boards
             return [];
         }
 
-        return Stage::where('board_id', $board_id)->where('archived_at', null)->get();
+        return Stage::where('board_id', $board_id)->where('archived_at', null)->orderBy('position', 'asc')->get();
     }
 
 
@@ -142,7 +142,7 @@ class Boards
             return call_user_func_array([$this->instance, $method], $params);
         }
 
-        throw new \Exception("Method {$method} does not exist.");
+        throw new \Exception(sprintf('Method %s does not exist.', esc_html($method)));
     }
 
     public function getLabels($boardId)

@@ -28,7 +28,7 @@ class CommentController extends Controller
     public function getComments(Request $request, $board_id, $task_id)
     {
         try {
-            $filter = $request->getSafe('filter');
+            $filter = $request->getSafe('filter', 'sanitize_text_field');
             $per_page =  10;
 
             $comments = $this->commentService->getComments($task_id, $per_page, $filter);
@@ -70,7 +70,8 @@ class CommentController extends Controller
             'type'          => 'required|string'
         ];
 
-        if ($request->images) {
+        $images = $request->getSafe('images');
+        if ($images) {
             $validationRules['description'] = 'nullable|string';
         }
 
@@ -80,14 +81,20 @@ class CommentController extends Controller
         try {
 
             $rawDescription = $commentData['description'];
-            $commentData['settings'] = [ 'raw_description' => $rawDescription, 'mentioned_id' => $request->mentionData ];
+            // Sanitize mentionData array to integers
+            $mentionData = [];
+            $rawMentionData = $request->getSafe('mentionData');
+            if ($rawMentionData && is_array($rawMentionData)) {
+                $mentionData = array_filter(array_map('intval', $rawMentionData));
+            }
+            $commentData['settings'] = [ 'raw_description' => $rawDescription, 'mentioned_id' => $mentionData ];
 
             // Ensure UTF-8 encoding for comment description
             $description = mb_convert_encoding($commentData['description'], 'UTF-8', 'auto');
 
-            if($request->mentionData) {
+            if(!empty($mentionData)) {
                 // Process mentions and links with UTF-8 support
-                $commentData['description'] = $this->commentService->processMentionAndLink($description, $request->mentionData);
+                $commentData['description'] = $this->commentService->processMentionAndLink($description, $mentionData);
             } else {
                 // Process links with UTF-8 support
                 $commentData['description'] = $this->commentService->checkIfCommentHaveLinks($description);
@@ -113,15 +120,22 @@ class CommentController extends Controller
                 $this->sendMailAfterComment($comment->id, $usersToSendEmail);
             }
 
-            if($request->mentionData)
+            if(!empty($mentionData))
             {
-                $this->notificationService->mentionInComment($comment, $request->mentionData);
+                $this->notificationService->mentionInComment($comment, $mentionData);
             }
 
-            if($request->images)
-            {
-                $this->commentService->attachCommentImages($comment, $request->images);
-                $comment->load(['images']);
+            $images = $request->getSafe('images');
+            if ($images) {
+                // Sanitize images array to integers
+                $imageIds = [];
+                if (is_array($images)) {
+                    $imageIds = array_filter(array_map('intval', $images));
+                }
+                if (!empty($imageIds)) {
+                    $this->commentService->attachCommentImages($comment, $imageIds);
+                    $comment->load(['images']);
+                }
             }
 
             if ($comment->type == 'comment')
@@ -141,36 +155,48 @@ class CommentController extends Controller
     public function update(Request $request, $board_id, $comment_id)
     {
         $requestData = [
-            'description'   => $request->comment
+            'description'   => $request->getSafe('comment', 'sanitize_textarea_field')
         ];
 
         $validationRules = [
             'description'   => 'required|string'
         ];
 
-        if ($request->images) {
+        $images = $request->getSafe('images');
+        if ($images) {
             $validationRules['description'] = 'nullable|string';
         }
 
         $commentData = $this->commentSanitizeAndValidate($requestData, $validationRules);
 
         try {
-            $comment = $this->commentService->update($commentData, $comment_id, $request->getSafe('mentionData'));
+            // Sanitize mentionData array to integers
+            $mentionData = [];
+            $rawMentionData = $request->getSafe('mentionData');
+            if ($rawMentionData && is_array($rawMentionData)) {
+                $mentionData = array_filter(array_map('intval', $rawMentionData));
+            }
+            
+            $comment = $this->commentService->update($commentData, $comment_id, $mentionData);
 
             if (!$comment) {
                 $errorMessage = __('Unauthorized Action', 'fluent-boards');
                 return $this->sendError($errorMessage, 401);
             }
 
-            if($request->getSafe('mentionData'))
+            if(!empty($mentionData))
             {
-                $this->notificationService->mentionInComment($comment, $request->getSafe('mentionData'));
+                $this->notificationService->mentionInComment($comment, $mentionData);
             }
 
-            if($request->getSafe('images'))
-            {
-                $this->commentService->attachCommentImages($comment, $request->getSafe('images'));
-                $comment->load(['images']);
+            // Sanitize images array to integers
+            $rawImages = $request->getSafe('images');
+            if ($rawImages && is_array($rawImages)) {
+                $imageIds = array_filter(array_map('intval', $rawImages));
+                if (!empty($imageIds)) {
+                    $this->commentService->attachCommentImages($comment, $imageIds);
+                    $comment->load(['images']);
+                }
             }
 
             $comment->load('user');
@@ -200,7 +226,7 @@ class CommentController extends Controller
     public function updateReply(Request $request, $board_id, $reply_id)
     {
         $requestData = [
-            'description'   => $request->comment
+            'description'   => $request->getSafe('comment', 'sanitize_textarea_field')
         ];
 
         $validationRules = [
@@ -210,7 +236,14 @@ class CommentController extends Controller
         $replyData = $this->commentSanitizeAndValidate($requestData, $validationRules);
 
         try {
-            $reply = $this->commentService->update($replyData, $reply_id, $request->mentionData);
+            // Sanitize mentionData array to integers
+            $mentionData = [];
+            $rawMentionData = $request->getSafe('mentionData');
+            if ($rawMentionData && is_array($rawMentionData)) {
+                $mentionData = array_filter(array_map('intval', $rawMentionData));
+            }
+            
+            $reply = $this->commentService->update($replyData, $reply_id, $mentionData);
 
             if (!$reply) {
                 $errorMessage = __('Unauthorized Action', 'fluent-boards');
@@ -311,6 +344,7 @@ class CommentController extends Controller
         return $this->sendSuccess([
             'comment' => $comment,
             $privacy = $comment->privacy == 'public' ? __('public', 'fluent-boards') : __('private', 'fluent-boards'),
+            // translators: %s is the privacy setting (public or private)
             'message' => sprintf(__('This comment is now %s', 'fluent-boards'), $privacy),
         ], 200);
     }

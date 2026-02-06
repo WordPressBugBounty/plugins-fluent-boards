@@ -12,8 +12,8 @@ use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\TaskMeta;
+use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Activity;
-use FluentBoards\App\Models\BoardTerm;
 use FluentBoards\App\Models\CommentImage;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoardsPro\App\Models\TaskAttachment;
@@ -22,7 +22,6 @@ use FluentBoardsPro\App\Services\AttachmentService;
 use FluentBoardsPro\App\Services\ProTaskService;
 use FluentBoardsPro\App\Services\RemoteUrlParser;
 use FluentRoadmap\App\Models\IdeaReaction;
-use function ElementorDeps\DI\string;
 
 class TaskService
 {
@@ -31,12 +30,12 @@ class TaskService
         $board = Board::select('id', 'type')->find($boardId);
 
         if (!$board) {
-            throw new \Exception(__("Board doesn't exists", 'fluent-boards'));
+            throw new \Exception(esc_html__("Board doesn't exists", 'fluent-boards'));
         }
 
         $stage = Stage::find($data['stage_id']);
         if (!$stage) {
-            throw new \Exception(__("Stage doesn't exists", 'fluent-boards'));
+            throw new \Exception(esc_html__("Stage doesn't exists", 'fluent-boards'));
         }
 
         $data['status'] = $stage->defaultTaskStatus();
@@ -191,7 +190,7 @@ class TaskService
         ];
 
         if (in_array($col, $validColumns) && $task->{$col} != $value) {
-            if($col == 'settings' && $value['cover']['backgroundColor']) {
+            if ($col == 'settings' && isset($value['cover']['backgroundColor']) && $value['cover']['backgroundColor']) {
                 $settings = $task->settings;
                 $this->deleteTaskCoverImage($settings);
                 unset($value['cover']['imageId']);
@@ -553,6 +552,16 @@ class TaskService
 
     public function deleteTask($task)
     {
+        // If this is a parent task, delete all subtasks first
+        if (!$task->parent_id) {
+            $subtasks = Task::where('parent_id', $task->id)->get();
+            foreach ($subtasks as $subtask) {
+                // Recursively delete each subtask (cleans up all their relations)
+                $this->deleteTask($subtask);
+            }
+        }
+
+        $deleted = $task->delete();
         $dbInstance = App::getInstance('db');
         $dbInstance->beginTransaction();
 
@@ -575,10 +584,22 @@ class TaskService
                 //task labels removed
                 $task->labels()->detach();
 
-                //task custom field value
+            //task custom field value
+            if (defined('FLUENT_BOARDS_PRO')) {
                 $task->customFields()->detach();
-                $this->deleteTaskAttachments($task);
+            }
+            $this->deleteTaskAttachments($task);
+                //task custom field value
+                if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
+                    $task->customFields()->detach();
+                    $this->deleteTaskAttachments($task);
+                }
 
+            // Delete time tracking records for this task
+            $this->deleteTimeTrackingRecords($task->id);
+
+            do_action('fluent_boards/task_deleted', $task);
+            TaskMeta::where('task_id', $task->id)->delete();
                 do_action('fluent_boards/task_deleted', $deletedTask);
                 TaskMeta::where('task_id', $task->id)->delete();
             }
@@ -590,7 +611,44 @@ class TaskService
         }
 
     }
+    public function deleteTaskForBulk($task)
+    {
+        // If this is a parent task, delete all subtasks first
+        if (!$task->parent_id) {
+            $subtasks = Task::where('parent_id', $task->id)->get();
+            foreach ($subtasks as $subtask) {
+                // Recursively delete each subtask (cleans up all their relations)
+                $this->deleteTaskForBulk($subtask);
+            }
+        }
 
+        $deleted = $task->delete();
+
+        if ($deleted) {
+
+            //task assignees watchers removed
+            $task->watchers()->detach();
+            $task->assignees()->detach();
+
+            //removing all task related notifications
+            $notificationIds = $task->notifications->pluck('id');
+            $task->notifications()->delete();
+            NotificationUser::whereIn('notification_id', $notificationIds)->delete();
+
+            //task labels removed
+            $task->labels()->detach();
+
+            //task custom field value
+             if (defined('FLUENT_BOARDS_PRO_VERSION')) {
+                $task->customFields()->detach();
+                $this->deleteTaskAttachments($task);
+            }
+
+            // For bulk delete, you might want to avoid firing hooks/actions,
+            // so 'fluent_boards/task_deleted' is not triggered here.
+            TaskMeta::where('task_id', $task->id)->delete();
+        }
+    }
     public function filterNullDate($date)
     {
         if ('0000-00-00 00:00:00' == $date || false === strtotime($date)) {
@@ -606,27 +664,216 @@ class TaskService
      */
     public function changeBoardByTask($task, $targetBoardId)
     {
+        // Input validation - must be positive integer
+        if (!is_numeric($targetBoardId) || $targetBoardId <= 0 || !is_int($targetBoardId + 0) || $targetBoardId != (int)$targetBoardId) {
+            throw new \Exception(esc_html__('Invalid board id - must be a positive integer', 'fluent-boards'), 400);
+        }
+
+        
         if ($task->board_id == $targetBoardId) {
             return $task;
         }
 
         $oldBoard = Board::find($task->board_id);
-
         $newBoard = Board::find($targetBoardId);
-        if (!$newBoard) {
-            throw new \Exception('Invalid board id', 400);
+
+        if (!$oldBoard) {
+            throw new \Exception(esc_html__('Source board not found', 'fluent-boards'), 404);
         }
-        $task->board_id = $targetBoardId;
+        
+        if (!$newBoard) {
+            throw new \Exception(esc_html__('Target board not found', 'fluent-boards'), 404);
+        }
+
+
+        $task->board_id = (int) $targetBoardId;
         $task->type = $newBoard->type === 'roadmap' ? 'roadmap' : 'task';
-        $task->save();
-        //delete labels of that task because labels have board dependencies
+
+        // Remove task cover if it contains image URL for security
+        $this->removeTaskCoverImage($task);
+
+        // REMOVE: Board-dependent data
         $task->labels()->detach();
+        $task->assignees()->detach();
+        $task->watchers()->detach();
+        $this->removeCustomFieldAssociations($task);
+
+        // REMOVE: User-specific data to prevent security issues
+        $this->removeCommentsAndReplies($task->id);
+        $this->removeTimeTrackingRecords($task->id);
+
+        // REMOVE: File attachments to prevent access issues
+        $this->removeAttachments($task->id);
+
+        // REMOVE: Recurring task settings for security
+        $this->removeRecurringTaskSettings($task->id);
+
+        $task->save();
+
+        // MOVE: Subtasks to new board (preserves subtask groups)
+        $this->moveSubtasksToNewBoard($task->id, $targetBoardId, $newBoard->type);
 
         do_action('fluent_boards/task_moved_from_board', $task, $oldBoard, $newBoard);
-        do_action('fluent_boards/task_moved_update_time_tracking', $task);
         return $task;
     }
 
+    /**
+     * Move all subtasks to the new board when parent task is moved
+     * Preserves subtask groups and their relationships
+     */
+    private function moveSubtasksToNewBoard($parentTaskId, $targetBoardId, $boardType)
+    {
+        // Get all subtasks of the parent task
+        $subtasks = Task::where('parent_id', $parentTaskId)->get();
+
+        if ($subtasks->isEmpty()) {
+            return;
+        }
+
+        foreach ($subtasks as $subtask) {
+            // Update board_id and type
+            $subtask->board_id = (int) $targetBoardId;
+            $subtask->type = $boardType === 'roadmap' ? 'roadmap' : 'task';
+
+            // Remove task cover image for security
+            $this->removeTaskCoverImage($subtask);
+
+            // REMOVE: Board-dependent data for subtasks
+            $subtask->labels()->detach();
+            $subtask->assignees()->detach();
+            $subtask->watchers()->detach();
+
+            // Remove custom fields but preserve subtask group relationships
+            $subtask->taskMeta()
+                ->where('key', '!=', Constant::SUBTASK_GROUP_CHILD)
+                ->delete();
+
+            // REMOVE: User-specific data for security
+            $this->removeCommentsAndReplies($subtask->id);
+            $this->removeTimeTrackingRecords($subtask->id);
+
+            // REMOVE: File attachments
+            $this->removeAttachments($subtask->id);
+
+            // REMOVE: Recurring task settings
+            $this->removeRecurringTaskSettings($subtask->id);
+
+            $subtask->save();
+        }
+    }
+
+    /**
+     * Remove task cover image for security reasons
+     * Keeps background colors but removes image references
+     */
+    private function removeTaskCoverImage($task)
+    {
+        $settings = $task->settings;
+        if (empty($settings) || !is_array($settings)) {
+            return;
+        }
+
+        if (isset($settings['cover']) && is_array($settings['cover'])) {
+            $cover = $settings['cover'];
+
+            // Remove image references
+            unset($cover['imageId']);
+            unset($cover['backgroundImage']);
+
+            // Keep only background color if it exists
+            if (isset($cover['backgroundColor'])) {
+                $settings['cover'] = array('backgroundColor' => $cover['backgroundColor']);
+            } else {
+                unset($settings['cover']);
+            }
+
+            $task->settings = $settings;
+        }
+    }
+
+    /**
+     * Remove custom field associations for board move
+     * Custom field values are stored in fbs_relations table, not fbs_task_meta
+     * This method removes task-to-customfield associations from fbs_relations
+     */
+    private function removeCustomFieldAssociations($task)
+    {
+        // Remove custom field values from fbs_relations table
+        // Custom fields are board-specific, so they must be removed when task moves to different board
+        if (defined('FLUENT_BOARDS_PRO')) {
+            $task->customFields()->detach();
+        }
+    }
+
+    /**
+     * Remove comments and replies for security reasons
+     * Prevents exposing user-specific data to unauthorized users
+     */
+    private function removeCommentsAndReplies($taskId)
+    {
+        // Input validation
+        if (!is_numeric($taskId) || $taskId <= 0) {
+            return;
+        }
+        
+        // Remove all comments and replies for this task (delete individually to fire model events and clean up images)
+        $comments = Comment::where('task_id', (int) $taskId)->get();
+        foreach ($comments as $comment) {
+            $comment->delete();
+        }
+
+    }
+
+    /**
+     * Remove time tracking records for security reasons
+     * Prevents exposing user-specific time data to unauthorized users
+     */
+    private function removeTimeTrackingRecords($taskId)
+    {
+        // Input validation
+        if (!is_numeric($taskId) || $taskId <= 0) {
+            return;
+        }
+
+        // Remove all time tracking records for this task
+        $this->deleteTimeTrackingRecords((int) $taskId);
+    }
+
+    /**
+     * Remove attachments for security reasons
+     * Prevents file access issues across boards
+     */
+    private function removeAttachments($taskId)
+    {
+        // Input validation
+        if (!is_numeric($taskId) || $taskId <= 0) {
+            return;
+        }
+
+        // Remove all attachments for this task
+        if (class_exists('FluentBoardsPro\App\Models\TaskAttachment')) {
+            \FluentBoardsPro\App\Models\TaskAttachment::where('object_id', (int) $taskId)
+                ->where('object_type', 'task')
+                ->delete();
+        }
+    }
+
+    /**
+     * Remove recurring task settings for security reasons
+     * Prevents recurring task settings from being moved between boards
+     */
+    private function removeRecurringTaskSettings($taskId)
+    {
+        // Input validation
+        if (!is_numeric($taskId) || $taskId <= 0) {
+            return;
+        }
+
+        // Remove recurring task settings for this task from fbs_metas table
+        Meta::where('object_id', (int) $taskId)
+            ->where('object_type', Constant::REPEAT_TASK_META)
+            ->delete();
+    }
 
     public function getIdeaVoteStatistics($taskId)
     {
@@ -666,7 +913,7 @@ class TaskService
 
         // if board_id is not passed then throw an exception
         if (!$boardId) {
-            throw new \Exception('Board id is required', 'fluent-boards');
+            throw new \Exception(esc_html__('Board id is required', 'fluent-boards'));
         }
 
         return $tasksQuery->orderBy('created_at', 'DESC')->with('assignees')->paginate($per_page, ['*'], 'page', $page);
@@ -746,7 +993,7 @@ class TaskService
     public function getLastOneMinuteUpdatedTasks($boardId, $lastUpdated = null)
     {
         if (!$lastUpdated) {
-            $lastUpdated = gmdate('Y-m-d H:i:s', current_time('timestamp') - 60);
+            $lastUpdated = gmdate('Y-m-d H:i:s', current_time('timestamp') - 60); // 1 minute ago
         }
 
         $tasks = Task::query()
@@ -754,7 +1001,7 @@ class TaskService
                 'board_id'  => $boardId,
                 'parent_id' => null,
             ])
-            ->where('updated_at', '>', $lastUpdated)
+            ->where('updated_at', '>', $lastUpdated) // updated in the last minute
             ->with(['assignees', 'labels', 'watchers', 'taskCustomFields'])
             ->orderBy('due_at', 'ASC')
             ->get();
@@ -1174,6 +1421,7 @@ class TaskService
     {
         global $wpdb;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transaction control for atomic task cloning operation
         $wpdb->query('START TRANSACTION');
 
         try {
@@ -1196,7 +1444,16 @@ class TaskService
                 $settings['subtask_count']
             );
             $clonedTask->settings = $settings;
-            $clonedTask->stage_id = $taskData['stage_id'] ?? $task->stage_id; 
+            $clonedTask->stage_id = $taskData['stage_id'] ?? $task->stage_id;
+            
+            // Validate that target stage belongs to the same board
+            $targetStage = Stage::findOrFail($clonedTask->stage_id);
+            if ($task->board_id != $targetStage->board_id) {
+                throw new \Exception(esc_html__('Cannot clone task to a different board. Task and target stage must be on the same board.', 'fluent-boards'));
+            }
+            
+            $clonedTask->board_id = $targetStage->board_id;
+             
             $clonedTask->comments_count = 0; // Reset comments count for cloned task
             $clonedTask->save();
 
@@ -1241,15 +1498,16 @@ class TaskService
             $clonedTask = $this->prepareClonedTaskForResponse($clonedTask);
             do_action('fluent_boards/task_cloned', $task, $clonedTask);
 
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transaction control for atomic task cloning operation
             $wpdb->query('COMMIT');
             return $clonedTask;
 
         } catch (\Exception $e) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transaction control for atomic task cloning operation
             $wpdb->query('ROLLBACK');
-            error_log('Task cloning failed: ' . $e->getMessage());
             throw new \Exception(
-                \__('Failed to clone task: ', 'fluent-boards') . $e->getMessage(),
-                $e->getCode() ?: 500
+                esc_html(\__('Failed to clone task: ', 'fluent-boards') . $e->getMessage()),
+                (int) ($e->getCode() ?: 500)
             );
         }
     }
@@ -1410,6 +1668,7 @@ class TaskService
             foreach ($originalTask->subtasks as $subtask) {
                 $clonedSubtask = $subtask->replicate();
                 $clonedSubtask->parent_id = $clonedTask->id;
+                $clonedSubtask->board_id = $clonedTask->board_id; // Ensure subtask has same board_id as parent
                 $clonedSubtask->save();
                 if($clonedSubtask->status == 'closed') {
                     $completedSubtasksCount++;
@@ -1469,6 +1728,498 @@ class TaskService
         
         // Load next stage if applicable
         return $this->loadNextStage($clonedTask);
+    }
+
+    /**
+     * Handle bulk actions for multiple tasks
+     *
+     * @param array $taskIds
+     * @param string $action
+     * @param array $params
+     * @param int $boardId
+     * @return array
+     * @throws \Exception
+     */
+    public function bulkActions($taskIds, $action, $params, $boardId)
+    {
+        if (empty($taskIds) || !is_array($taskIds)) {
+            throw new \Exception(esc_html__('No tasks selected', 'fluent-boards'));
+        }
+
+        if (count($taskIds) > 150) {
+            throw new \Exception(esc_html__('Cannot process more than 150 tasks at once. Please select fewer tasks.', 'fluent-boards'));
+        }
+
+        if (empty($action)) {
+            throw new \Exception(esc_html__('No action specified', 'fluent-boards'));
+        }
+
+        $tasks = Task::whereIn('id', $taskIds)
+                    ->where('board_id', $boardId)
+                    ->get();
+
+        if ($tasks->isEmpty()) {
+            throw new \Exception(esc_html__('No valid tasks found', 'fluent-boards'));
+        }
+
+        $result = [
+            'successful_tasks' => [],
+            'failed_tasks' => [],
+            'message' => ''
+        ];
+        
+        switch ($action) {
+            case 'move_to_stage':
+                $result = $this->bulkMoveToStage($tasks, $params, $boardId);
+                break;
+
+            case 'archive_tasks':
+                $result = $this->bulkArchiveTasks($tasks);
+                break;
+
+            case 'change_priority':
+                $result = $this->bulkChangePriority($tasks, $params);
+                break;
+
+            case 'assign_members':
+                $result = $this->bulkAssignMembers($tasks, $params, $boardId);
+                break;
+
+            case 'add_labels':
+                $result = $this->bulkAddLabels($tasks, $params, $boardId);
+                break;
+
+            default:
+                throw new \Exception(esc_html__('Invalid action specified', 'fluent-boards'));
+        }
+
+        // Dispatch WordPress action for other plugins to hook into
+        do_action('fluent_boards/bulk_action_completed', $action, $tasks, $boardId);
+
+        return $result;
+    }
+
+    /**
+     * Bulk move tasks to a stage
+     */
+    private function bulkMoveToStage($tasks, $params, $boardId)
+    {
+        $stageId = $params['stage_id'] ?? null;
+        if (!$stageId) {
+            throw new \Exception(esc_html__('Stage ID is required', 'fluent-boards'));
+        }
+        
+        $successfulTasks = [];
+        $failedTasks = [];
+        
+        foreach ($tasks as $task) {
+            try {
+                $oldStageId = $task->stage_id;
+                
+                // Set new stage
+                $task->stage_id = $stageId;
+                $task = $task->moveToNewPosition(1);
+                
+                // Only process stage-specific logic if stage actually changed
+                if ($oldStageId != $stageId) {
+                    // Manage default assignees for the new stage
+                    $this->manageDefaultAssignees($task, $stageId);
+                    
+                    // Check if new stage has default closed status
+                    $defaultPosition = $task->stage->defaultTaskStatus();
+                    if ($defaultPosition == 'closed' && $task->status != 'closed') {
+                        $task = $task->close();
+                    }
+                    
+                    // Dispatch WordPress action for stage change
+                    //currently commented, need to check in future for bulk action
+//                    do_action('fluent_boards/task_stage_updated', $task, $oldStageId);
+                    
+                    // Send email notifications for stage change
+                    $usersToSendEmail = (new \FluentBoards\App\Services\NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_STAGE_CHANGE);
+                    $this->sendMailAfterTaskModify('stage_change', $usersToSendEmail, $task->id);
+                }
+                
+                // Dispatch general task update action
+                //currently commented, need to check in future for bulk action
+//                do_action('fluent_boards/task_updated', $task, 'position');
+
+                // Reload task with all relationships
+                $task->load(['labels', 'assignees', 'board', 'stage', 'watchers', 'taskCustomFields']);
+                
+                $successfulTasks[] = $task;
+            } catch (\Exception $e) {
+                $failedTasks[] = [
+                    'id' => $task->id,
+                    'title' => $task->title,
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+        
+        $successCount = count($successfulTasks);
+        $failureCount = count($failedTasks);
+        
+        $message = '';
+        if ($failureCount === 0) {
+            // translators: %d is the number of tasks successfully moved to the stage
+            $message = sprintf(__('%d tasks moved to stage successfully', 'fluent-boards'), $successCount);
+        } elseif ($successCount === 0) {
+            // translators: %d is the number of tasks that failed to move to the stage
+            $message = sprintf(__('Failed to move %d tasks to stage', 'fluent-boards'), $failureCount);
+        } else {
+            // translators: 1: number of tasks successfully moved; 2: number of tasks failed to move
+            $message = sprintf(__('%1$d tasks moved successfully, %2$d failed', 'fluent-boards'), $successCount, $failureCount);
+        }
+        
+        return [
+            'successful_tasks' => $successfulTasks,
+            'failed_tasks' => $failedTasks,
+            'message' => $message
+        ];
+    }
+
+    /**
+     * Bulk archive tasks
+     */
+    private function bulkArchiveTasks($tasks)
+    {
+        $successfulTasks = [];
+        $failedTasks = [];
+        
+        foreach ($tasks as $task) {
+            try {
+                // Use the same logic as single task archiving
+                $this->updateTaskProperty('archived_at', current_time('mysql'), $task);
+
+                // Reload task with all relationships
+                $task->load(['labels', 'assignees', 'board', 'stage', 'watchers', 'taskCustomFields']);
+                
+                $successfulTasks[] = $task;
+            } catch (\Exception $e) {
+                $failedTasks[] = [
+                    'id' => $task->id,
+                    'title' => $task->title,
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+        
+        $successCount = count($successfulTasks);
+        $failureCount = count($failedTasks);
+        
+        $message = '';
+        if ($failureCount === 0) {
+            // translators: %d is the number of tasks archived successfully
+            $message = sprintf(__('%d tasks archived successfully', 'fluent-boards'), $successCount);
+        } elseif ($successCount === 0) {
+            // translators: %d is the number of tasks that failed to archive
+            $message = sprintf(__('Failed to archive %d tasks', 'fluent-boards'), $failureCount);
+        } else {
+            // translators: 1: number of tasks archived successfully; 2: number of tasks failed to archive
+            $message = sprintf(__('%1$d tasks archived successfully, %2$d failed', 'fluent-boards'), $successCount, $failureCount);
+        }
+        
+        return [
+            'successful_tasks' => $successfulTasks,
+            'failed_tasks' => $failedTasks,
+            'message' => $message
+        ];
+    }
+
+    /**
+     * Bulk change task priority
+     */
+    private function bulkChangePriority($tasks, $params)
+    {
+        $priority = $params['priority'] ?? null;
+        
+        // Get valid priorities including custom ones added by hooks
+        $validPriorities = array_keys(apply_filters('fluent_boards/task_priorities', [
+            'low'    => __('Low', 'fluent-boards'),
+            'medium' => __('Medium', 'fluent-boards'),
+            'high'   => __('High', 'fluent-boards')
+        ]));
+        
+        if (!in_array($priority, $validPriorities)) {
+            throw new \Exception(esc_html__('Invalid priority level', 'fluent-boards'));
+        }
+        
+        $successfulTasks = [];
+        $failedTasks = [];
+        
+        foreach ($tasks as $task) {
+            try {
+                // Use the same logic as single task priority update
+                $this->updateTaskProperty('priority', $priority, $task);
+
+                // Reload task with all relationships
+                $task->load(['labels', 'assignees', 'board', 'stage', 'watchers', 'taskCustomFields']);
+                
+                $successfulTasks[] = $task;
+            } catch (\Exception $e) {
+                $failedTasks[] = [
+                    'id' => $task->id,
+                    'title' => $task->title,
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+        
+        $successCount = count($successfulTasks);
+        $failureCount = count($failedTasks);
+        
+        $message = '';
+        if ($failureCount === 0) {
+            // translators: %d is the number of tasks whose priorities were updated successfully
+            $message = sprintf(__('%d task priorities updated successfully', 'fluent-boards'), $successCount);
+        } elseif ($successCount === 0) {
+            // translators: %d is the number of tasks whose priorities failed to update
+            $message = sprintf(__('Failed to update %d task priorities', 'fluent-boards'), $failureCount);
+        } else {
+            // translators: 1: number of tasks priorities updated; 2: number of tasks priorities failed to update
+            $message = sprintf(__('%1$d task priorities updated successfully, %2$d failed', 'fluent-boards'), $successCount, $failureCount);
+        }
+        
+        return [
+            'successful_tasks' => $successfulTasks,
+            'failed_tasks' => $failedTasks,
+            'message' => $message
+        ];
+    }
+
+    /**
+     * Bulk assign members to tasks
+     */
+    private function bulkAssignMembers($tasks, $params, $boardId)
+    {
+        $userIds = $params['user_ids'] ?? [];
+        if (!is_array($userIds)) {
+            throw new \Exception(esc_html__('User IDs must be an array', 'fluent-boards'));
+        }
+        
+        // Validate that all users are valid WordPress users
+        $validUsers = get_users(['include' => $userIds]);
+        $validUserIds = array_map(function($user) {
+            return $user->ID;
+        }, $validUsers);
+        
+        if (count($validUserIds) !== count($userIds)) {
+            throw new \Exception(esc_html__('Some user IDs are invalid', 'fluent-boards'));
+        }
+        
+        // Filter only users who are already board members (skip non-members)
+        $boardService = new \FluentBoards\App\Services\BoardService();
+        $boardMemberIds = [];
+        foreach ($validUserIds as $userId) {
+            if ($boardService->isAlreadyMember($boardId, $userId)) {
+                $boardMemberIds[] = $userId;
+            }
+        }
+        
+        // If no valid board members, skip assignment silently
+        if (empty($boardMemberIds)) {
+            return [
+                'successful_tasks' => [],
+                'failed_tasks' => [],
+                'message' => __('No valid board members selected for assignment', 'fluent-boards')
+            ];
+        }
+        
+        // Use only board members for assignment
+        $validUserIds = $boardMemberIds;
+        
+        $successfulTasks = [];
+        $failedTasks = [];
+        
+        foreach ($tasks as $task) {
+            try {
+                // Use pure "add-only" logic for bulk assignment - never remove existing assignees
+                $currentAssigneeIds = $task->assignees->pluck('ID')->toArray();
+                $newAssignees = [];
+                
+                foreach ($validUserIds as $userId) {
+                    // Only add if not already assigned
+                    if (!in_array($userId, $currentAssigneeIds)) {
+                        $newAssignees[] = $userId;
+                    }
+                }
+                
+                // Add all new assignees at once
+                if (!empty($newAssignees)) {
+                    $assigneeData = [];
+                    foreach ($newAssignees as $userId) {
+                        $assigneeData[$userId] = ['object_type' => Constant::OBJECT_TYPE_TASK_ASSIGNEE];
+                    }
+                    $task->assignees()->syncWithoutDetaching($assigneeData);
+                    
+                    // Add as watchers
+                    $watcherData = [];
+                    foreach ($newAssignees as $userId) {
+                        $watcherData[$userId] = ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH];
+                    }
+                    $task->watchers()->syncWithoutDetaching($watcherData);
+                    
+                    // Send notifications and actions only for new assignees
+                    foreach ($newAssignees as $userId) {
+                        // Send email notification if enabled and not current user
+                        if ((new \FluentBoards\App\Services\NotificationService())->checkIfEmailEnable($userId, Constant::BOARD_EMAIL_TASK_ASSIGN, $task->board_id) && $userId != get_current_user_id()) {
+                            $this->sendMailAfterTaskModify('add_assignee', $userId, $task->id);
+                        }
+                        
+                        // Dispatch WordPress actions
+                        //currently commented, need to check in future for bulk action
+//                        do_action('fluent_boards/task_assignee_added', $task, $userId);
+//                        if ($userId != get_current_user_id()) {
+//                            do_action('fluent_boards/assign_another_user', $task, $userId);
+//                        }
+                    }
+                }
+                
+                // Update task timestamp and reload all relationships
+                $task->updated_at = current_time('mysql');
+                $task->save();
+                $task->load(['labels', 'assignees', 'board', 'stage', 'watchers', 'taskCustomFields']);
+                
+                $successfulTasks[] = $task;
+            } catch (\Exception $e) {
+                $failedTasks[] = [
+                    'id' => $task->id,
+                    'title' => $task->title,
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+        
+        $successCount = count($successfulTasks);
+        $failureCount = count($failedTasks);
+        
+        $message = '';
+        if ($failureCount === 0) {
+            // translators: %d is the number of tasks where members were assigned successfully
+            $message = sprintf(__('%d tasks assigned members successfully', 'fluent-boards'), $successCount);
+        } elseif ($successCount === 0) {
+            // translators: %d is the number of tasks where assigning members failed
+            $message = sprintf(__('Failed to assign members to %d tasks', 'fluent-boards'), $failureCount);
+        } else {
+            // translators: 1: number of tasks with members assigned successfully; 2: number of tasks where assigning members failed
+            $message = sprintf(__('%1$d tasks assigned members successfully, %2$d failed', 'fluent-boards'), $successCount, $failureCount);
+        }
+        
+        return [
+            'successful_tasks' => $successfulTasks,
+            'failed_tasks' => $failedTasks,
+            'message' => $message
+        ];
+    }
+
+    /**
+     * Bulk add labels to tasks
+     */
+    private function bulkAddLabels($tasks, $params, $boardId)
+    {
+        $labelIds = $params['label_ids'] ?? [];
+        if (!is_array($labelIds)) {
+            throw new \Exception(esc_html__('Label IDs must be an array', 'fluent-boards'));
+        }
+        
+        // Validate that all labels exist and belong to the board
+        $validLabels = \FluentBoards\App\Models\Label::whereIn('id', $labelIds)
+            ->where('board_id', $boardId)
+            ->whereNull('archived_at')
+            ->get();
+        
+        if (count($validLabels) !== count($labelIds)) {
+            throw new \Exception(esc_html__('Some label IDs are invalid or do not belong to this board', 'fluent-boards'));
+        }
+        
+        $successfulTasks = [];
+        $failedTasks = [];
+        
+        foreach ($tasks as $task) {
+            try {
+                // Load existing labels first to avoid query issues
+                $task->load('labels');
+                $existingLabelIds = $task->labels->pluck('id')->toArray();
+                
+                // Use the same logic as single task label adding
+                foreach ($validLabels as $label) {
+                    // Check if label is already attached
+                    if (!in_array($label->id, $existingLabelIds)) {
+                        // Add the label using syncWithoutDetaching to avoid duplicates
+                        $task->labels()->syncWithoutDetaching([
+                            $label->id => ['object_type' => Constant::OBJECT_TYPE_TASK_LABEL]
+                        ]);
+                        
+                        // Dispatch WordPress action for label addition
+                        //currently commented, need to check in future for bulk action
+//                        do_action('fluent_boards/task_label', $task, $label, 'added');
+                    }
+                }
+                
+                // Reload the task with all relationships
+                $task->load(['labels', 'assignees', 'board', 'stage', 'watchers', 'taskCustomFields']);
+                
+                $successfulTasks[] = $task;
+            } catch (\Exception $e) {
+                $failedTasks[] = [
+                    'id' => $task->id,
+                    'title' => $task->title,
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+        
+        $successCount = count($successfulTasks);
+        $failureCount = count($failedTasks);
+        
+        $message = '';
+        if ($failureCount === 0) {
+            // translators: %d is the number of tasks labeled successfully
+            $message = sprintf(__('%d tasks labeled successfully', 'fluent-boards'), $successCount);
+        } elseif ($successCount === 0) {
+            // translators: %d is the number of tasks that failed to label
+            $message = sprintf(__('Failed to label %d tasks', 'fluent-boards'), $failureCount);
+        } else {
+            // translators: 1: number of tasks labeled successfully; 2: number of tasks failed to label
+            $message = sprintf(__('%1$d tasks labeled successfully, %2$d failed', 'fluent-boards'), $successCount, $failureCount);
+        }
+        
+        return [
+            'successful_tasks' => $successfulTasks,
+            'failed_tasks' => $failedTasks,
+            'message' => $message
+        ];
+    }
+  
+  /* Delete time tracking records for one or multiple tasks
+     * Uses try-catch for better performance - avoids table existence check overhead
+     *
+     * @param int|array $taskIds Single task ID or array of task IDs
+     * @return void
+     */
+    public function deleteTimeTrackingRecords($taskIds)
+    {
+        // Check if FluentBoards Pro time tracking is available
+        if (!class_exists('FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack')) {
+            return;
+        }
+
+        try {
+            // Handle single task ID or array of task IDs
+            if (is_array($taskIds)) {
+                if (!empty($taskIds)) {
+                    \FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack::whereIn('task_id', $taskIds)->delete();
+                }
+            } else {
+                if (is_numeric($taskIds) && $taskIds > 0) {
+                    \FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack::where('task_id', (int) $taskIds)->delete();
+                }
+            }
+        } catch (\Exception $e) {
+            // Silently fail if table doesn't exist or any other error occurs
+            // This is intentional for cleanup operations
+        }
     }
 
 }

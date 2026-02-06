@@ -15,9 +15,9 @@
     <div class="fbs_email_notification_top">
         <?php include(FLUENT_BOARDS_PLUGIN_PATH.'app/Views/emails/common-header.php'); ?>
         <div class="fbs_email_notification_contents">
-            <div class="fbs_email_content">
-                <?php echo $content; ?>
-            </div>
+                <div class="fbs_email_content">
+                <?php echo wp_kses_post(isset($fluent_boards_email_content) ? $fluent_boards_email_content : $content); ?>
+                </div>
         </div>
         <div class="fbs_email_notification_bottom">
             <?php if(!defined('FLUENT_BOARDS_PRO')): ?>
@@ -29,8 +29,8 @@
     </div>
 
     <div class="fbs_email_notification_footer">
-        <?php $footer_text = ''; ?>
-        <?php echo apply_filters('fluent_boards/email_footer', $footer_text); ?>
+        <?php $fluent_boards_footer_text = ''; ?>
+        <?php echo wp_kses_post(apply_filters('fluent_boards/email_footer', $fluent_boards_footer_text)); ?>
     </div>
 </div>
 </body>

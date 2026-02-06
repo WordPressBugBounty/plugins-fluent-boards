@@ -48,7 +48,7 @@ final class Api
         try {
             return $this->app[$this->key($key)];
         } catch(\Exception $e) {
-            throw new \Exception("The '$key' doesn't exist in FluentBoardsApi.");
+            throw new \Exception(esc_html(sprintf("The '%s' doesn't exist in FluentBoardsApi.", $key)));
         }
     }
 }

@@ -193,13 +193,6 @@ class Bootstrap extends IntegrationManagerController
                     'component' => 'number'
                 ],
                 [
-                    'key'            => 'map_files',
-                    'label'          => 'Files/Attachments',
-                    'tips'           => "This will map all the Files/Images from the form submission to the task.",
-                    'component'      => 'checkbox-single',
-                    'checkbox_label' => 'Map Files/Attachments to Task',
-                ],
-                [
                     'key'          => 'conditionals',
                     'label'        => 'Conditional Logics',
                     'tips'         => 'Allow integration conditionally based on your submission values',
@@ -224,6 +217,16 @@ class Bootstrap extends IntegrationManagerController
                 'checkbox_label' => 'Create FluentCRM Contact',
             ];
             array_splice($data['fields'], 7, 0, [$addToCrmField]);
+        }
+        if (class_exists('FluentBoardsPro\App\Models\TaskAttachment')) {
+            $mapFilesField = [
+                'key'            => 'map_files',
+                'label'          => 'Files/Attachments',
+                'tips'           => "This will map all the Files/Images from the form submission to the task.",
+                'component'      => 'checkbox-single',
+                'checkbox_label' => 'Map Files/Attachments to Task',
+            ];
+            array_splice($data['fields'], -2, 0, [$mapFilesField]);
         }
         return $data;
     }
@@ -501,7 +504,7 @@ class Bootstrap extends IntegrationManagerController
         if ($due_time > 0) {
             $currentTime = current_time('mysql');
             $readyString = '+' . $due_time . ' ' . $unit;
-            return date('Y-m-d H:i:s', strtotime($readyString, strtotime($currentTime)));
+            return gmdate('Y-m-d H:i:s', strtotime($readyString, strtotime($currentTime)));
         }
         return null;
     }

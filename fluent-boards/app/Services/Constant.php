@@ -88,6 +88,9 @@ class Constant{
     const GLOBAL_EMAIL_NOTIFICATION_DUE_DATE = 'email_after_task_due_date_change';
     const GLOBAL_EMAIL_NOTIFICATION_REMOVE_FROM_TASK = 'email_after_remove_from_task';
     const GLOBAL_EMAIL_NOTIFICATION_TASK_ARCHIVE = 'email_after_task_archive';
+    const GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK = 'watch_on_creating_task';
+    const GLOBAL_EMAIL_NOTIFICATION_COMMENTING = 'watch_on_commenting';
+    const GLOBAL_EMAIL_NOTIFICATION_ASSIGNING= 'watch_on_assigning';
     const GLOBAL_DASHBOARD_NOTIFICATION = 'dashboard_notification';
 
     const USER_DASHBOARD_VIEW = 'user_dashboard_view';

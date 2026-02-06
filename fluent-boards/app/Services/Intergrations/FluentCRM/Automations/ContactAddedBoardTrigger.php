@@ -41,7 +41,7 @@ class ContactAddedBoardTrigger extends BaseTrigger
     {
         return [
             'title'       => __('Contact Added to Board', 'fluent-boards'),
-            'sub_title'   => __('This will run when a contact will be added to a board'),
+            'sub_title'   => __('This will run when a contact will be added to a board', 'fluent-boards'),
             'fields'      => [
                 'boards'       => [
                     'type'        => 'rest_selector',
@@ -82,8 +82,8 @@ class ContactAddedBoardTrigger extends BaseTrigger
             'run_multiple' => [
                 'type'        => 'yes_no_check',
                 'label'       => '',
-                'check_label' => __('Restart the Automation Multiple times for a contact for this event. (Only enable if you want to restart automation for the same contact)', 'fluentcampaign-pro'),
-                'inline_help' => __('If you enable, then it will restart the automation for a contact if the contact already in the automation. Otherwise, It will just skip if already exist', 'fluentcampaign-pro')
+                'check_label' => __('Restart the Automation Multiple times for a contact for this event. (Only enable if you want to restart automation for the same contact)', 'fluent-boards'),
+                'inline_help' => __('If you enable, then it will restart the automation for a contact if the contact already in the automation. Otherwise, It will just skip if already exist', 'fluent-boards')
             ]
         ];
     }

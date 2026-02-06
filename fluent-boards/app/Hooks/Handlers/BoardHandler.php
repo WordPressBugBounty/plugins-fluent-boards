@@ -427,7 +427,7 @@ class BoardHandler
     {
         try{
             if(!$id) {
-                throw new \Exception('Member Not deleted');
+                throw new \Exception(esc_html__('Member Not deleted', 'fluent-boards'));
             }
             Meta::where('object_type', Constant::OBJECT_TYPE_USER)
                 ->where('object_id', $id)

@@ -14,7 +14,7 @@ class CommentImage extends Attachment
 
         static::creating(function ($model) {
             $uid = wp_generate_uuid4();
-            $model->file_hash = md5($uid . mt_rand(0, 1000));
+            $model->file_hash = md5($uid . wp_rand(0, 1000));
         });
     }
 
@@ -38,7 +38,7 @@ class CommentImage extends Attachment
         return add_query_arg([
             'fbs'               => 1,
             'fbs_comment_image'    => $this->file_hash,
-            'secure_sign' => md5($this->id . date('YmdH'))
+            'secure_sign' => md5($this->id . gmdate('YmdH'))
         ], site_url('/index.php'));
     }
 

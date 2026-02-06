@@ -33,6 +33,7 @@ class AdminMenuHandler
         });
 
         add_action('admin_enqueue_scripts', function () {
+            // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Checking admin page context for asset enqueuing, no data modification
             if (!isset($_REQUEST['page']) || $_REQUEST['page'] !== 'fluent-boards') {
                 return;
             }
@@ -322,7 +323,7 @@ class AdminMenuHandler
             FLUENT_BOARDS_PLUGIN_VERSION
         );
 
-        do_action($slug . '_loading_app');
+        do_action('fluent-boards_loading_app');
 
         wp_enqueue_script(
             $slug . '_admin_app',
@@ -522,6 +523,7 @@ class AdminMenuHandler
             $url = '#';
             return '';
 
+            // translators: %s is the URL for FluentBoards link
             return sprintf(wp_kses(__('Thank you for using <a href="%s">FluentBoards</a>', 'fluent-boards'), ['a' => ['href' => []]]), esc_url($url)) . '<span title="based on your WP timezone settings" style="margin-left: 10px;" data-timestamp="' . current_time('timestamp') . '" id="fc_server_timestamp"></span>';
         });
 
