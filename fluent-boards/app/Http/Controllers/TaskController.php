@@ -185,10 +185,10 @@ class TaskController extends Controller
 
             $stageService = new StageService();
 
-            $task = Task::findOrFail($task_id);
+            $task = Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
 
-            if (isset($task->parent_id)) {
-                $task = Task::findOrFail($task->parent_id);
+            if ($task->parent_id) {
+                $task = Task::where('board_id', $board_id)->where('id', $task->parent_id)->firstOrFail();
             }
 
             if(!$task) {
@@ -239,6 +239,7 @@ class TaskController extends Controller
     {
         $board_id = absint($board_id);
         $task_id = absint($task_id);
+        Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
         $filter = $request->getSafe('filter', 'sanitize_text_field');
         $per_page = 15; // Apparently, let's use a fixed number of items per page.
 
@@ -439,7 +440,7 @@ class TaskController extends Controller
         }
 
         $validatedData = $this->updateTaskPropValidationAndSanitation($col, $value);
-        $task = Task::with(['board', 'labels', 'assignees'])->findOrFail($task_id);
+        $task = Task::with(['board', 'labels', 'assignees'])->where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
 
         $oldDateValue = null;
         if (in_array($col, ['due_at', 'started_at'])) {
@@ -488,7 +489,7 @@ class TaskController extends Controller
     {
         $board_id = absint($board_id);
         $task_id = absint($task_id);
-        $task = Task::findOrFail($task_id);
+        $task = Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
 
         // Capture old dates before updating
         $oldDates = [
@@ -556,6 +557,7 @@ class TaskController extends Controller
     {
         $board_id = absint($board_id);
         $task_id = absint($task_id);
+        Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
         $integrationType = $request->getSafe('integrationType', 'sanitize_text_field');
         return [
             'message' => __('Task status has been updated', 'fluent-boards'),
@@ -567,7 +569,7 @@ class TaskController extends Controller
     {
         $board_id = absint($board_id);
         $task_id = absint($task_id);
-        $task = Task::findOrFail($task_id);
+        $task = Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
         $options = null;
         //if we need to do something before a task is deleted
         do_action('fluent_boards/before_task_deleted', $task, $options);
@@ -698,6 +700,7 @@ class TaskController extends Controller
     {
         $board_id = absint($board_id);
         $task_id = absint($task_id);
+        Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
         $task = $this->taskService->moveTaskToNextStage($task_id);
 
         return [
@@ -712,7 +715,7 @@ class TaskController extends Controller
     {
         $board_id = absint($board_id);
         $task_id = absint($task_id);
-        $task = Task::findOrFail($task_id);
+        $task = Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
         $oldStageId = $task->stage_id;
         $newStageId = $request->getSafe('newStageId', 'intval');
         $newIndex = $request->getSafe('newIndex', 'intval');
@@ -779,6 +782,7 @@ class TaskController extends Controller
     {
         $board_id = absint($board_id);
         $task_id = absint($task_id);
+        Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
         try {
             // Pagination parameters
             $page = $request->getSafe('page', 'intval', 1);
@@ -821,6 +825,7 @@ class TaskController extends Controller
     {
         $board_id = absint($board_id);
         $task_id = absint($task_id);
+        Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
         try {
 
 
@@ -872,6 +877,7 @@ class TaskController extends Controller
     {
         $board_id = absint($board_id);
         $task_id = absint($task_id);
+        Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
         try {
 
             $file = Arr::get($request->files(), 'file')->toArray();
@@ -889,7 +895,7 @@ class TaskController extends Controller
                 $fileUploadedData->save();
             }
 
-            $task = Task::find($task_id);
+            $task = Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
             $settings = $task->settings;
             $this->taskService->deleteTaskCoverImage($settings);
             $publicUrl = (new CommentService())->createPublicUrl($fileUploadedData, $board_id);
@@ -916,7 +922,7 @@ class TaskController extends Controller
         $board_id = absint($board_id);
         $task_id = absint($task_id);
         try {
-            $task = Task::find($task_id);
+            $task = Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
             $settings = $task->settings;
             $this->taskService->deleteTaskCoverImage($settings);
             unset($settings['cover']);
@@ -1133,6 +1139,7 @@ class TaskController extends Controller
             'comment'        => 'required',
         ]);
         try {
+            Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
             $taskData = fluent_boards_string_to_bool($taskData);
             $clonedTask = $this->taskService->cloneTask($task_id, $taskData);
 

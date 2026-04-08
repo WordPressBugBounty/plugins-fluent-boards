@@ -27,7 +27,10 @@ class CommentController extends Controller
 
     public function getComments(Request $request, $board_id, $task_id)
     {
+        $board_id = absint($board_id);
+        $task_id = absint($task_id);
         try {
+            Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
             $filter = $request->getSafe('filter', 'sanitize_text_field');
             $per_page =  10;
 
@@ -105,7 +108,7 @@ class CommentController extends Controller
 
             $usersToSendEmail = [];
             if ($comment->type == 'reply') {
-                $parentComment = Comment::findOrFail($comment->parent_id);
+                $parentComment = Comment::where('board_id', (int) $board_id)->where('id', $comment->parent_id)->firstOrFail();
                 $commenterId = $parentComment->created_by;
                 if ($commenterId != get_current_user_id())
                 {
@@ -212,7 +215,10 @@ class CommentController extends Controller
 
     public function deleteComment($board_id, $comment_id)
     {
+        $board_id = absint($board_id);
+        $comment_id = absint($comment_id);
         try {
+            Comment::where('board_id', $board_id)->where('id', $comment_id)->firstOrFail();
             $this->commentService->delete($comment_id);
 
             return $this->sendSuccess([
@@ -261,7 +267,10 @@ class CommentController extends Controller
 
     public function deleteReply($board_id, $reply_id)
     {
+        $board_id = absint($board_id);
+        $reply_id = absint($reply_id);
         try {
+            Comment::where('board_id', $board_id)->where('id', $reply_id)->firstOrFail();
             $this->commentService->deleteReply($reply_id);
 
             return $this->sendSuccess([
@@ -330,7 +339,9 @@ class CommentController extends Controller
 
     public function updateCommentPrivacy($board_id, $comment_id)
     {
-        $comment = Comment::findOrFail($comment_id);
+        $board_id = absint($board_id);
+        $comment_id = absint($comment_id);
+        $comment = Comment::where('board_id', $board_id)->where('id', $comment_id)->firstOrFail();
 
         // Check if user has permission to update the comment
         if ($comment->created_by != get_current_user_id()) {

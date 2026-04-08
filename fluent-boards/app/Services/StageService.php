@@ -275,9 +275,13 @@ class StageService
         $board->save();
     }
 
-    public function updateStageTemplate($stage_id)
+    public function updateStageTemplate($stage_id, $boardId = null)
     {
-        $stage = Stage::findOrFail($stage_id);
+        $query = Stage::query();
+        if ($boardId) {
+            $query->where('board_id', $boardId);
+        }
+        $stage = $query->findOrFail($stage_id);
         $stageSettings = $stage->settings;
         if($stageSettings && array_key_exists('is_template', $stageSettings))
         {
@@ -321,9 +325,13 @@ class StageService
         }
         return $tasks;
     }
-    public function archiveAllTasksInStage($stage_id)
+    public function archiveAllTasksInStage($stage_id, $boardId = null)
     {
-        $tasks = Task::where('stage_id', $stage_id)->whereNull('parent_id')->whereNull('archived_at')->get();
+        $query = Task::where('stage_id', $stage_id)->whereNull('parent_id')->whereNull('archived_at');
+        if ($boardId) {
+            $query->where('board_id', $boardId);
+        }
+        $tasks = $query->get();
         foreach ($tasks as $task) {
             $task->position = 0;
             $task->archived_at = current_time('mysql');

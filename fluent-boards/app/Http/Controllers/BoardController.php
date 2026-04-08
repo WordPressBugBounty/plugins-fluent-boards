@@ -968,7 +968,7 @@ class BoardController extends Controller
 
     public function archiveAllTasksInStage($board_id, $stage_id)
     {
-        $updates = $this->stageService->archiveAllTasksInStage($stage_id);
+        $updates = $this->stageService->archiveAllTasksInStage($stage_id, $board_id);
         return [
             'message'      => __('Tasks have been archived', 'fluent-boards'),
             'updatedTasks' => $updates,

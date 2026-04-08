@@ -708,9 +708,14 @@ class BoardService
             ->get();
     }
 
-    public function deleteInvitation($invitationId)
+    public function deleteInvitation($invitationId, $boardId = null)
     {
-        Meta::findOrFail($invitationId)->delete();
+        $query = Meta::query();
+        if ($boardId) {
+            $query->where('object_id', $boardId)
+                  ->where('object_type', Constant::OBJECT_TYPE_BOARD);
+        }
+        $query->findOrFail($invitationId)->delete();
     }
 
     public function hasDataChanged($boardId)
