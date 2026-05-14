@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 7.3
-Stable tag: 1.91.3
+Stable tag: 1.91.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,13 +169,16 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
-=v1.91.3 (Date: April 08, 2025) =
+
+=v1.91.5 (Date: May 14, 2025)
+- FluentCRM v3 Compatibility
+
+=v1.91.3 (Date: April 08, 2025)
 - Fixes unauthorized access vulnerabilities
 
 =v1.91.2 (Date: January 26, 2025) =
 -Improvement: Auth policy update for better security.
 -Fixed: Digital Ocean file upload issue.
-
 
 = v1.91.1 (Date: January 08, 2025) =
 - Fixed: Task description formatting . 
