@@ -25,7 +25,7 @@ class AdminMenuHandler
             if (PermissionManager::userHasAnyBoardAccess()) {
                 $items['fluent-boards'] = [
                     'key'       => 'fluent-boards',
-                    'label'     => __('Fluent Boards', 'fluent-boards'),
+                    'label'     => __('Boards', 'fluent-boards'),
                     'permalink' => admin_url('admin.php?page=fluent-boards#/')
                 ];
             }

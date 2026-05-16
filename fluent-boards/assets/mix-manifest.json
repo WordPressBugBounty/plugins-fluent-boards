@@ -1,4 +1,22 @@
 {
-    "/crm-contact-app.js": "/crm-contact-app.js",
-    "/admin/crm-contact-app.css": "/admin/crm-contact-app.css"
+    "/admin/app.min.js": "/admin/app.min.js",
+    "/admin/single_board.min.js": "/admin/single_board.min.js",
+    "/crm-contact-app3.js": "/crm-contact-app3.js",
+    "/admin/global_admin.js": "/admin/global_admin.js",
+    "/admin/admin.css": "/admin/admin.css",
+    "/admin/crm-contact-app3.css": "/admin/crm-contact-app3.css",
+    "/images/addons/fluent-crm.svg": "/images/addons/fluent-crm.svg",
+    "/images/addons/fluent-roadmap.png": "/images/addons/fluent-roadmap.png",
+    "/images/addons/fluent-smtp.svg": "/images/addons/fluent-smtp.svg",
+    "/images/addons/fluent-support.svg": "/images/addons/fluent-support.svg",
+    "/images/addons/fluentform.png": "/images/addons/fluentform.png",
+    "/images/bg-shape.png": "/images/bg-shape.png",
+    "/images/dashboard_icon.svg": "/images/dashboard_icon.svg",
+    "/images/empty-comment.png": "/images/empty-comment.png",
+    "/images/icon.png": "/images/icon.png",
+    "/images/icon.svg": "/images/icon.svg",
+    "/images/logo.png": "/images/logo.png",
+    "/images/logo.svg": "/images/logo.svg",
+    "/images/white_icon.png": "/images/white_icon.png",
+    "/images/white_icon.svg": "/images/white_icon.svg"
 }
