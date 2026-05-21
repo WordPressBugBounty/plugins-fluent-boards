@@ -24,7 +24,12 @@ if (!function_exists('fluent_boards_user_avatar')) {
     {
         $user = get_user_by('email', $email);
 
-        if($user) {
+        if ($user) {
+            $photo_url = get_user_meta($user->ID, 'fbs_profile_photo', true);
+            if ($photo_url) {
+                return apply_filters('fluent_boards/get_avatar', $photo_url, $email);
+            }
+
             $has_custom_avatar = get_user_meta($user->ID, 'wp_user_avatar', true);
             if ($has_custom_avatar) {
                 $custom_avatar_attachment = get_post($has_custom_avatar);

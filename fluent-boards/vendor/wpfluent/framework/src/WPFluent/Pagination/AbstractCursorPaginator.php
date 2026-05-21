@@ -5,6 +5,7 @@ namespace FluentBoards\Framework\Pagination;
 use Closure;
 use Exception;
 use ArrayAccess;
+use FluentBoards\Framework\Foundation\App;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Str;
 use FluentBoards\Framework\Support\Tappable;
@@ -82,6 +83,13 @@ abstract class AbstractCursorPaginator
      * @var array
      */
     protected $options;
+
+    /**
+     * Indicates whether there are more items in the data source.
+     *
+     * @return bool
+     */
+    protected $hasMore;
 
     /**
      * The current cursor resolver callback.
@@ -226,7 +234,7 @@ abstract class AbstractCursorPaginator
     /**
      * Get the cursor parameter value from a pivot model if applicable.
      *
-     * @param  \ArrayAccess|\stdClass  $item
+     * @param  \FluentBoards\Framework\Database\Orm\Model  $item
      * @param  string  $parameterName
      * @return string|null
      */
@@ -463,6 +471,10 @@ abstract class AbstractCursorPaginator
      */
     public function setPath($path)
     {
+        if (!preg_match('/^https?:\/\//i', $path)) {
+            $path = App::make('request')->url() . '/' . trim($path, '/');
+        }
+
         $this->path = $path;
 
         return $this;
@@ -647,6 +659,10 @@ abstract class AbstractCursorPaginator
      */
     public function __toString()
     {
-        return (string) $this->toArray();
+        if (method_exists($this, 'render')) {
+            return $this->render();
+        }
+
+        return get_class($this);
     }
 }

@@ -54,18 +54,16 @@ class TaskHandler
             ];
         }
 
-        return $formattedUsers;
-
         if (!$includedIds) {
             return $formattedUsers;
         }
+
         if (!is_array($includedIds)) {
-            //	        $includedIds = [$includedIds];
             $includedIds = [$includedIds];
         }
 
-        //	    $includedIds = array_diff($includedIds, $pushedIds);
-        //
+        $includedIds = array_diff(array_map('intval', $includedIds), $pushedIds);
+
         if ($includedIds) {
             $users = get_users([
                 'include' => $includedIds,
@@ -73,16 +71,14 @@ class TaskHandler
 
             foreach ($users as $user) {
                 $formattedUsers[] = [
-                    'id3'               => $user->ID,
-                    'title'             => $user->display_name . ' (' . $user->user_email . ')',
-                    'photo_'            => /* get photo by gravitar or something */ get_avatar_url($user->user_email, ['size' => 50]),
-                    'left_side_value'   => $user->display_name,
-                    'right_side_value'  => $user->user_email,
-                    'right_side_value1' => $user->user_email,
+                    'id'               => $user->ID,
+                    'title'            => $user->display_name . ' (' . $user->user_email . ')',
+                    'photo'            => get_avatar_url($user->user_email),
+                    'left_side_value'  => $user->display_name,
+                    'right_side_value' => $user->user_email,
                 ];
             }
         }
-        //        dd($formattedUsers);
 
         return $formattedUsers;
     }

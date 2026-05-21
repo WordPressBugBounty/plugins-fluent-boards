@@ -2,29 +2,29 @@
     "packages": [
         {
             "name": "woocommerce/action-scheduler",
-            "version": "3.9.2",
-            "version_normalized": "3.9.2.0",
+            "version": "3.9.3",
+            "version_normalized": "3.9.3.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/woocommerce/action-scheduler.git",
-                "reference": "efbb7953f72a433086335b249292f280dd43ddfe"
+                "reference": "c58cdbab17651303d406cd3b22cf9d75c71c986c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/woocommerce/action-scheduler/zipball/efbb7953f72a433086335b249292f280dd43ddfe",
-                "reference": "efbb7953f72a433086335b249292f280dd43ddfe",
+                "url": "https://api.github.com/repos/woocommerce/action-scheduler/zipball/c58cdbab17651303d406cd3b22cf9d75c71c986c",
+                "reference": "c58cdbab17651303d406cd3b22cf9d75c71c986c",
                 "shasum": ""
             },
             "require": {
-                "php": ">=7.1"
+                "php": ">=7.2"
             },
             "require-dev": {
-                "phpunit/phpunit": "^7.5",
+                "phpunit/phpunit": "^8.5",
                 "woocommerce/woocommerce-sniffs": "0.1.0",
                 "wp-cli/wp-cli": "~2.5.0",
                 "yoast/phpunit-polyfills": "^2.0"
             },
-            "time": "2025-02-03T09:09:30+00:00",
+            "time": "2025-07-15T09:32:30+00:00",
             "type": "wordpress-plugin",
             "extra": {
                 "scripts-description": {
@@ -42,34 +42,34 @@
             "homepage": "https://actionscheduler.org/",
             "support": {
                 "issues": "https://github.com/woocommerce/action-scheduler/issues",
-                "source": "https://github.com/woocommerce/action-scheduler/tree/3.9.2"
+                "source": "https://github.com/woocommerce/action-scheduler/tree/3.9.3"
             },
             "install-path": "../woocommerce/action-scheduler"
         },
         {
             "name": "wpfluent/framework",
-            "version": "2.10.48",
-            "version_normalized": "2.10.48.0",
+            "version": "2.11.17",
+            "version_normalized": "2.11.17.0",
             "source": {
                 "type": "git",
-                "url": "git@github.com:wpfluent/framework.git",
-                "reference": "686788c53b51c0383bd6c2097adcc356679308eb"
+                "url": "git@github.com:wpfluent/framework2x.git",
+                "reference": "d3117998519c0b65afd90811848da43f69821513"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/wpfluent/framework/zipball/686788c53b51c0383bd6c2097adcc356679308eb",
-                "reference": "686788c53b51c0383bd6c2097adcc356679308eb",
+                "url": "https://api.github.com/repos/wpfluent/framework2x/zipball/d3117998519c0b65afd90811848da43f69821513",
+                "reference": "d3117998519c0b65afd90811848da43f69821513",
                 "shasum": ""
             },
             "require": {
                 "ext-json": "*",
                 "php": "^7.3|^8.0"
             },
-            "time": "2025-05-11T12:10:19+00:00",
+            "time": "2026-04-20T20:51:03+00:00",
             "type": "library",
             "extra": {
                 "branch-alias": {
-                    "dev-master": "2.0.x-dev"
+                    "dev-master": "2.10.x-dev"
                 }
             },
             "installation-source": "dist",
@@ -89,8 +89,8 @@
             ],
             "description": "A lightweight rest api based framework to build WordPress plugins.",
             "support": {
-                "source": "https://github.com/wpfluent/framework/tree/2.10.48",
-                "issues": "https://github.com/wpfluent/framework/issues"
+                "source": "https://github.com/wpfluent/framework2x/tree/2.11.17",
+                "issues": "https://github.com/wpfluent/framework2x/issues"
             },
             "install-path": "../wpfluent/framework"
         }

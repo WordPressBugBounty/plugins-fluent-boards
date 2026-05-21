@@ -252,6 +252,10 @@ class UserService
                 $tasksQuery->upcoming()
                 ->whereIn('board_id', $allowedBoardIds);
                 break;
+            case 'due_today':
+                $tasksQuery->dueToday()
+                ->whereIn('board_id', $allowedBoardIds);
+                break;
             case 'overdue':
                 $tasksQuery->overdue()
                 ->whereIn('board_id', $allowedBoardIds);

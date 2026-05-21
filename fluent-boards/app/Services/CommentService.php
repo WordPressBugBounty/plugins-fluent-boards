@@ -11,9 +11,29 @@ use FluentBoardsPro\App\Services\RemoteUrlParser;
 
 class CommentService
 {
-    public function getComments($id, $per_page, $filter)
+    /**
+     * Resolve a comment only when its task belongs to the requested board.
+     *
+     * @param int $commentId
+     * @param int $boardId
+     * @return Comment
+     * @throws \Exception
+     */
+    public function findCommentOnBoard($commentId, $boardId)
     {
-        $task = Task::findOrFail($id);
+        $comment = Comment::findOrFail($commentId);
+        (new TaskService())->findTaskOnBoard($comment->task_id, $boardId);
+
+        if ($comment->board_id && (int) $comment->board_id !== absint($boardId)) {
+            throw new \Exception(esc_html__('Comment not found', 'fluent-boards'));
+        }
+
+        return $comment;
+    }
+
+    public function getComments($id, $per_page, $filter, $boardId = null)
+    {
+        $task = $boardId ? (new TaskService())->findTaskOnBoard($id, $boardId) : Task::findOrFail($id);
 
         $commentsQuery = $task->comments()->whereNull('parent_id')
             ->with(['user']);
@@ -34,9 +54,9 @@ class CommentService
         return $comments;
     }
 
-    public function getTotal($id)
+    public function getTotal($id, $boardId = null)
     {
-        $task = Task::findOrFail($id);
+        $task = $boardId ? (new TaskService())->findTaskOnBoard($id, $boardId) : Task::findOrFail($id);
         $totalComment = Comment::where('task_id', $task->id)
             ->type('comment')
             ->count();
@@ -53,8 +73,20 @@ class CommentService
         return $replies;
     }
 
-    public function create($commentData, $id)
+    public function create($commentData, $id, $boardId = null)
     {
+        if ($boardId) {
+            (new TaskService())->findTaskOnBoard($id, $boardId);
+
+            if (!empty($commentData['parent_id'])) {
+                $parentComment = $this->findCommentOnBoard($commentData['parent_id'], $boardId);
+
+                if ((int) $parentComment->task_id !== (int) $id) {
+                    throw new \Exception(esc_html__('Comment not found', 'fluent-boards'));
+                }
+            }
+        }
+
         $comment = Comment::create($commentData);
         do_action('fluent_boards/comment_created', $comment);
         return $comment;
@@ -286,9 +318,9 @@ class CommentService
         }
     }
 
-    public function update($commentData, $comment_id, $mentionData)
+    public function update($commentData, $comment_id, $mentionData, $boardId = null)
     {
-        $comment = Comment::findOrFail($comment_id);
+        $comment = $boardId ? $this->findCommentOnBoard($comment_id, $boardId) : Comment::findOrFail($comment_id);
 
         if ($comment->created_by != get_current_user_id()) {
             return false;
@@ -326,9 +358,9 @@ class CommentService
         return $comment;
     }
 
-    public function delete($comment_id)
+    public function delete($comment_id, $boardId = null)
     {
-        $comment = Comment::findOrFail($comment_id);
+        $comment = $boardId ? $this->findCommentOnBoard($comment_id, $boardId) : Comment::findOrFail($comment_id);
 
         if ($comment->created_by != get_current_user_id()) {
             return false;
@@ -354,9 +386,9 @@ class CommentService
         }
     }
 
-    public function updateReply($replyData, $id)
+    public function updateReply($replyData, $id, $boardId = null)
     {
-        $reply = Comment::findOrFail($id);
+        $reply = $boardId ? $this->findCommentOnBoard($id, $boardId) : Comment::findOrFail($id);
 
         if ($reply->created_by != get_current_user_id()) {
             return false;
@@ -370,9 +402,9 @@ class CommentService
         return $reply;
     }
 
-    public function deleteReply($id)
+    public function deleteReply($id, $boardId = null)
     {
-        $reply = Comment::findOrFail($id);
+        $reply = $boardId ? $this->findCommentOnBoard($id, $boardId) : Comment::findOrFail($id);
 //        $taskId = $reply->task_id;
 
         if ($reply->created_by != get_current_user_id()) {

@@ -5,8 +5,17 @@ namespace FluentBoards\Framework\Foundation;
 use FluentBoards\Framework\Foundation\App;
 use FluentBoards\Framework\Validator\ValidationException;
 
+/**
+ * @property \FluentBoards\Framework\Http\Request\Request $request
+ */
 abstract class RequestGuard
 {
+    /**
+     * The request instance.
+     * @var \FluentBoards\Framework\Http\Request\Request
+     */
+    protected $request;
+
     /**
      * Retrive the validation rules
      * @return array
@@ -49,12 +58,12 @@ abstract class RequestGuard
      * @param  array $rules Optional
      * @param  array $messages Optional
      * @return array Request Data
-     * @throws FluentBoards\Framework\Validator\ValidationException
+     * @throws \FluentBoards\Framework\Validator\ValidationException
      */
     public function validate($rules = [], $messages = [])
     {
         try {
-            return App::make('request')->validate(
+            return $this->request->validate(
                 $rules ?: (array) $this->rules(),
                 $messages ?: (array) $this->messages()
             );
@@ -64,10 +73,8 @@ abstract class RequestGuard
             
             $validator->addError($e->errors());
 
-            $after = $this->afterValidation($validator);
-
             if (!($errors = $validator->errors())) {
-                return;
+                return $this->afterValidation($validator);
             }
 
             $e = new ValidationException(
@@ -98,20 +105,20 @@ abstract class RequestGuard
     /**
      * Handles validation including before and after calls
      *
-     * @throws FluentBoards\Framework\Validator\ValidationException
-     * @return null
+     * @throws \FluentBoards\Framework\Validator\ValidationException
+     * @return void
      */
     public static function applyValidation()
     {
         $instance = new static;
 
-        $request = App::getInstance('request');
+        $request = App::make('request');
 
         $request->merge($instance->beforeValidation());
 
         $instance->validate();
 
-        $request->merge($instance->afterValidation());
+        $request->merge($instance->afterValidation(App::make('validator')));
     }
 
     /**
@@ -126,6 +133,27 @@ abstract class RequestGuard
     }
 
     /**
+     * Set an input element to the request.
+     *
+     * @param  string $key
+     * @return mixed
+     */
+    public function __set($key, $value)
+    {
+        return $this->set($key, $value);
+    }
+
+    /**
+     * Set the request instance.
+     * 
+     * @param \FluentBoards\Framework\Http\Request\Request $request
+     */
+    public function setRequestInstance($request)
+    {
+        $this->request = $request;
+    }
+
+    /**
      * Handle the dynamic method calls
      * @param  string $method
      * @param  array $params
@@ -134,7 +162,7 @@ abstract class RequestGuard
     public function __call($method, $params)
     {
         return call_user_func_array(
-            [App::make('request'), $method], $params
+            [$this->request, $method], $params
         );
     }
 }

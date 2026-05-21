@@ -391,7 +391,7 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
      * @param  callable|null  $callback
      * @return static
      */
-    public function filter(callable $callback = null)
+    public function filter(?callable $callback = null)
     {
         if ($callback) {
             return new static(Arr::where($this->items, $callback));
@@ -421,7 +421,7 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
      * @param  mixed  $default
      * @return mixed
      */
-    public function first(callable $callback = null, $default = null)
+    public function first(?callable $callback = null, $default = null)
     {
         return Arr::first($this->items, $callback, $default);
     }
@@ -429,7 +429,7 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
     /**
      * Get a flattened array of the items in the collection.
      *
-     * @param  int  $depth
+     * @param  int|float  $depth
      * @return static
      */
     public function flatten($depth = INF)
@@ -491,7 +491,7 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
             return $this->items[$key];
         }
 
-        $this->offsetSet($key, $value = Helper::value($value)); // @need_fix
+        $this->offsetSet($key, $value = Helper::value($value));
 
         return $value;
     }
@@ -624,6 +624,7 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
             return implode($glue ?? '', $this->pluck($value)->all());
         }
 
+        // @phpstan-ignore-next-line
         return implode($value ?? '', $this->items);
     }
 
@@ -636,6 +637,23 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
     public function intersect($items)
     {
         return new static(array_intersect($this->items, $this->getArrayableItems($items)));
+    }
+
+    /**
+     * Intersect the collection with the given items,
+     * comparing both keys and values.
+     *
+     * @param  mixed  $items
+     * @return static
+     */
+    public function intersectAssoc($items)
+    {
+        return new static(
+            array_intersect_assoc(
+                $this->items,
+                $this->getArrayableItems($items)
+            )
+        );
     }
 
     /**
@@ -718,7 +736,7 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
      * @param  mixed  $default
      * @return mixed
      */
-    public function last(callable $callback = null, $default = null)
+    public function last(?callable $callback = null, $default = null)
     {
         return Arr::last($this->items, $callback, $default);
     }
@@ -1532,6 +1550,17 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
         $this->items = $this->map($callback)->all();
 
         return $this;
+    }
+
+    /**
+     * Flattens a multi-dimensional collection into
+     * a single level collection with dots.
+     *
+     * @return static
+     */
+    public function dot()
+    {
+        return new static(Arr::dot($this->all()));
     }
 
     /**

@@ -7,6 +7,17 @@ use ReflectionException;
 use FluentBoards\Framework\Foundation\App;
 use FluentBoards\Framework\Validator\ValidationException;
 
+/**
+ * Base controller — exposes the Application, Request, and Response
+ * via protected properties. The `@property` annotations below are
+ * intentional in addition to the protected declarations: they help
+ * PHPStan disambiguate when a subclass declares a method with the
+ * same name as one of these properties (e.g., `function app()`).
+ *
+ * @property \FluentBoards\Framework\Foundation\Application      $app
+ * @property \FluentBoards\Framework\Http\Request\Request        $request
+ * @property \FluentBoards\Framework\Http\Response\Response      $response
+ */
 abstract class Controller
 {
     /**
@@ -17,13 +28,13 @@ abstract class Controller
 
     /**
      * Request Instane
-     * @var \FluentBoards\Framework\Request\Request
+     * @var \FluentBoards\Framework\Http\Request\Request
      */
     protected $request = null;
 
     /**
      * Response Instane
-     * @var \FluentBoards\Framework\Response\Response
+     * @var \FluentBoards\Framework\Http\Response\Response
      */
     protected $response = null;
 
@@ -53,6 +64,7 @@ abstract class Controller
     public function validate($data, $rules, $messages = [])
     {
         try {
+            // @phpstan-ignore-next-line
             $validator = $this->app->validator->make($data, $rules, $messages);
 
             if ($validator->validate()->fails()) {
@@ -119,9 +131,9 @@ abstract class Controller
     }
 
     /**
-     * Send a success json response
+     * Send a success json response.
+     * 
      * @param  array  $data
-     * @param  integer $code
      * @return \WP_REST_Response
      */
     public function sendSuccess($data = [])

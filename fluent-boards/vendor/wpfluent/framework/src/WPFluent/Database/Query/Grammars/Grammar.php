@@ -1028,7 +1028,7 @@ class Grammar extends BaseGrammar
         $limit = (int) $query->groupLimit['value'];
         $offset = $query->offset;
 
-        if (isset($offset)) {
+        if ($offset !== null) {
             $offset = (int) $offset;
             $limit += $offset;
 
@@ -1051,7 +1051,7 @@ class Grammar extends BaseGrammar
 
         $sql = 'select * from ('.$sql.') as '.$table.' where '.$row.' <= '.$limit;
 
-        if (isset($offset)) {
+        if ($offset !== null) {
             $sql .= ' and '.$row.' > '.$offset;
         }
 
@@ -1486,6 +1486,18 @@ class Grammar extends BaseGrammar
     {
         return 'ROLLBACK TO SAVEPOINT '.$name;
     }
+
+    /**
+     * Compile the SQL statement to release a savepoint.
+     *
+     * @param string $name
+     * @return string
+     */
+    public function compileSavepointRelease($name)
+    {
+        return 'RELEASE SAVEPOINT ' . $name;
+    }
+
 
     /**
      * Wrap the given JSON selector for boolean values.

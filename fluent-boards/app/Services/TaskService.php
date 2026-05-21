@@ -8,6 +8,7 @@ use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Models\NotificationUser;
 use FluentBoards\App\Models\TaskImage;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Models\Label;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
@@ -15,16 +16,62 @@ use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\CommentImage;
+use FluentBoards\App\Models\Relation;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoardsPro\App\Models\TaskAttachment;
-use FluentBoardsPro\App\Modules\TimeTracking\TimeTrackingHelper;
 use FluentBoardsPro\App\Services\AttachmentService;
-use FluentBoardsPro\App\Services\ProTaskService;
 use FluentBoardsPro\App\Services\RemoteUrlParser;
 use FluentRoadmap\App\Models\IdeaReaction;
 
 class TaskService
 {
+    /**
+     * Resolve a task only when it belongs to the requested board.
+     *
+     * Subtasks normally carry the same board_id as their parent, but the parent
+     * fallback protects older data where that relationship may be incomplete.
+     *
+     * @param int $taskId
+     * @param int $boardId
+     * @param bool $allowParentFallback
+     * @return Task
+     * @throws \Exception
+     */
+    public function findTaskOnBoard($taskId, $boardId, $allowParentFallback = true)
+    {
+        $taskId = absint($taskId);
+        $boardId = absint($boardId);
+
+        if (!$taskId || !$boardId) {
+            throw new \Exception(esc_html__('Task not found', 'fluent-boards'));
+        }
+
+        $task = Task::where('id', $taskId)
+            ->where('board_id', $boardId)
+            ->first();
+
+        if ($task) {
+            return $task;
+        }
+
+        if ($allowParentFallback) {
+            $task = Task::where('id', $taskId)
+                ->whereNull('board_id')
+                ->whereNotNull('parent_id')
+                ->first();
+
+            if ($task) {
+                $parentBoardId = Task::where('id', $task->parent_id)->value('board_id');
+
+                if ((int) $parentBoardId === $boardId) {
+                    return $task;
+                }
+            }
+        }
+
+        throw new \Exception(esc_html__('Task not found', 'fluent-boards'));
+    }
+
     public function createTask($data, $boardId)
     {
         $board = Board::select('id', 'type')->find($boardId);
@@ -35,6 +82,10 @@ class TaskService
 
         $stage = Stage::find($data['stage_id']);
         if (!$stage) {
+            throw new \Exception(esc_html__("Stage doesn't exists", 'fluent-boards'));
+        }
+
+        if ((int) $stage->board_id !== (int) $boardId) {
             throw new \Exception(esc_html__("Stage doesn't exists", 'fluent-boards'));
         }
 
@@ -58,11 +109,13 @@ class TaskService
         $data['position'] = $this->getLastPositionOfTasks($stage->id);
 
         $data['board_id'] = $boardId;
+        $data = Helper::normalizeDates($data, ['due_at', 'started_at', 'last_completed_at', 'archived_at', 'remind_at']);
 
         $data = array_filter($data);
         $task = (new Task())->createTask($data);
 
         $this->manageDefaultAssignees($task, $stage->id);
+        $this->manageDefaultWatchers($task, $stage->id);
 
         if (isset($data['is_template']) && $data['is_template'] == 'yes') {
             $task->updateMeta(Constant::IS_TASK_TEMPLATE, $data['is_template']);
@@ -93,6 +146,7 @@ class TaskService
     {
         $assigned = $this->getTasksForBoardsByCategory('assigned', $limit, $task_ids);
         $overDue = $this->getTasksForBoardsByCategory('overdue', $limit, $task_ids);
+        $dueToday = $this->getTasksForBoardsByCategory('due_today', $limit, $task_ids);
         $completed = $this->getTasksForBoardsByCategory('completed', $limit, $task_ids);
         $mentioned = $this->getTasksForBoardsByCategory('mentioned', $limit, $task_ids);
         $upcoming = $this->getTasksForBoardsByCategory('upcoming', $limit, $task_ids);
@@ -101,11 +155,23 @@ class TaskService
         return [
             'assigned'            => $assigned ?? [],
             'overdue'             => $overDue ?? [],
+            'due_today'           => $dueToday ?? [],
             'upcoming'            => $upcoming ?? [],
             'mentioned'           => $mentioned ?? [],
             'completed'           => $completed ?? [],
             'others'              => $others ?? []
         ];
+    }
+
+    public function getTaskCountsForBoards($categories = ['assigned', 'overdue', 'upcoming', 'completed', 'others'], $taskIds = [])
+    {
+        $counts = [];
+
+        foreach ($categories as $category) {
+            $counts[$category] = $this->getTaskCountForBoardsByCategory($category, $taskIds);
+        }
+
+        return $counts;
     }
 
     public function getTasksForBoardsByCategory($category, $limit, $taskIds)
@@ -123,6 +189,9 @@ class TaskService
                 break;
             case 'upcoming':
                 $taskQuery->upcoming();
+                break;
+            case 'due_today':
+                $taskQuery->dueToday();
                 break;
             case 'others':
                 $taskQuery->whereNull('due_at');
@@ -174,6 +243,54 @@ class TaskService
         return $tasks->toArray();
     }
 
+    public function getTaskCountForBoardsByCategory($category, $taskIds)
+    {
+        if (empty($taskIds)) {
+            return 0;
+        }
+
+        $taskQuery = Task::query()
+            ->whereIn('id', $taskIds)
+            ->whereNull('archived_at')
+            ->whereNull('parent_id');
+
+        switch ($category) {
+            case 'overdue':
+                $taskQuery->overdue();
+                break;
+            case 'upcoming':
+                $taskQuery->upcoming();
+                break;
+            case 'due_today':
+                $taskQuery->dueToday();
+                break;
+            case 'completed':
+                $taskQuery->where('status', 'closed');
+                break;
+            case 'others':
+                $taskQuery->whereNull('due_at');
+                break;
+            case 'assigned':
+                $currentUserId = get_current_user_id();
+                $taskQuery = Task::query()
+                    ->select('fbs_tasks.id')
+                    ->whereIn('fbs_tasks.id', $taskIds)
+                    ->whereNull('fbs_tasks.archived_at')
+                    ->whereNull('fbs_tasks.parent_id')
+                    ->join('fbs_relations as rel', function ($join) use ($currentUserId) {
+                        $join->on('rel.object_id', '=', 'fbs_tasks.id')
+                            ->where('rel.object_type', Constant::OBJECT_TYPE_TASK_ASSIGNEE)
+                            ->where('rel.foreign_id', $currentUserId);
+                    });
+
+                return (int) $taskQuery->distinct()->count('fbs_tasks.id');
+            default:
+                return 0;
+        }
+
+        return (int) $taskQuery->count();
+    }
+
     /*
       * TODO: Refactor this function - For me.
 	*/
@@ -190,6 +307,10 @@ class TaskService
         ];
 
         if (in_array($col, $validColumns) && $task->{$col} != $value) {
+            if ($col === 'remind_at') {
+                $value = Helper::normalizeDateValue($value);
+            }
+
             if ($col == 'settings' && isset($value['cover']['backgroundColor']) && $value['cover']['backgroundColor']) {
                 $settings = $task->settings;
                 $this->deleteTaskCoverImage($settings);
@@ -288,6 +409,7 @@ class TaskService
 
                         // check in keys of allowed types
                         if (array_key_exists($value, $allowedTypes)) {
+                            
                             $value = $value;
                         } else {
                             $value = null;
@@ -381,9 +503,26 @@ class TaskService
     private function updateArchive($value, $task)
     {
         if ($value != null) {
+            // Archiving task
             $task->position = 0;
         } else {
+            // Restoring task - check if stage is archived
+            $stage = Stage::find($task->stage_id);
+            if ($stage && $stage->archived_at !== null) {
+                throw new \Exception(
+                    sprintf(
+                        // translators: %s is the archived stage title.
+                        esc_html__('This task cannot be restored because its stage "%s" is archived. Please restore the stage first.', 'fluent-boards'),
+                        esc_html($stage->title)
+                    ),
+                    400
+                );
+            }
+            
             $task->moveToNewPosition(1);
+            
+            // Clean up archived_by_stage meta when task is manually restored
+            $this->cleanupArchivedByStageMetaIfExists($task->id);
         }
         $task->archived_at = $value == null ? null : current_time('mysql');
         $task->save();
@@ -426,7 +565,7 @@ class TaskService
     private function updateDueDate($value, $task)
     {
         $oldValue = $task->due_at;
-        $value = $this->filterNullDate($value);
+        $value = Helper::normalizeDateValue($value);
         $task->due_at = $value;
         $task->save();
 
@@ -445,7 +584,7 @@ class TaskService
     private function updateStartedDate($value, $task)
     {
         $oldValue = $task->started_at;
-        $value = $this->filterNullDate($value);
+        $value = Helper::normalizeDateValue($value);
         $task->started_at = $value;
         $task->save();
 
@@ -485,9 +624,9 @@ class TaskService
     $task->save();
 }
 
-    public function taskCoverPhotoUpdate($taskId, $imagePath)
+    public function taskCoverPhotoUpdate($taskId, $imagePath, $boardId = null)
     {
-        $task = Task::find($taskId);
+        $task = $boardId ? $this->findTaskOnBoard($taskId, $boardId) : Task::find($taskId);
         if (!$task) {
             return null;
         }
@@ -504,9 +643,9 @@ class TaskService
         return $task;
     }
 
-    public function taskStatusUpdate($taskId, $integrationType)
+    public function taskStatusUpdate($taskId, $integrationType, $boardId = null)
     {
-        $task = Task::find($taskId);
+        $task = $boardId ? $this->findTaskOnBoard($taskId, $boardId) : Task::find($taskId);
         if (!$task) {
             return null;
         }
@@ -521,7 +660,7 @@ class TaskService
 
     public function assignYourselfInTask($boardId, $taskId)
     {
-        $task = Task::find($taskId);
+        $task = $this->findTaskOnBoard($taskId, $boardId);
         $authUserId = get_current_user_id();
 
         $boardService = new BoardService();
@@ -541,7 +680,7 @@ class TaskService
 
     public function detachYourselfFromTask($boardId, $taskId)
     {
-        $task = Task::find($taskId);
+        $task = $this->findTaskOnBoard($taskId, $boardId);
         $currentUserId = get_current_user_id();
         $task->addOrRemoveAssignee($currentUserId);
         $task->load('assignees');
@@ -649,14 +788,6 @@ class TaskService
             TaskMeta::where('task_id', $task->id)->delete();
         }
     }
-    public function filterNullDate($date)
-    {
-        if ('0000-00-00 00:00:00' == $date || false === strtotime($date)) {
-            return null;
-        }
-        return $date;
-    }
-
     // this is invoked when task is moved to another board
 
     /**
@@ -686,32 +817,43 @@ class TaskService
         }
 
 
-        $task->board_id = (int) $targetBoardId;
-        $task->type = $newBoard->type === 'roadmap' ? 'roadmap' : 'task';
+        $dbInstance = App::getInstance('db');
+        $attachmentFileService = new AttachmentFileService();
+        $oldBoardId = (int) $task->board_id;
 
-        // Remove task cover if it contains image URL for security
-        $this->removeTaskCoverImage($task);
+        $dbInstance->beginTransaction();
 
-        // REMOVE: Board-dependent data
-        $task->labels()->detach();
-        $task->assignees()->detach();
-        $task->watchers()->detach();
-        $this->removeCustomFieldAssociations($task);
+        try {
+            $attachmentFileService->moveTaskFilesToBoard($task, $oldBoardId, (int) $targetBoardId);
 
-        // REMOVE: User-specific data to prevent security issues
-        $this->removeCommentsAndReplies($task->id);
-        $this->removeTimeTrackingRecords($task->id);
+            $task->board_id = (int) $targetBoardId;
+            $task->type = $newBoard->type === 'roadmap' ? 'roadmap' : 'task';
 
-        // REMOVE: File attachments to prevent access issues
-        $this->removeAttachments($task->id);
+            // REMOVE: Board-dependent data
+            $task->labels()->detach();
+            $task->assignees()->detach();
+            $task->watchers()->detach();
+            $this->removeCustomFieldAssociations($task);
 
-        // REMOVE: Recurring task settings for security
-        $this->removeRecurringTaskSettings($task->id);
+            // REMOVE: User-specific data to prevent security issues
+            $this->removeCommentsAndReplies($task->id);
+            $this->removeTimeTrackingRecords($task->id);
 
-        $task->save();
+            // REMOVE: Recurring task settings for security
+            $this->removeRecurringTaskSettings($task->id);
 
-        // MOVE: Subtasks to new board (preserves subtask groups)
-        $this->moveSubtasksToNewBoard($task->id, $targetBoardId, $newBoard->type);
+            $task->save();
+
+            // MOVE: Subtasks to new board (preserves subtask groups)
+            $this->moveSubtasksToNewBoard($task->id, $targetBoardId, $newBoard->type, $attachmentFileService);
+
+            $dbInstance->commit();
+            $attachmentFileService->commitMovedOriginalFiles();
+        } catch (\Exception $e) {
+            $dbInstance->rollBack();
+            $attachmentFileService->rollbackCreatedFiles();
+            throw $e;
+        }
 
         do_action('fluent_boards/task_moved_from_board', $task, $oldBoard, $newBoard);
         return $task;
@@ -721,7 +863,7 @@ class TaskService
      * Move all subtasks to the new board when parent task is moved
      * Preserves subtask groups and their relationships
      */
-    private function moveSubtasksToNewBoard($parentTaskId, $targetBoardId, $boardType)
+    private function moveSubtasksToNewBoard($parentTaskId, $targetBoardId, $boardType, AttachmentFileService $attachmentFileService)
     {
         // Get all subtasks of the parent task
         $subtasks = Task::where('parent_id', $parentTaskId)->get();
@@ -732,11 +874,11 @@ class TaskService
 
         foreach ($subtasks as $subtask) {
             // Update board_id and type
+            $oldBoardId = (int) $subtask->board_id;
+            $attachmentFileService->moveTaskFilesToBoard($subtask, $oldBoardId, (int) $targetBoardId);
+
             $subtask->board_id = (int) $targetBoardId;
             $subtask->type = $boardType === 'roadmap' ? 'roadmap' : 'task';
-
-            // Remove task cover image for security
-            $this->removeTaskCoverImage($subtask);
 
             // REMOVE: Board-dependent data for subtasks
             $subtask->labels()->detach();
@@ -751,9 +893,6 @@ class TaskService
             // REMOVE: User-specific data for security
             $this->removeCommentsAndReplies($subtask->id);
             $this->removeTimeTrackingRecords($subtask->id);
-
-            // REMOVE: File attachments
-            $this->removeAttachments($subtask->id);
 
             // REMOVE: Recurring task settings
             $this->removeRecurringTaskSettings($subtask->id);
@@ -874,7 +1013,7 @@ class TaskService
             ->where('object_type', Constant::REPEAT_TASK_META)
             ->delete();
     }
-
+    
     public function getIdeaVoteStatistics($taskId)
     {
         return IdeaReaction::where('object_id', $taskId)
@@ -894,12 +1033,16 @@ class TaskService
      */
     public function getArchivedTasks($data, $boardId)
     {
-        $per_page = isset($data['per_page']) ? $data['per_page'] : 25;
+        if (!$boardId) {
+            throw new \Exception(esc_html__('Board id is required', 'fluent-boards'));
+        }
+
+        $per_page = isset($data['per_page']) ? $data['per_page'] : 20;
         $page = isset($data['page']) ? $data['page'] : 1;
         $tasksQuery = Task::where('board_id', $boardId)->whereNotNull('archived_at');
 
-        if (isset($data['searchInput'])) {
-            $query = strtolower($data['searchInput']);
+        if (!empty($data['query'])) {
+            $query = strtolower($data['query']);
             $firstThreeChars = substr($query, 0, 3);
 
             if($firstThreeChars == 'id:') {
@@ -907,16 +1050,430 @@ class TaskService
                 $idPart = preg_replace('/[^a-zA-Z0-9]/', '', $idPart);
                 $tasksQuery = $tasksQuery->where('id', 'LIKE', '%' . $idPart . '%');
             } else {
-                $tasksQuery = $tasksQuery->where('title', 'LIKE', '%' . $data['searchInput'] . '%');
+                $tasksQuery = $tasksQuery->where('title', 'LIKE', '%' . $data['query'] . '%');
             }
         }
 
-        // if board_id is not passed then throw an exception
-        if (!$boardId) {
-            throw new \Exception(esc_html__('Board id is required', 'fluent-boards'));
+        return $tasksQuery->orderBy('created_at', 'DESC')->with('assignees')->paginate($per_page, ['*'], 'page', $page);
+    }
+
+    public function getTableTasks($boardId, $data = [])
+    {
+        $perPage = isset($data['per_page']) ? intval($data['per_page']) : 20;
+        $page = isset($data['page']) ? intval($data['page']) : 1;
+        $sortBy = isset($data['sort_by']) ? sanitize_text_field($data['sort_by']) : 'position';
+        $sortDirection = isset($data['sort_direction']) ? sanitize_text_field($data['sort_direction']) : 'asc';
+        $search = isset($data['search']) ? sanitize_text_field($data['search']) : '';
+        $stageFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'stage', []));
+        $taskStatusFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'task_status', []));
+        $priorityFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'priority', []));
+        $assigneeFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'assignee', []));
+        $labelFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'labels', []));
+        $watcherFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'watchers', []));
+        $contactFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'contact', []));
+        $customFieldFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'custom_fields', []));
+        $dueDateFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'due_date', []));
+        $includeArchived = !empty($data['include_archived']) || in_array('archived', $taskStatusFilters, true);
+
+        $perPage = max(1, min(150, $perPage));
+        $page = max(1, $page);
+        $sortDirection = strtolower($sortDirection) === 'desc' ? 'desc' : 'asc';
+
+        $sortColumnMap = [
+            'title' => 'title',
+            'status' => 'status',
+            'created_at' => 'created_at',
+            'position' => 'position',
+        ];
+        $sortColumn = Arr::get($sortColumnMap, $sortBy, 'position');
+
+        $tasksQuery = Task::query()
+            // Table rows only need row-level fields; modal open rehydrates the full task.
+            ->select([
+                'id',
+                'title',
+                'slug',
+                'board_id',
+                'parent_id',
+                'stage_id',
+                'status',
+                'priority',
+                'archived_at',
+                'remind_at',
+                'reminder_type',
+                'started_at',
+                'due_at',
+                'last_completed_at',
+                'position',
+                'comments_count',
+                'created_by',
+                'settings',
+                'source',
+                'source_id',
+                'created_at',
+            ])
+            ->with(['assignees', 'labels', 'watchers'])
+            ->where('board_id', $boardId)
+            ->whereNull('parent_id');
+
+        if (!$includeArchived && !$taskStatusFilters) {
+            $tasksQuery->whereNull('archived_at');
         }
 
-        return $tasksQuery->orderBy('created_at', 'DESC')->with('assignees')->paginate($per_page, ['*'], 'page', $page);
+        $this->applyTableTaskSearch($tasksQuery, $search);
+        $this->applyTableTaskFilters($tasksQuery, [
+            'stage' => $stageFilters,
+            'task_status' => $taskStatusFilters,
+            'priority' => $priorityFilters,
+            'assignee' => $assigneeFilters,
+            'labels' => $labelFilters,
+            'watchers' => $watcherFilters,
+            'contact' => $contactFilters,
+            'custom_fields' => $customFieldFilters,
+            'due_date' => $dueDateFilters,
+        ]);
+
+        if ($sortColumn === 'position') {
+            $tasksQuery->orderBy('stage_id', 'asc');
+        }
+
+        return $tasksQuery
+            ->orderBy($sortColumn, $sortDirection)
+            ->paginate($perPage, ['*'], 'page', $page);
+    }
+
+    public function getBoardViewTasks($boardId, $data = [])
+    {
+        $search = isset($data['search']) ? sanitize_text_field($data['search']) : '';
+        $stageFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'stage', []));
+        $taskStatusFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'task_status', []));
+        $priorityFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'priority', []));
+        $assigneeFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'assignee', []));
+        $labelFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'labels', []));
+        $watcherFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'watchers', []));
+        $contactFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'contact', []));
+        $customFieldFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'custom_fields', []));
+        $dueDateFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'due_date', []));
+        $includeArchived = !empty($data['include_archived']) || in_array('archived', $taskStatusFilters, true);
+
+        $tasksQuery = Task::query()
+            // Kanban/List filtering only need board-card fields because opening a
+            // task already rehydrates the full payload through the detail endpoint.
+            ->select([
+                'id',
+                'title',
+                'slug',
+                'board_id',
+                'parent_id',
+                'crm_contact_id',
+                'type',
+                'stage_id',
+                'status',
+                'reminder_type',
+                'priority',
+                'archived_at',
+                'remind_at',
+                'started_at',
+                'due_at',
+                'last_completed_at',
+                'position',
+                'comments_count',
+                'created_by',
+                'settings',
+                'source',
+                'source_id',
+            ])
+            ->with(['assignees', 'labels', 'watchers'])
+            ->where('board_id', $boardId)
+            ->whereNull('parent_id');
+
+        if (!$includeArchived && !$taskStatusFilters) {
+            $tasksQuery->whereNull('archived_at');
+        }
+
+        $this->applyTableTaskSearch($tasksQuery, $search);
+        $this->applyTableTaskFilters($tasksQuery, [
+            'stage' => $stageFilters,
+            'task_status' => $taskStatusFilters,
+            'priority' => $priorityFilters,
+            'assignee' => $assigneeFilters,
+            'labels' => $labelFilters,
+            'watchers' => $watcherFilters,
+            'contact' => $contactFilters,
+            'custom_fields' => $customFieldFilters,
+            'due_date' => $dueDateFilters,
+        ]);
+
+        return $tasksQuery
+            ->orderBy('stage_id', 'asc')
+            ->orderBy('position', 'asc')
+            ->get();
+    }
+
+    private function sanitizeTableFilterValues($values)
+    {
+        if (!is_array($values)) {
+            $values = ($values === null || $values === '') ? [] : [$values];
+        }
+
+        return array_values(array_filter(array_map(static function ($value) {
+            return sanitize_text_field($value);
+        }, $values), static function ($value) {
+            return $value !== '';
+        }));
+    }
+
+    private function applyTableTaskSearch($tasksQuery, $search)
+    {
+        if (!$search) {
+            return;
+        }
+
+        global $wpdb;
+
+        $query = strtolower($search);
+        $firstThreeChars = substr($query, 0, 3);
+
+        if ($firstThreeChars === 'id:') {
+            $idPart = preg_replace('/[^a-zA-Z0-9]/', '', substr($query, 3));
+            if ($idPart !== '') {
+                $tasksQuery->where('id', 'LIKE', '%' . $idPart . '%');
+            }
+            return;
+        }
+
+        $escapedSearch = $wpdb->esc_like($search);
+        $tasksQuery->where('title', 'LIKE', '%' . $escapedSearch . '%');
+    }
+
+    private function applyTableTaskFilters($tasksQuery, $filters)
+    {
+        $stageFilters = Arr::get($filters, 'stage', []);
+        $taskStatusFilters = Arr::get($filters, 'task_status', []);
+        $priorityFilters = Arr::get($filters, 'priority', []);
+        $assigneeFilters = Arr::get($filters, 'assignee', []);
+        $labelFilters = Arr::get($filters, 'labels', []);
+        $watcherFilters = Arr::get($filters, 'watchers', []);
+        $contactFilters = Arr::get($filters, 'contact', []);
+        $customFieldFilters = Arr::get($filters, 'custom_fields', []);
+        $dueDateFilters = Arr::get($filters, 'due_date', []);
+
+        if ($stageFilters) {
+            $this->applyTableStageFilters($tasksQuery, $stageFilters);
+        }
+
+        if ($taskStatusFilters) {
+            $this->applyTableTaskStatusFilters($tasksQuery, $taskStatusFilters);
+        }
+
+        if ($priorityFilters) {
+            $tasksQuery->whereIn('priority', array_map('strtolower', $priorityFilters));
+        }
+
+        if ($contactFilters) {
+            $contactIds = array_values(array_filter(array_map('intval', $contactFilters)));
+            if ($contactIds) {
+                $tasksQuery->whereIn('crm_contact_id', $contactIds);
+            }
+        }
+
+        if ($labelFilters) {
+            $labelIds = array_values(array_filter(array_map('intval', array_diff($labelFilters, ['no-label']))));
+            $includeNoLabel = in_array('no-label', $labelFilters, true);
+            $labelTable = (new Label())->getTable();
+
+            if ($labelIds || $includeNoLabel) {
+                $tasksQuery->where(function ($query) use ($labelIds, $includeNoLabel, $labelTable) {
+                    if ($includeNoLabel) {
+                        $query->orWhereDoesntHave('labels');
+                    }
+
+                    if ($labelIds) {
+                        $query->orWhereHas('labels', function ($labelQuery) use ($labelIds, $labelTable) {
+                            $labelQuery->whereIn($labelTable . '.id', $labelIds);
+                        });
+                    }
+                });
+            }
+        }
+
+        if ($customFieldFilters) {
+            $customFieldIds = array_values(array_filter(array_map('intval', array_diff($customFieldFilters, ['no-custom-field']))));
+            $includeNoCustomField = in_array('no-custom-field', $customFieldFilters, true);
+
+            if ($customFieldIds || $includeNoCustomField) {
+                $tasksQuery->where(function ($query) use ($customFieldIds, $includeNoCustomField) {
+                    if ($includeNoCustomField) {
+                        $query->orWhereDoesntHave('taskCustomFields');
+                    }
+
+                    if ($customFieldIds) {
+                        $query->orWhereHas('taskCustomFields', function ($customFieldQuery) use ($customFieldIds) {
+                            $customFieldQuery->whereIn('foreign_id', $customFieldIds);
+                        });
+                    }
+                });
+            }
+        }
+
+        if ($dueDateFilters) {
+            $this->applyTableDueDateFilters($tasksQuery, $dueDateFilters);
+        }
+
+        if ($assigneeFilters || $watcherFilters) {
+            $this->applyTableAssignmentFilters($tasksQuery, $assigneeFilters, $watcherFilters);
+        }
+    }
+
+    private function applyTableStageFilters($tasksQuery, $stageFilters)
+    {
+        $stageIds = array_values(array_filter(array_map('intval', array_diff($stageFilters, ['archived']))));
+        $includeArchivedStages = in_array('archived', $stageFilters, true);
+
+        if (!$stageIds && !$includeArchivedStages) {
+            return;
+        }
+
+        $tasksQuery->where(function ($query) use ($stageIds, $includeArchivedStages) {
+            if ($stageIds) {
+                $query->orWhereIn('stage_id', $stageIds);
+            }
+
+            if ($includeArchivedStages) {
+                $query->orWhereHas('stage', function ($stageQuery) {
+                    $stageQuery->whereNotNull('archived_at');
+                });
+            }
+        });
+    }
+
+    private function applyTableTaskStatusFilters($tasksQuery, $taskStatusFilters)
+    {
+        $statuses = array_values(array_diff($taskStatusFilters, ['archived']));
+        $includeArchived = in_array('archived', $taskStatusFilters, true);
+
+        if (!$statuses && !$includeArchived) {
+            return;
+        }
+
+        $tasksQuery->where(function ($query) use ($statuses, $includeArchived) {
+            if ($statuses) {
+                $query->orWhere(function ($statusQuery) use ($statuses) {
+                    $statusQuery->whereNull('archived_at')
+                        ->whereIn('status', $statuses);
+                });
+            }
+
+            if ($includeArchived) {
+                $query->orWhereNotNull('archived_at');
+            }
+        });
+    }
+
+    private function applyTableDueDateFilters($tasksQuery, $dueDateFilters)
+    {
+        $dueDateFilters = array_values(array_intersect($dueDateFilters, [
+            'overdue',
+            'no-dates',
+            'today',
+            'this-week',
+            'next-week',
+            'this-month',
+            'upcoming',
+        ]));
+
+        if (!$dueDateFilters) {
+            return;
+        }
+
+        $nowTimestamp = current_time('timestamp');
+        $startOfToday = gmdate('Y-m-d 00:00:00', $nowTimestamp);
+        $endOfToday = gmdate('Y-m-d 23:59:59', $nowTimestamp);
+        $startOfThisWeek = gmdate('Y-m-d 00:00:00', strtotime('sunday this week', $nowTimestamp));
+        $startOfNextWeek = gmdate('Y-m-d 00:00:00', strtotime('sunday next week', $nowTimestamp));
+        $startOfWeekAfterNext = gmdate('Y-m-d 00:00:00', strtotime('+1 week', strtotime($startOfNextWeek)));
+        $endOfThisMonth = gmdate('Y-m-t 23:59:59', $nowTimestamp);
+        $nowMysql = current_time('mysql');
+
+        $tasksQuery->where(function ($query) use ($dueDateFilters, $startOfToday, $endOfToday, $startOfThisWeek, $startOfNextWeek, $startOfWeekAfterNext, $endOfThisMonth, $nowMysql) {
+            foreach ($dueDateFilters as $filter) {
+                switch ($filter) {
+                    case 'overdue':
+                        $query->orWhere(function ($dueQuery) use ($nowMysql) {
+                            $dueQuery->whereNull('last_completed_at')
+                                ->whereNotNull('due_at')
+                                ->where('due_at', '<=', $nowMysql);
+                        });
+                        break;
+                    case 'no-dates':
+                        $query->orWhereNull('due_at');
+                        break;
+                    case 'today':
+                        $query->orWhereBetween('due_at', [$startOfToday, $endOfToday]);
+                        break;
+                    case 'this-week':
+                        $query->orWhereBetween('due_at', [$startOfThisWeek, $startOfNextWeek]);
+                        break;
+                    case 'next-week':
+                        $query->orWhereBetween('due_at', [$startOfNextWeek, $startOfWeekAfterNext]);
+                        break;
+                    case 'this-month':
+                        $query->orWhereBetween('due_at', [$nowMysql, $endOfThisMonth]);
+                        break;
+                    case 'upcoming':
+                        $query->orWhere(function ($upcomingQuery) use ($nowMysql) {
+                            $upcomingQuery->whereNull('last_completed_at')
+                                ->whereNotNull('due_at')
+                                ->where('due_at', '>=', $nowMysql);
+                        });
+                        break;
+                }
+            }
+        });
+    }
+
+    private function applyTableAssignmentFilters($tasksQuery, $assigneeFilters, $watcherFilters)
+    {
+        $assigneeIds = array_values(array_filter(array_map('intval', array_diff($assigneeFilters, ['no-assignee']))));
+        $watcherIds = array_values(array_filter(array_map('intval', $watcherFilters)));
+        $includeNoAssignee = in_array('no-assignee', $assigneeFilters, true);
+        $commonIds = array_values(array_intersect($assigneeIds, $watcherIds));
+        $assigneeOnlyIds = array_values(array_diff($assigneeIds, $commonIds));
+        $watcherOnlyIds = array_values(array_diff($watcherIds, $commonIds));
+
+        if ($commonIds) {
+            // Shared watcher/assignee filters are treated as an OR group, matching
+            // the existing client-side filter semantics.
+            $tasksQuery->where(function ($query) use ($commonIds) {
+                $query->whereHas('assignees', function ($assigneeQuery) use ($commonIds) {
+                    $assigneeQuery->whereIn('ID', $commonIds);
+                })->orWhereHas('watchers', function ($watcherQuery) use ($commonIds) {
+                    $watcherQuery->whereIn('ID', $commonIds);
+                });
+            });
+        }
+
+        if ($includeNoAssignee || $assigneeOnlyIds) {
+            $tasksQuery->where(function ($query) use ($includeNoAssignee, $assigneeOnlyIds) {
+                if ($includeNoAssignee) {
+                    $query->orWhereDoesntHave('assignees');
+                }
+
+                if ($assigneeOnlyIds) {
+                    $query->orWhereHas('assignees', function ($assigneeQuery) use ($assigneeOnlyIds) {
+                        $assigneeQuery->whereIn('ID', $assigneeOnlyIds);
+                    });
+                }
+            });
+        }
+
+        if ($watcherOnlyIds) {
+            $tasksQuery->whereHas('watchers', function ($watcherQuery) use ($watcherOnlyIds) {
+                $watcherQuery->whereIn('ID', $watcherOnlyIds);
+            })->whereDoesntHave('assignees', function ($assigneeQuery) use ($watcherOnlyIds) {
+                $assigneeQuery->whereIn('ID', $watcherOnlyIds);
+            });
+        }
     }
 
     public function sendMailAfterTaskModify($column, $assigneeIds, $taskId)
@@ -931,12 +1488,15 @@ class TaskService
     public function getStageByTask($task_id)
     {
         $task = Task::find($task_id);
+        if (!$task || !PermissionManager::userHasPermission($task->board_id)) {
+            throw new \Exception(esc_html__('Task not found', 'fluent-boards'));
+        }
         return $task->stage;
     }
 
-    public function moveTaskToNextStage($task_id)
+    public function moveTaskToNextStage($task_id, $boardId = null)
     {
-        $task = Task::findOrFail($task_id);
+        $task = $boardId ? $this->findTaskOnBoard($task_id, $boardId) : Task::findOrFail($task_id);
 
         $oldStage = $task->stage;
 
@@ -956,6 +1516,9 @@ class TaskService
             }
         }
 
+        // Clean up archived_by_stage meta when moving to different stage
+        $this->cleanupArchivedByStageMetaIfExists($task->id);
+        
         $task->stage_id = $nextStage->id;
         $task->save();
 
@@ -987,24 +1550,33 @@ class TaskService
         } else if ($filter == 'oldest') {
             $activityQuery = $activityQuery->oldest();
         }
-        return $activityQuery->with('user')->paginate($perPage);
+        $activities = $activityQuery->with('user')->paginate($perPage);
+
+        Helper::translateActivities($activities);
+
+        return $activities;
     }
 
-    public function getLastOneMinuteUpdatedTasks($boardId, $lastUpdated = null)
+    public function getLastOneMinuteUpdatedTasks($boardId, $lastUpdated = null, $includeArchived = true)
     {
         if (!$lastUpdated) {
-            $lastUpdated = gmdate('Y-m-d H:i:s', current_time('timestamp') - 60); // 1 minute ago
+            $lastUpdated = date_i18n('Y-m-d H:i:s', current_time('timestamp') - 60); // 1 minute ago
         }
 
-        $tasks = Task::query()
+        $tasksQuery = Task::query()
             ->where([
                 'board_id'  => $boardId,
                 'parent_id' => null,
             ])
-            ->where('updated_at', '>', $lastUpdated) // updated in the last minute
+            ->where('updated_at', '>=', $lastUpdated) // updated since the sync cursor
             ->with(['assignees', 'labels', 'watchers', 'taskCustomFields'])
-            ->orderBy('due_at', 'ASC')
-            ->get();
+            ->orderBy('due_at', 'ASC');
+
+        if (!$includeArchived) {
+            $tasksQuery->whereNull('archived_at');
+        }
+
+        $tasks = $tasksQuery->get();
 
         foreach ($tasks as $task) {
             $task->isOverdue = $task->isOverdue();
@@ -1030,47 +1602,69 @@ class TaskService
         return $lastPosition + 1;
     }
 
-    public function getAssociatedTasks($associatedId)
+    /**
+     * Pin a task: set is_pinned in task meta only. No position change.
+     * Only parent tasks can be pinned.
+     *
+     * @param \FluentBoards\App\Models\Task $task
+     * @return \FluentBoards\App\Models\Task
+     */
+    public function pinTask($task)
     {
+        if ($task->parent_id !== null) {
+            return $task;
+        }
+
+        $task->updateMeta(Constant::IS_TASK_PINNED, 1);
+
+        return $task;
+    }
+
+    /**
+     * Unpin a task: set is_pinned in task meta only. No position change.
+     *
+     * @param \FluentBoards\App\Models\Task $task
+     * @return \FluentBoards\App\Models\Task
+     */
+    public function unpinTask($task)
+    {
+        $task->updateMeta(Constant::IS_TASK_PINNED, 0);
+
+        return $task;
+    }
+
+    /**
+     * Get CRM-associated tasks and mark whether the current user may edit each task's board.
+     *
+     * @param int $associatedId CRM contact/subscriber id associated with tasks.
+     * @param int|null $userId User id for board permission checks.
+     * @return \FluentBoards\Framework\Database\Orm\Collection|array
+     */
+    public function getAssociatedTasks($associatedId, $userId = null)
+    {
+        $associatedId = absint($associatedId);
+        $userId = $userId ?: get_current_user_id();
+
+        if (!$associatedId || !$userId) {
+            return [];
+        }
+
+        // Load only the relationships rendered by the FluentCRM profile tab.
         $tasks = Task::query()
             ->where('crm_contact_id', $associatedId)
-            ->with(['board', 'stage', 'assignees', 'labels', 'watchers', 'subtaskGroup', 'subtaskGroup.subtasks', 'subtaskGroup.subtasks.assignees'])
+            ->with(['board', 'stage', 'assignees', 'subtaskGroup', 'subtaskGroup.subtasks', 'subtaskGroup.subtasks.assignees'])
             ->orderBy('due_at', 'ASC')
             ->get();
+
+        // Batch board access once so each task avoids its own permission query.
+        $editableBoardIds = array_map('intval', PermissionManager::getBoardIdsForUser($userId));
 
         foreach ($tasks as $task) {
             $task->isOverdue = $task->isOverdue();
             $task->isUpcoming = $task->upcoming();
-            $task->contact = Task::lead_contact($task->crm_contact_id);
-            $task->is_watching = $task->isWatching();
+            $task->can_edit = in_array((int)$task->board_id, $editableBoardIds, true);
 
             $task->assignees = Helper::sanitizeUserCollections($task->assignees);
-            $task->watchers = Helper::sanitizeUserCollections($task->watchers);
-
-            if(defined('FLUENT_BOARDS_PRO')) {
-                $modules = fluent_boards_get_pref_settings();
-                if($modules['timeTracking']['enabled'] == 'yes') {
-                    $task->time_tracks= [
-                        'tracks'            => (new ProTaskService())->getTaskTimeTrack($task->board_id, $task->id),
-                        'estimated_minutes' => TimeTrackingHelper::getTaskEstimation($task->id)
-                    ];
-                }
-            }
-
-
-//            $subTasks = Task::query()
-//                ->where('parent_id', $task->id)
-//                ->with(['assignees'])
-//                ->whereNull('archived_at')
-//                ->orderBy('position', 'ASC')
-//                ->get();
-//
-//            foreach ($subTasks as $subTask) {
-//                $subTask->assignees = Helper::sanitizeUserCollections($subTask->assignees);
-//            }
-//
-//            $task->subtasks = $subTasks;
-
 
             foreach ($task->subtaskGroup as $group) {
                 foreach ($group->subtasks as $subtask) {
@@ -1105,77 +1699,90 @@ class TaskService
         $taskMap = [];
         $subtaskGroupMap = [];
         $parentTaskCount = 0;
-        foreach ($allActiveTasks as $task) {
-            $newTask = array();
-            $newTask['title'] = $task->title;
-            $newTask['parent_id'] = $task->parent_id ? $taskMap[$task->parent_id] : null;
-            $newTask['description'] = $task->description;
-            $newTask['board_id'] = $newBoard->id;
-            $newTask['stage_id'] = $stageMap[$task->stage_id];
-            $newTask['status'] = $task->status;
-            $newTask['priority'] = $task->priority;
-            $newTask['position'] = $task->position;
-            $newTask['due_at'] = $task->due_at;
-            $backgroundColor = '';
-            $backgroundColor = $task->settings['cover']['backgroundColor'];
-            $newTask['settings'] = [
-                'cover' => [
-                    'backgroundColor' => $backgroundColor,
-                ]
-            ];
-            
-            $newTask = Task::create($newTask);
+        $attachmentFileService = new AttachmentFileService();
+        $dbInstance = App::getInstance('db');
 
-            if (!$task->parent_id) {
-                //group mapping
-                $subtaskGroupMap = $this->copySubtaskGroup($task, $newTask, $subtaskGroupMap);
-            } else {
-                $groupRelationOfTask = TaskMeta::where('key', Constant::SUBTASK_GROUP_CHILD)
-                                            ->where('task_id', $task->id)
-                                            ->first();
+        $dbInstance->beginTransaction();
 
-                if ($groupRelationOfTask && $subtaskGroupMap[$groupRelationOfTask->value]) {
-                    TaskMeta::create([
-                        'task_id' => $newTask->id,
-                        'key' => Constant::SUBTASK_GROUP_CHILD,
-                        'value' => $subtaskGroupMap[$groupRelationOfTask->value]
-                    ]);
+        try {
+            foreach ($allActiveTasks as $task) {
+                $newTask = array();
+                $newTask['title'] = $task->title;
+                $newTask['parent_id'] = $task->parent_id ? $taskMap[$task->parent_id] : null;
+                $newTask['description'] = $task->description;
+                $newTask['board_id'] = $newBoard->id;
+                $newTask['stage_id'] = $stageMap[$task->stage_id];
+                $newTask['status'] = $task->status;
+                $newTask['priority'] = $task->priority;
+                $newTask['position'] = $task->position;
+                $newTask['due_at'] = $task->due_at;
+                $backgroundColor = $task->settings['cover']['backgroundColor'] ?? '';
+                $newTask['settings'] = [
+                    'cover' => [
+                        'backgroundColor' => $backgroundColor,
+                    ]
+                ];
+
+                $newTask = Task::create($newTask);
+                $attachmentFileService->cloneTaskFilesToBoard($task, $newTask, $newBoard->id);
+
+                if (!$task->parent_id) {
+                    //group mapping
+                    $subtaskGroupMap = $this->copySubtaskGroup($task, $newTask, $subtaskGroupMap);
+                } else {
+                    $groupRelationOfTask = TaskMeta::where('key', Constant::SUBTASK_GROUP_CHILD)
+                                                ->where('task_id', $task->id)
+                                                ->first();
+
+                    if ($groupRelationOfTask && $subtaskGroupMap[$groupRelationOfTask->value]) {
+                        TaskMeta::create([
+                            'task_id' => $newTask->id,
+                            'key' => Constant::SUBTASK_GROUP_CHILD,
+                            'value' => $subtaskGroupMap[$groupRelationOfTask->value]
+                        ]);
+                    }
+                }
+
+                if($isWithTemplates == 'yes') {
+                    $isTemplate = TaskMeta::where('task_id', $task->id)
+                        ->where('key', 'is_template')
+                        ->first();
+                    if($isTemplate) {
+                        TaskMeta::create([
+                            'task_id' => $newTask->id,
+                            'key' => 'is_template',
+                            'value' => $isTemplate->value
+                        ]);
+                    }
+                }
+                if(!$task->parent_id){
+                    ++$parentTaskCount;
+                    $taskMap[$task['id']] = $newTask->id;
+                    //duplicate labels to task
+                    $labelIds = $task->labels->pluck('id')->toArray();
+                    if($labelIds){
+                        $flipLabelIds = array_flip($labelIds);
+                        $labelsToAttach = array_intersect_key($labelMap, $flipLabelIds);
+
+                        $newTask->labels()->attach($labelsToAttach, [
+                            'object_type' => Constant::OBJECT_TYPE_TASK_LABEL
+                        ]);
+                    }
                 }
             }
 
-            if($isWithTemplates == 'yes') {
-                $isTemplate = TaskMeta::where('task_id', $task->id)
-                    ->where('key', 'is_template')
-                    ->first();
-                if($isTemplate) {
-                    TaskMeta::create([
-                        'task_id' => $newTask->id,
-                        'key' => 'is_template',
-                        'value' => $isTemplate->value
-                    ]);
-                }
-            }
-            if(!$task->parent_id){
-                ++$parentTaskCount;
-                $taskMap[$task['id']] = $newTask->id;
-                //duplicate labels to task
-                $labelIds = $task->labels->pluck('id')->toArray();
-                if($labelIds){
-                    $flipLabelIds = array_flip($labelIds);
-                    $labelsToAttach = array_intersect_key($labelMap, $flipLabelIds);
+            $board = Board::findOrFail($newBoard->id);
+            $settings = [];
+            $settings['tasks_count'] = $parentTaskCount;
+            $board->settings = $settings;
+            $board->save();
 
-                    $newTask->labels()->attach($labelsToAttach, [
-                        'object_type' => Constant::OBJECT_TYPE_TASK_LABEL
-                    ]);
-                }
-            }
+            $dbInstance->commit();
+        } catch (\Exception $e) {
+            $dbInstance->rollBack();
+            $attachmentFileService->rollbackCreatedFiles();
+            throw $e;
         }
-
-        $board = Board::findOrFail($newBoard->id);
-        $settings = [];
-        $settings['tasks_count'] = $parentTaskCount;
-        $board->settings = $settings;
-        $board->save();
     }
 
     private function subtaskCountUpdate($taskId){
@@ -1193,10 +1800,10 @@ class TaskService
      * @param string $filter
      * @return array
      */
-    public function getCommentsAndActivities($taskId, $perPage, $page, string $filter = 'newest'): array
+    public function getCommentsAndActivities($taskId, $perPage, $page, string $filter = 'newest', $boardId = null): array
     {
         // Fetch the task
-        $task = Task::findOrFail($taskId);
+        $task = $boardId ? $this->findTaskOnBoard($taskId, $boardId) : Task::findOrFail($taskId);
 
         // Fetch comments and activities separately
         $comments = $task->comments()->with('user')->orderBy('created_at', 'desc')->get()->toArray();
@@ -1332,6 +1939,30 @@ class TaskService
         }
     }
 
+    public function manageDefaultWatchers($task, $stageId)
+    {
+        $stage = Stage::findOrFail($stageId);
+        if ($stage) {
+            $settings = $stage->settings;
+            $defaultWatchers = [];
+            if (isset($settings['default_task_watchers']) && is_array($settings['default_task_watchers'])) {
+                $defaultWatchers = $settings['default_task_watchers'];
+            }
+            if (isset($settings['default_task_assignees']) && is_array($settings['default_task_assignees'])) {
+                $defaultWatchers = array_unique(array_merge($defaultWatchers, $settings['default_task_assignees']));
+            }
+            foreach ($defaultWatchers as $watcherId) {
+                $alreadyWatcherIds = $task->watchers->pluck('ID')->toArray();
+                $isAlreadyWatcher = in_array($watcherId, $alreadyWatcherIds);
+                if (!$isAlreadyWatcher) {
+                    $task->watchers()->syncWithoutDetaching([
+                        $watcherId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]
+                    ]);
+                }
+            }
+        }
+    }
+
     public function setDefaultAssigneesToEveryTasks($stage)
     {
         $tasks = $stage->tasks->whereNull('archived_at');
@@ -1344,6 +1975,14 @@ class TaskService
     {
 
         $board = Board::find($board_id);
+        $stage = Stage::where('id', absint($stage_id))
+            ->where('board_id', absint($board_id))
+            ->first();
+
+        if (!$board || !$stage) {
+            throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
+        }
+
         $task = new Task();
         $taskType = $board->type === 'to-do' ? 'task' : 'roadmap' ;
         $taskData = [
@@ -1417,20 +2056,31 @@ class TaskService
         }
     }
 
-    public function cloneTask(int $taskId, $taskData): Task
+    public function cloneTask(int $taskId, $taskData, $boardId = null): Task
     {
         global $wpdb;
+        $attachmentFileService = new AttachmentFileService();
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transaction control for atomic task cloning operation
         $wpdb->query('START TRANSACTION');
 
         try {
             // Load task with all necessary relationships
-            $task = Task::with([
+            $taskQuery = Task::with([
                 'assignees',
                 'labels',
                 'watchers',
-            ])->findOrFail($taskId);
+            ])->where('id', $taskId);
+
+            if ($boardId) {
+                $taskQuery->where('board_id', absint($boardId));
+            }
+
+            $task = $taskQuery->first();
+
+            if (!$task) {
+                throw new \Exception(esc_html__('Task not found', 'fluent-boards'));
+            }
 
             // Create new task with cloned data
             $clonedTask = $task->replicate();
@@ -1447,9 +2097,12 @@ class TaskService
             $clonedTask->stage_id = $taskData['stage_id'] ?? $task->stage_id;
             
             // Validate that target stage belongs to the same board
-            $targetStage = Stage::findOrFail($clonedTask->stage_id);
-            if ($task->board_id != $targetStage->board_id) {
-                throw new \Exception(esc_html__('Cannot clone task to a different board. Task and target stage must be on the same board.', 'fluent-boards'));
+            $targetStage = Stage::where('id', $clonedTask->stage_id)
+                ->where('board_id', $task->board_id)
+                ->first();
+
+            if (!$targetStage) {
+                throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
             }
             
             $clonedTask->board_id = $targetStage->board_id;
@@ -1480,13 +2133,16 @@ class TaskService
             }
             $this->cloneTaskWatchers($task, $clonedTask);
 
+            $attachmentFileService->cloneTaskFilesToBoard($task, $clonedTask, $clonedTask->board_id, [
+                'description_images' => true,
+                'cover'              => true,
+                'task_attachments'   => (bool) $taskData['attachment'],
+            ]);
+
             if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
                 // Clone time tracking data if Pro version is active
-                if ($taskData['attachment']) {
-                    $this->cloneAttachments($task, $clonedTask);
-                }
                 if ($taskData['subtask']) {
-                    $this->cloneSubtasks($task, $clonedTask);
+                    $this->cloneSubtasks($task, $clonedTask, (bool) $taskData['attachment'], $attachmentFileService);
                 }
             }
 
@@ -1503,6 +2159,7 @@ class TaskService
             return $clonedTask;
 
         } catch (\Exception $e) {
+            $attachmentFileService->rollbackCreatedFiles();
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transaction control for atomic task cloning operation
             $wpdb->query('ROLLBACK');
             throw new \Exception(
@@ -1658,7 +2315,7 @@ class TaskService
             }
         }
     }
-    private function cloneSubtasks(Task $originalTask, Task $clonedTask): void
+    private function cloneSubtasks(Task $originalTask, Task $clonedTask, bool $cloneAttachments = false, ?AttachmentFileService $attachmentFileService = null): void
     {
         // First clone subtask groups
         $subtaskGroupMap = $this->cloneSubtaskGroups($originalTask, $clonedTask);
@@ -1670,6 +2327,12 @@ class TaskService
                 $clonedSubtask->parent_id = $clonedTask->id;
                 $clonedSubtask->board_id = $clonedTask->board_id; // Ensure subtask has same board_id as parent
                 $clonedSubtask->save();
+                $attachmentFileService = $attachmentFileService ?: new AttachmentFileService();
+                $attachmentFileService->cloneTaskFilesToBoard($subtask, $clonedSubtask, $clonedTask->board_id, [
+                    'description_images' => true,
+                    'cover'              => true,
+                    'task_attachments'   => $cloneAttachments,
+                ]);
                 if($clonedSubtask->status == 'closed') {
                     $completedSubtasksCount++;
                 }
@@ -1731,6 +2394,19 @@ class TaskService
     }
 
     /**
+     * Clean up archived_by_stage metadata if it exists for a task
+     *
+     * @param int $taskId
+     * @return void
+     */
+    private function cleanupArchivedByStageMetaIfExists($taskId)
+    {
+        TaskMeta::where('task_id', $taskId)
+            ->where('key', Constant::META_KEY_ARCHIVED_BY_STAGE)
+            ->delete();
+    }
+
+    /**
      * Handle bulk actions for multiple tasks
      *
      * @param array $taskIds
@@ -1769,8 +2445,13 @@ class TaskService
         ];
         
         switch ($action) {
+            case 'move_tasks':
+                $result = $this->bulkMoveTasks($tasks, $params, $boardId);
+                break;
+            
             case 'move_to_stage':
-                $result = $this->bulkMoveToStage($tasks, $params, $boardId);
+                // Backward compatibility - redirect to move_tasks
+                $result = $this->bulkMoveTasks($tasks, $params, $boardId);
                 break;
 
             case 'archive_tasks':
@@ -1800,83 +2481,105 @@ class TaskService
     }
 
     /**
-     * Bulk move tasks to a stage
+     * Bulk move tasks to a stage (same board) or to another board
+     * Unified method that handles both same-board stage moves and cross-board moves
      */
-    private function bulkMoveToStage($tasks, $params, $boardId)
+    private function bulkMoveTasks($tasks, $params, $sourceBoardId)
     {
-        $stageId = $params['stage_id'] ?? null;
-        if (!$stageId) {
-            throw new \Exception(esc_html__('Stage ID is required', 'fluent-boards'));
+        $targetStageId = $params['target_stage_id'] ?? null;
+        if (!$targetStageId) {
+            throw new \Exception(esc_html__('Target stage ID is required', 'fluent-boards'));
+        }
+        
+        $targetBoardId = $params['target_board_id'] ?? null;
+        $isMovingToAnotherBoard = $targetBoardId && $targetBoardId != $sourceBoardId;
+        
+        // Determine effective target board ID
+        $effectiveTargetBoardId = $isMovingToAnotherBoard ? $targetBoardId : $sourceBoardId;
+        
+        // Validate target board exists and is not archived
+        $targetBoard = Board::find($effectiveTargetBoardId);
+        if (!$targetBoard) {
+            throw new \Exception(esc_html__('Target board not found', 'fluent-boards'));
+        }
+        
+        if ($targetBoard->archived_at) {
+            throw new \Exception(esc_html__('Cannot move tasks to an archived board', 'fluent-boards'));
+        }
+        
+        // Verify user has write access to target board if moving to different board
+        if ($isMovingToAnotherBoard && !PermissionManager::userHasBoardPermission($effectiveTargetBoardId, 'POST')) {
+            throw new \Exception(esc_html__('You do not have permission to add tasks to this board', 'fluent-boards'));
+        }
+        
+        // Validate target stage exists and belongs to target board
+        $targetStage = Stage::where('id', $targetStageId)
+            ->where('board_id', $effectiveTargetBoardId)
+            ->first();
+            
+        if (!$targetStage) {
+            throw new \Exception(esc_html__('Target stage not found in the selected board', 'fluent-boards'));
         }
         
         $successfulTasks = [];
-        $failedTasks = [];
         
         foreach ($tasks as $task) {
-            try {
+            if ($isMovingToAnotherBoard) {
+                // Cross-board move - use existing method for data cleanup and security
+                $task = $this->changeBoardByTask($task, $effectiveTargetBoardId);
+                $task->stage_id = $targetStageId;
+                $task = $task->moveToNewPosition(null);
+            } else {
+                // Same board - simple stage move
                 $oldStageId = $task->stage_id;
-                
-                // Set new stage
-                $task->stage_id = $stageId;
+                $task->stage_id = $targetStageId;
                 $task = $task->moveToNewPosition(1);
                 
                 // Only process stage-specific logic if stage actually changed
-                if ($oldStageId != $stageId) {
-                    // Manage default assignees for the new stage
-                    $this->manageDefaultAssignees($task, $stageId);
+                if ($oldStageId != $targetStageId) {
+                    $this->manageDefaultAssignees($task, $targetStageId);
                     
-                    // Check if new stage has default closed status
                     $defaultPosition = $task->stage->defaultTaskStatus();
                     if ($defaultPosition == 'closed' && $task->status != 'closed') {
                         $task = $task->close();
                     }
                     
-                    // Dispatch WordPress action for stage change
-                    //currently commented, need to check in future for bulk action
-//                    do_action('fluent_boards/task_stage_updated', $task, $oldStageId);
-                    
-                    // Send email notifications for stage change
-                    $usersToSendEmail = (new \FluentBoards\App\Services\NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_STAGE_CHANGE);
+                    $usersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_STAGE_CHANGE);
                     $this->sendMailAfterTaskModify('stage_change', $usersToSendEmail, $task->id);
                 }
-                
-                // Dispatch general task update action
-                //currently commented, need to check in future for bulk action
-//                do_action('fluent_boards/task_updated', $task, 'position');
-
-                // Reload task with all relationships
-                $task->load(['labels', 'assignees', 'board', 'stage', 'watchers', 'taskCustomFields']);
-                
-                $successfulTasks[] = $task;
-            } catch (\Exception $e) {
-                $failedTasks[] = [
-                    'id' => $task->id,
-                    'title' => $task->title,
-                    'error' => $e->getMessage()
-                ];
             }
+            
+            // Reload task with all relationships
+            $task->load(['labels', 'assignees', 'board', 'stage', 'watchers', 'taskCustomFields']);
+            
+            $successfulTasks[] = $task;
         }
         
         $successCount = count($successfulTasks);
-        $failureCount = count($failedTasks);
         
-        $message = '';
-        if ($failureCount === 0) {
+        if ($isMovingToAnotherBoard) {
+            // translators: %d is the number of tasks successfully moved to another board
+            $message = sprintf(__('%d tasks moved to new board successfully', 'fluent-boards'), $successCount);
+        } else {
             // translators: %d is the number of tasks successfully moved to the stage
             $message = sprintf(__('%d tasks moved to stage successfully', 'fluent-boards'), $successCount);
-        } elseif ($successCount === 0) {
-            // translators: %d is the number of tasks that failed to move to the stage
-            $message = sprintf(__('Failed to move %d tasks to stage', 'fluent-boards'), $failureCount);
-        } else {
-            // translators: 1: number of tasks successfully moved; 2: number of tasks failed to move
-            $message = sprintf(__('%1$d tasks moved successfully, %2$d failed', 'fluent-boards'), $successCount, $failureCount);
         }
         
         return [
             'successful_tasks' => $successfulTasks,
-            'failed_tasks' => $failedTasks,
-            'message' => $message
+            'failed_tasks' => [],
+            'message' => $message,
+            'moved_to_another_board' => $isMovingToAnotherBoard
         ];
+    }
+    
+    /**
+     * Legacy method - kept for backward compatibility
+     * @deprecated Use bulkMoveTasks instead
+     */
+    private function bulkMoveToStage($tasks, $params, $boardId)
+    {
+        return $this->bulkMoveTasks($tasks, $params, $boardId);
     }
 
     /**

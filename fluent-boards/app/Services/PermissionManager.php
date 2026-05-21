@@ -380,15 +380,16 @@ class PermissionManager
             }
         }
 
-        $iAdmin = static::isAdmin($userId);
+        if (static::isAdmin($userId)) {
+            return apply_filters('fluent_boards/can_create_board', true, $userId);
+        }
 
-        // currently only wp-admin or fluent-boards-admin can create boards // 
+        // Check if "allow members to create boards" setting is enabled
+        $generalSettings = fluent_boards_get_option('general_settings', []);
+        if (!empty($generalSettings['allow_members_to_create_boards']) && $generalSettings['allow_members_to_create_boards'] !== 'false' && static::userHasAnyBoardAccess($userId)) {
+            return apply_filters('fluent_boards/can_create_board', true, $userId);
+        }
 
-        // use this filter to add custom permission check for board creation
-        // @param bool $iAdmin
-        // @param int $userId
-        // @return bool
-        // @since 1.91.1
-        return apply_filters('fluent_boards/can_create_board', $iAdmin, $userId);
+        return apply_filters('fluent_boards/can_create_board', false, $userId);
     }
 }

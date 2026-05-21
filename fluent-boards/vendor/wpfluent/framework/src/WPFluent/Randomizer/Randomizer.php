@@ -3,7 +3,7 @@
 namespace FluentBoards\Framework\Randomizer;
 
 use Exception;
-use InvalidArgumentException;
+use FluentBoards\Framework\Support\InvalidArgumentException;
 
 /**
  * An implementation of the Randomizer class.
@@ -18,6 +18,7 @@ if (class_exists('Random\Randomizer')) {
 
         public function __construct()
         {
+            // @phpstan-ignore-next-line
             $this->randomizer = new \Random\Randomizer();
         }
 
@@ -57,7 +58,7 @@ if (class_exists('Random\Randomizer')) {
         public function getBytesFromString(string $string, int $length)
         {
             if ($length === 0) {
-                throw new ValueError('Length cannot be zero.');
+                throw new InvalidArgumentException('Length cannot be zero.');
             }
 
             $sourceLength = strlen($string);

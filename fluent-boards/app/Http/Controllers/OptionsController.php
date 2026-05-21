@@ -73,6 +73,10 @@ class OptionsController extends Controller
                     ];
                 }
             } elseif ('tasks' === $optionKey) {
+                if (!PermissionManager::userHasPermission($boardId)) {
+                    throw new \Exception(esc_html__('You do not have permission to access this route', 'fluent-boards'));
+                }
+
                 // $boardId is already sanitized with intval above
                 $tasks = Task::where('board_id', $boardId)
                     ->whereNull('archived_at')
@@ -92,6 +96,10 @@ class OptionsController extends Controller
                 }
 
             } elseif ('assigned_in_task' == $optionKey) {
+                if (!PermissionManager::userHasPermission($boardId)) {
+                    throw new \Exception(esc_html__('You do not have permission to access this route', 'fluent-boards'));
+                }
+
                 $users = (new BoardService())->getAssigneesByBoard($boardId, $search);
                 $options = $this->addUserDataAsSelectorOption($users);
             } else {
@@ -658,6 +666,16 @@ class OptionsController extends Controller
 
     public function getAddonsSettings()
     {
+        $canAutoInstallKit = $this->canAutoInstallFluentKit();
+        $kitPluginFile = 'fluent-toolkit/fluent-toolkit.php';
+        $kitLoaded = defined('FLUENT_TOOLKIT_VERSION');
+        $kitPluginExists = $this->isPluginInstalled($kitPluginFile);
+        $kitActionText = __('Get FluentKit from GitHub', 'fluent-boards');
+
+        if ($canAutoInstallKit) {
+            $kitActionText = $kitPluginExists ? __('Activate FluentKit', 'fluent-boards') : __('Install FluentKit', 'fluent-boards');
+        }
+
         $addOns = [
             'fluent-crm'     => [
                 'title'          => __('FluentCRM', 'fluent-boards'),
@@ -699,6 +717,19 @@ class OptionsController extends Controller
                 'action_text'    => $this->isPluginInstalled('fluent-smtp/fluent-smtp.php') ? __('Activate Fluent SMTP', 'fluent-boards') : __('Install Fluent SMTP', 'fluent-boards'),
                 'description'    => __('The Ultimate SMTP and SES Plugin for WordPress. Connect with any SMTP, SendGrid, Mailgun, SES, Sendinblue, PepiPost, Google, Microsoft and more.', 'fluent-boards'),
                 'short_desc'    => __('Reliable email delivery with SMTP', 'fluent-boards')
+            ],
+            'fluent-toolkit' => [
+                'title'          => __('FluentKit', 'fluent-boards'),
+                'logo'           => fluent_boards_mix('images/addons/fluent-toolkit.svg'),
+                'is_installed'   => $kitLoaded,
+                'learn_more_url' => 'https://github.com/WPManageNinja/fluent-toolkit',
+                'settings_url'   => admin_url('admin.php?page=fluent-toolkit'),
+                'associate_doc'  => 'https://github.com/WPManageNinja/fluent-toolkit',
+                'action_text'    => $kitActionText,
+                'install_route'  => $canAutoInstallKit ? 'admin/mcp/install-adapter' : '',
+                'install_url'    => $canAutoInstallKit ? '' : 'https://github.com/WPManageNinja/fluent-toolkit',
+                'description'    => __('Fluent Boards MCP tools become available after FluentKit is installed and active.', 'fluent-boards'),
+                'short_desc'     => __('AI agent tools for Fluent Boards', 'fluent-boards')
             ],
         ];
 
@@ -814,6 +845,17 @@ class OptionsController extends Controller
     private function isPluginInstalled($plugin)
     {
         return file_exists(WP_PLUGIN_DIR . '/' . $plugin);
+    }
+
+    private function canAutoInstallFluentKit()
+    {
+        $canAutoInstall = (bool) apply_filters('fluent_kit/can_auto_install', false);
+
+        if (!$canAutoInstall) {
+            $canAutoInstall = (bool) apply_filters('fluent_toolkit/can_auto_install', false);
+        }
+
+        return $canAutoInstall;
     }
 
     private function backgroundInstaller($plugin_to_install, $plugin_id)
@@ -1016,7 +1058,9 @@ class OptionsController extends Controller
 
         $scheduleHandler = new ProScheduleHandler();
 
-        if ($savedGeneralSettings['daily_reminder_enabled'] || $savedGeneralSettings['daily_reminder_enabled'] == 'true') {
+        $dailyReminderEnabled = $savedGeneralSettings['daily_reminder_enabled'] ?? false;
+
+        if (filter_var($dailyReminderEnabled, FILTER_VALIDATE_BOOLEAN)) {
             // force schedule from this settings update
             $scheduleHandler->clearDailyTaskReminderScheduler();
             $scheduleHandler->scheduleDailyTaskReminder();

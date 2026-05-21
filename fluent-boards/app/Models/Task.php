@@ -45,7 +45,15 @@ class Task extends Model
             'created_by',
         ];
 
-    protected $appends = ['meta', 'repeat_task_meta'];
+    protected $appends = ['meta', 'repeat_task_meta', 'is_pinned'];
+
+    protected $nullableTimestampAttributes = [
+        'due_at',
+        'started_at',
+        'last_completed_at',
+        'archived_at',
+        'remind_at',
+    ];
 
     protected static $skipTaskCreatedEvent = false;
 
@@ -130,6 +138,24 @@ class Task extends Model
     {
         return $query->where('status', 'open')
                      ->where('due_at', '>=', current_time('mysql'));
+    }
+
+    /**
+     * scope of getting open tasks due today
+     *
+     * @param  $query \FluentBoards\Framework\Database\Query\Builder
+     *
+     * @return \FluentBoards\Framework\Database\Query\Builder
+     */
+    public function scopeDueToday($query)
+    {
+        $todayTimestamp = current_time('timestamp');
+        $startOfToday = gmdate('Y-m-d 00:00:00', $todayTimestamp);
+        $endOfToday = gmdate('Y-m-d 23:59:59', $todayTimestamp);
+
+        return $query->whereNull('last_completed_at')
+                     ->where('status', 'open')
+                     ->whereBetween('due_at', [$startOfToday, $endOfToday]);
     }
 
 
@@ -241,6 +267,42 @@ class Task extends Model
                     ->wherePivot('object_type',
                         Constant::OBJECT_TYPE_USER_TASK_WATCH)
                     ->withTimestamps();
+    }
+
+    /**
+     * Tasks that must finish before this task can start (this task is the successor/blocked).
+     * In fbs_relations: object_id = predecessor, foreign_id = this task (successor).
+     *
+     * @return \FluentBoards\Framework\Database\Orm\Relations\BelongsToMany
+     */
+    public function predecessors()
+    {
+        return $this->belongsToMany(
+            Task::class,
+            'fbs_relations',
+            'foreign_id',
+            'object_id'
+        )->wherePivot('object_type', Constant::OBJECT_TYPE_TASK_DEPENDENCY)
+         ->withPivot('settings')
+         ->withTimestamps();
+    }
+
+    /**
+     * Tasks that are waiting on this task to finish (this task is the predecessor/blocker).
+     * In fbs_relations: object_id = this task (predecessor), foreign_id = successor.
+     *
+     * @return \FluentBoards\Framework\Database\Orm\Relations\BelongsToMany
+     */
+    public function successors()
+    {
+        return $this->belongsToMany(
+            Task::class,
+            'fbs_relations',
+            'object_id',
+            'foreign_id'
+        )->wherePivot('object_type', Constant::OBJECT_TYPE_TASK_DEPENDENCY)
+         ->withPivot('settings')
+         ->withTimestamps();
     }
 
     public function parentTask($id)
@@ -358,10 +420,10 @@ class Task extends Model
         return $operation;
     }
 
-    public function getArchivedAttribute()
-    {
-        return (bool) $this->attributes['is_archived'];
-    }
+    // public function getArchivedAttribute()
+    // {
+    //     return (bool) $this->attributes['is_archived'];
+    // }
 
     public function setArchivedAttribute($value)
     {
@@ -448,6 +510,20 @@ class Task extends Model
         return $exist;
     }
 
+    /**
+     * Virtual attribute: pinned state from task meta (for API/frontend).
+     * Tasks without is_pinned meta are treated as unpinned (0).
+     * Reads from the already-loaded 'meta' attribute to avoid an extra DB query per task.
+     *
+     * @return int 1 if pinned, 0 otherwise
+     */
+    public function getIsPinnedAttribute()
+    {
+        $meta = $this->meta;
+
+        return (int) ($meta[Constant::IS_TASK_PINNED] ?? 0);
+    }
+
     public function moveToNewPosition($newIndex)
     {
         $newIndex = (int) $newIndex;
@@ -530,6 +606,114 @@ class Task extends Model
         return $this;
     }
 
+    public function moveBetweenTasks($prevTaskId = null, $nextTaskId = null)
+    {
+        $prevTaskId = absint($prevTaskId);
+        $nextTaskId = absint($nextTaskId);
+        // Exclude the current task so cross-stage moves can reuse the same
+        // neighbour lookup logic after the stage_id has already been reassigned.
+        $taskQuery = $this->getTaskOrderingQuery();
+
+        $prevTask = null;
+        if ($prevTaskId) {
+            $prevTask = (clone $taskQuery)
+                ->where('id', $prevTaskId)
+                ->first();
+        }
+
+        $nextTask = null;
+        if ($nextTaskId) {
+            $nextTask = (clone $taskQuery)
+                ->where('id', $nextTaskId)
+                ->first();
+        }
+
+        if (!$prevTask && !$nextTask) {
+            $firstItem = (clone $taskQuery)
+                ->orderBy('position', 'asc')
+                ->first();
+
+            if (!$firstItem) {
+                $this->position = 1;
+                $this->save();
+
+                return $this;
+            }
+
+            if ($firstItem->position < 0.02) {
+                self::reIndexTasksPositions($this->toArray());
+
+                return $this->moveBetweenTasks($prevTaskId, $nextTaskId);
+            }
+
+            $this->position = round($firstItem->position / 2, 2);
+            $this->save();
+
+            return $this;
+        }
+
+        if (!$prevTask && $nextTask) {
+            // Insert before the first visible neighbour by splitting the leading gap.
+            if ($nextTask->position < 0.02) {
+                self::reIndexTasksPositions($this->toArray());
+
+                return $this->moveBetweenTasks($prevTaskId, $nextTaskId);
+            }
+
+            $this->position = round($nextTask->position / 2, 2);
+            $this->save();
+
+            return $this;
+        }
+
+        if ($prevTask && !$nextTask) {
+            // Insert after the last visible neighbour without touching the rest
+            // of the stage unless the sparse ordering needs a later reindex.
+            $this->position = $prevTask->position + 1;
+            $this->save();
+
+            return $this;
+        }
+
+        if ($prevTask->position >= $nextTask->position) {
+            self::reIndexTasksPositions($this->toArray());
+
+            return $this->moveBetweenTasks($prevTaskId, $nextTaskId);
+        }
+
+        // Middle inserts keep reordering cheap by taking the midpoint between
+        // the two neighbour positions instead of renumbering the whole stage.
+        $newPosition = ($prevTask->position + $nextTask->position) / 2;
+
+        $exists = (clone $taskQuery)
+            ->where('position', $newPosition)
+            ->first();
+
+        if ($exists) {
+            self::reIndexTasksPositions($this->toArray());
+
+            return $this->moveBetweenTasks($prevTaskId, $nextTaskId);
+        }
+
+        $this->position = $newPosition;
+        $this->save();
+
+        return $this;
+    }
+
+    private function getTaskOrderingQuery()
+    {
+        if (isset($this->parent_id)) {
+            return self::where('parent_id', $this->parent_id)
+                ->whereNull('archived_at')
+                ->where('id', '!=', $this->id);
+        }
+
+        return self::where('stage_id', $this->stage_id)
+            ->whereNull('archived_at')
+            ->where('id', '!=', $this->id);
+    }
+
     public static function reIndexTasksPositions($task)
     {
         if (isset($task['parent_id'])) {
@@ -568,7 +752,7 @@ class Task extends Model
 
     public function close()
     {
-        if ($this->status == 'closed') {
+        if ($this->status == 'closed' && $this->last_completed_at) {
             return $this;
         }
 
@@ -583,12 +767,12 @@ class Task extends Model
 
     public function reopen()
     {
-        if ($this->status == 'open') {
+        if ($this->status == 'open' && $this->last_completed_at == null) {
             return $this;
         }
 
         $this->status            = 'open';
-        $this->last_completed_at = null;
+        $this->last_completed_at = NULL;
         $this->save();
         if ($this->parent_id) {
             self::adjustSubtaskCount($this->parent_id);

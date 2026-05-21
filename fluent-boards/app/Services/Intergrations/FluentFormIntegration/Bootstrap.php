@@ -321,7 +321,7 @@ class Bootstrap extends IntegrationManagerController
                 do_action('fluentform/integration_action_result', $feed, 'failed', 'Board is required');
                 return;
             }
-            $board = Board::find($boardId)->toArray();
+            $board = Board::find($boardId);
             if (!$board) {
                 do_action('fluentform/integration_action_result', $feed, 'failed', "Board doesn't exist");
                 return;
@@ -330,7 +330,7 @@ class Bootstrap extends IntegrationManagerController
                 do_action('fluentform/integration_action_result', $feed, 'failed', "Stage is required");
                 return;
             }
-            $stage = Stage::find($stageId)->toArray();
+            $stage = Stage::find($stageId);
             if (!$stage) {
                 do_action('fluentform/integration_action_result', $feed, 'failed', "Stage doesn't exist");
                 return;

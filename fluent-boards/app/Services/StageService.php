@@ -6,9 +6,11 @@ use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\TaskMeta;
+use FluentBoards\App\App;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\AttachmentFileService;
 
 class StageService
 {
@@ -75,12 +77,21 @@ class StageService
         return $stage;
     }
 
-    public function getLastOneMinuteUpdatedStages($boardId)
+    public function getLastOneMinuteUpdatedStages($boardId, $lastUpdated = null, $includeArchived = true)
     {
-        $oneMinuteAgoTimestamp = current_time('timestamp') - 60;
-        return Stage::where('board_id', $boardId)
-                    ->where('updated_at', '>=', date_i18n('Y-m-d H:i:s', $oneMinuteAgoTimestamp))
-                    ->get();
+        if (!$lastUpdated) {
+            $oneMinuteAgoTimestamp = current_time('timestamp') - 60;
+            $lastUpdated = date_i18n('Y-m-d H:i:s', $oneMinuteAgoTimestamp);
+        }
+
+        $stagesQuery = Stage::where('board_id', $boardId)
+            ->where('updated_at', '>=', $lastUpdated);
+
+        if (!$includeArchived) {
+            $stagesQuery->whereNull('archived_at');
+        }
+
+        return $stagesQuery->get();
     }
 
     private function updateTitle($value, $stage)
@@ -220,68 +231,86 @@ class StageService
     public function importTasks($boardId, $stageMapper, $stageIds)
     {
         $tasksToImport = $this->getAllParentAndSubTasksOfStages($stageIds);
-        $taskMap = [];
-        $subtaskGroupMap = [];
-        foreach($tasksToImport as $task)
-        {
-            $newTask = array();
-            $newTask['title'] = $task->title;
-            $newTask['parent_id'] = $task->parent_id ? $taskMap[$task->parent_id] : null;
-            $newTask['description'] = $task->description;
-            $newTask['board_id'] = $boardId;
-            $newTask['stage_id'] = $stageMapper[$task->stage_id];
-            $newTask['status'] = $task->status;
-            $newTask['priority'] = $task->priority;
-            $newTask['position'] = $task->position;
-            $newTask['due_at'] = $task->due_at;
-            $backgroundColor = $task->settings['cover']['backgroundColor'];
-            $newTask['settings'] = [
-                'cover' => [
-                    'backgroundColor' => $backgroundColor,
-                ]
-            ];
-            $newTask = Task::create($newTask);
+        $subtaskGroupChildRelations = [];
+        $taskIdsToImport = $tasksToImport->pluck('id')->toArray();
 
-            if (!$task->parent_id) {
-                $taskMap[$task->id] = $newTask->id;
-                //group mapping
-                $subtaskGroupMap = (new TaskService())->copySubtaskGroup($task, $newTask, $subtaskGroupMap);
-            } else {
-                $groupRelationOfTask = TaskMeta::where('key', Constant::SUBTASK_GROUP_CHILD)
-                    ->where('task_id', $task->id)
-                    ->first();
-
-                if ($groupRelationOfTask && $subtaskGroupMap[$groupRelationOfTask->value]) {
-                    TaskMeta::create([
-                        'task_id' => $newTask->id,
-                        'key' => Constant::SUBTASK_GROUP_CHILD,
-                        'value' => $subtaskGroupMap[$groupRelationOfTask->value]
-                    ]);
-                }
+        if ($taskIdsToImport) {
+            foreach (TaskMeta::where('key', Constant::SUBTASK_GROUP_CHILD)
+                ->whereIn('task_id', $taskIdsToImport)
+                ->get() as $relation) {
+                $subtaskGroupChildRelations[$relation->task_id] = $relation;
             }
         }
+        $taskMap = [];
+        $subtaskGroupMap = [];
+        $attachmentFileService = new AttachmentFileService();
+        $dbInstance = App::getInstance('db');
 
-        //update task count of board
-        $totalTasks = sizeof($tasksToImport);
-        $board = Board::findOrFail($boardId);
-        $settings = $board->settings ?? [];
+        $dbInstance->beginTransaction();
 
-        if (isset($settings['tasks_count'])) {
-            $settings['tasks_count'] += $totalTasks;
-        } else {
-            $settings['tasks_count'] = $totalTasks;
+        try {
+            foreach($tasksToImport as $task)
+            {
+                $newTask = array();
+                $newTask['title'] = $task->title;
+                $newTask['parent_id'] = $task->parent_id ? $taskMap[$task->parent_id] : null;
+                $newTask['description'] = $task->description;
+                $newTask['board_id'] = $boardId;
+                $newTask['stage_id'] = $stageMapper[$task->stage_id];
+                $newTask['status'] = $task->status;
+                $newTask['priority'] = $task->priority;
+                $newTask['position'] = $task->position;
+                $newTask['due_at'] = $task->due_at;
+                $backgroundColor = $task->settings['cover']['backgroundColor'] ?? '';
+                $newTask['settings'] = [
+                    'cover' => [
+                        'backgroundColor' => $backgroundColor,
+                    ]
+                ];
+                $newTask = Task::create($newTask);
+                $attachmentFileService->cloneTaskFilesToBoard($task, $newTask, $boardId);
+
+                if (!$task->parent_id) {
+                    $taskMap[$task->id] = $newTask->id;
+                    //group mapping
+                    $subtaskGroupMap = (new TaskService())->copySubtaskGroup($task, $newTask, $subtaskGroupMap);
+                } else {
+                    $groupRelationOfTask = $subtaskGroupChildRelations[$task->id] ?? null;
+
+                    if ($groupRelationOfTask && $subtaskGroupMap[$groupRelationOfTask->value]) {
+                        TaskMeta::create([
+                            'task_id' => $newTask->id,
+                            'key' => Constant::SUBTASK_GROUP_CHILD,
+                            'value' => $subtaskGroupMap[$groupRelationOfTask->value]
+                        ]);
+                    }
+                }
+            }
+
+            //update task count of board
+            $totalTasks = sizeof($tasksToImport);
+            $board = Board::findOrFail($boardId);
+            $settings = $board->settings ?? [];
+
+            if (isset($settings['tasks_count'])) {
+                $settings['tasks_count'] += $totalTasks;
+            } else {
+                $settings['tasks_count'] = $totalTasks;
+            }
+            $board->settings = $settings;
+            $board->save();
+
+            $dbInstance->commit();
+        } catch (\Exception $e) {
+            $dbInstance->rollBack();
+            $attachmentFileService->rollbackCreatedFiles();
+            throw $e;
         }
-        $board->settings = $settings;
-        $board->save();
     }
 
-    public function updateStageTemplate($stage_id, $boardId = null)
+    public function updateStageTemplate($stage_id)
     {
-        $query = Stage::query();
-        if ($boardId) {
-            $query->where('board_id', $boardId);
-        }
-        $stage = $query->findOrFail($stage_id);
+        $stage = Stage::findOrFail($stage_id);
         $stageSettings = $stage->settings;
         if($stageSettings && array_key_exists('is_template', $stageSettings))
         {
@@ -319,19 +348,20 @@ class StageService
 
         // update tasks stage and position
         foreach ($tasks as $key => $task) {
+            // Clean up archived_by_stage meta when moving to different stage
+            TaskMeta::where('task_id', $task->id)
+                ->where('key', Constant::META_KEY_ARCHIVED_BY_STAGE)
+                ->delete();
+            
             $task->stage_id = $newStageId;
             $task->position = $position + $key;
             $task->save();
         }
         return $tasks;
     }
-    public function archiveAllTasksInStage($stage_id, $boardId = null)
+    public function archiveAllTasksInStage($stage_id)
     {
-        $query = Task::where('stage_id', $stage_id)->whereNull('parent_id')->whereNull('archived_at');
-        if ($boardId) {
-            $query->where('board_id', $boardId);
-        }
-        $tasks = $query->get();
+        $tasks = Task::where('stage_id', $stage_id)->whereNull('parent_id')->whereNull('archived_at')->get();
         foreach ($tasks as $task) {
             $task->position = 0;
             $task->archived_at = current_time('mysql');
@@ -475,12 +505,27 @@ class StageService
     {
         $stage = Stage::findOrFail($stage_id);
         if ($stage) {
-            $oldSettings = $stage->settings;
-            $oldSettings['default_task_assignees'] = $assignees;
-            $stage->settings = $oldSettings;
+            $settings = $stage->settings;
+            $settings['default_task_assignees'] = $assignees;
+            $stage->settings = $settings;
             $stage->save();
 
             do_action('fluent_boards/default_assignees_updated', $stage, $assignees);
+
+            return $stage;
+        }
+    }
+
+    public function setDefaultWatchers($stage_id, $watchers)
+    {
+        $stage = Stage::findOrFail($stage_id);
+        if ($stage) {
+            $settings = $stage->settings;
+            $settings['default_task_watchers'] = $watchers;
+            $stage->settings = $settings;
+            $stage->save();
+
+            do_action('fluent_boards/default_watchers_updated', $stage, $watchers);
 
             return $stage;
         }

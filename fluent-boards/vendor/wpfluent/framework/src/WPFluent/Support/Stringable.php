@@ -91,12 +91,11 @@ class Stringable implements JsonSerializable
     /**
      * Transliterate a UTF-8 value to ASCII.
      *
-     * @param  string  $language
      * @return static
      */
-    public function ascii($language = 'en')
+    public function ascii()
     {
-        return new static(Str::ascii($this->value, $language));
+        return new static(Str::ascii($this->value));
     }
 
     /**
@@ -125,7 +124,7 @@ class Stringable implements JsonSerializable
      * 
      * @return boolean
      */
-    public static function isUpper()
+    public function isUpper()
     {
         return Str::isUpper($this->value);
     }
@@ -135,7 +134,7 @@ class Stringable implements JsonSerializable
      * 
      * @return boolean
      */
-    public static function isLower()
+    public function isLower()
     {
         return Str::isLower($this->value);
     }
@@ -206,7 +205,9 @@ class Stringable implements JsonSerializable
      */
     public function classBasename()
     {
-        return new static(static::classBasename($this->value));
+        $class = $this->value;
+        $class = is_object($class) ? get_class($class) : $class;
+        return new static(basename(str_replace('\\', '/', $class)));
     }
 
     /**
@@ -604,7 +605,7 @@ class Stringable implements JsonSerializable
      * @param  string $value
      * @return int|null
      */
-    public static function parseInt($value)
+    public function parseInt($value)
     {
         return Str::parseInt($value);
     }
@@ -615,7 +616,7 @@ class Stringable implements JsonSerializable
      * @param  string $value
      * @return float|null
      */
-    public static function parseFloat($value)
+    public function parseFloat($value)
     {
         return Str::parseFloat($value);
     }
@@ -626,7 +627,7 @@ class Stringable implements JsonSerializable
      * @param  string  $value
      * @return string
      */
-    public static function parseNumber($value)
+    public function parseNumber($value)
     {
         return Str::parseNumber($value);
     }
@@ -860,14 +861,15 @@ class Stringable implements JsonSerializable
     /**
      * Generate a URL friendly "slug" from a given string.
      *
-     * @param  string  $separator
-     * @param  string|null  $language
-     * @param  array<string, string>  $dictionary
+     * @param  string  $fallbackTitle
+     * @param  string  $context
      * @return static
      */
-    public function slug($separator = '-', $language = 'en', $dictionary = ['@' => 'at'])
+    public function slug($fallbackTitle = '', $context = 'save')
     {
-        return new static(Str::slug($this->value, $separator, $language, $dictionary));
+        return new static(
+            Str::slug($this->value, $fallbackTitle, $context)
+        );
     }
 
     /**
@@ -905,14 +907,13 @@ class Stringable implements JsonSerializable
     /**
      * Returns the portion of the string specified by the start and length parameters.
      *
-     * @param  int  $start
+     * @param  int       $start
      * @param  int|null  $length
-     * @param  string  $encoding
      * @return static
      */
-    public function substr($start, $length = null, $encoding = 'UTF-8')
+    public function substr(int $start, ?int $length = null)
     {
-        return new static(Str::substr($this->value, $start, $length, $encoding));
+        return new static(Str::substr($this->value, $start, $length));
     }
 
     /**
@@ -1031,7 +1032,7 @@ class Stringable implements JsonSerializable
     /**
      * Execute the given callback if the string contains all array values.
      *
-     * @param  iterable<string>  $needles
+     * @param  array  $needles
      * @param  callable  $callback
      * @param  callable|null  $default
      * @return static
@@ -1075,7 +1076,9 @@ class Stringable implements JsonSerializable
      */
     public function whenEndsWith($needles, $callback, $default = null)
     {
-        return $this->when($this->endsWith($needles), $callback, $default);
+        return $this->when(
+            $this->endsWith($needles), $callback, $default
+        );
     }
 
     /**
@@ -1144,14 +1147,16 @@ class Stringable implements JsonSerializable
     /**
      * Execute the given callback if the string starts with a given substring.
      *
-     * @param  string|iterable<string>  $needles
-     * @param  callable  $callback
-     * @param  callable|null  $default
+     * @param string|string[] $needles
+     * @param callable        $callback
+     * @param callable|null   $default
      * @return static
      */
     public function whenStartsWith($needles, $callback, $default = null)
     {
-        return $this->when($this->startsWith($needles), $callback, $default);
+        return $this->when(
+            $this->startsWith($needles), $callback, $default
+        );
     }
 
     /**
@@ -1182,12 +1187,11 @@ class Stringable implements JsonSerializable
     /**
      * Get the number of words a string contains.
      *
-     * @param  string|null  $characters
      * @return int
      */
-    public function wordCount($characters = null)
+    public function wordCount()
     {
-        return Str::wordCount($this->value, $characters);
+        return Str::wordCount($this->value);
     }
 
     /**

@@ -5,6 +5,7 @@ namespace FluentBoards\App\Services;
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Comment;
+use FluentBoards\App\Models\Label;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Models\Stage;
@@ -85,7 +86,6 @@ class BoardService
         
         $board->delete();
         FileSystem::deleteDir('board_'.$boardId);
-//        do_action('fluent_boards/board_deleted', $board);
     }
 
     public function fetchBoardMeta($boardId)
@@ -158,7 +158,7 @@ class BoardService
         return $board;
     }
 
-    private function setCurrentUserPreferencesOnBoardCreate($board)
+    public function setCurrentUserPreferencesOnBoardCreate($board)
     {
         $board->users()->attach(
             $board->created_by,
@@ -293,7 +293,8 @@ class BoardService
         $stage->position = 0;
         $stage->save();
 
-        do_action('fluent_boards/stage_archived', $boardId, $stage);
+        do_action('fluent_boards/stage_archived', $boardId, $stage); // Old hook
+        do_action('fluent_boards/stage_archived_with_tasks', $boardId, $stage); // New hook
         return $stage;
     }
 
@@ -304,7 +305,8 @@ class BoardService
         $stage->archived_at = null;
         $stage->position = $lastStagePosition ? $lastStagePosition->position + 1 : 1;
         $stage->save();
-        do_action('fluent_boards/board_stage_restored', $boardId, $stage->title);
+        do_action('fluent_boards/board_stage_restored', $boardId, $stage->title); // Old hook
+        do_action('fluent_boards/stage_restored_with_tasks', $boardId, $stage); // New hook
         return $stage;
     }
 
@@ -312,9 +314,13 @@ class BoardService
     {
         $per_page = isset($data['per_page']) ? $data['per_page'] : 40;
         $page = isset($data['page']) ? $data['page'] : 1;
-        return Activity::where('object_id', $id)->where('object_type', Constant::ACTIVITY_BOARD)->with(['user'])
+        $activities = Activity::where('object_id', $id)->where('object_type', Constant::ACTIVITY_BOARD)->with(['user'])
             ->orderBy('id', 'DESC')
             ->paginate($per_page, ['*'], 'page', $page);
+
+        Helper::translateActivities($activities);
+
+        return $activities;
     }
 
     public function isAlreadyMember($boardId, $memberId)
@@ -355,9 +361,9 @@ class BoardService
         );
         $boardMember = User::find($memberId);
         if(!$isViewerOnly) {
-            do_action('fluent_boards/board_viewer_added', $boardId, $boardMember);
-        } else {
             do_action('fluent_boards/board_member_added', $boardId, $boardMember);
+        } else {
+            do_action('fluent_boards/board_viewer_added', $boardId, $boardMember);
         }
         return $boardMember;
     }
@@ -447,21 +453,81 @@ class BoardService
      * @param mixed $stage_slug
      * @return array of available positions of the stage with one increased value because if the stage has 10  tasks than it will have 10 position and +1 as last position of the stage
      */
-    public function getStageTaskAvailablePositions($board_id, $stage_id)
+    public function getStageTaskAvailablePositions($board_id, $stage_id, $task_id = null)
     {
-        $availablePositions = Task::query()
+        $task_id = absint($task_id);
+        $task = $task_id ? Task::find($task_id) : null;
+        $isCurrentStage = $task
+            && (int) $task->board_id === (int) $board_id
+            && (int) $task->stage_id === (int) $stage_id;
+
+        $stageTasks = Task::query()
             ->where('board_id', $board_id)
             ->where('parent_id', null)
             ->where('stage_id', $stage_id)
             ->whereNull('archived_at')
             ->orderBy('position', 'asc')
-            ->get()
-            ->pluck('position')->toArray();
+            ->get(['id', 'position']);
 
-        $totalPosition = count($availablePositions);
-        $availablePositions[$totalPosition] = $totalPosition + 1;
+        if ($isCurrentStage) {
+            $stageTasks = $stageTasks->filter(function ($stageTask) use ($task_id) {
+                return (int) $stageTask->id !== $task_id;
+            })->values();
+        }
 
-        return $availablePositions;
+        $availablePositions = [];
+        $moveTargets = [];
+        $currentMoveTargetKey = null;
+        $totalSlots = $stageTasks->count() + 1;
+        $currentSlot = $this->getCurrentStageSlotIndex($task, $stageTasks, $isCurrentStage);
+
+        for ($slotIndex = 0; $slotIndex < $totalSlots; $slotIndex++) {
+            $slotNumber = $slotIndex + 1;
+            // Each slot represents a drop target between two ordered tasks, so the
+            // modal can send exact neighbour ids instead of a fragile display index.
+            $prevTask = $slotIndex > 0 ? $stageTasks->get($slotIndex - 1) : null;
+            $nextTask = $slotIndex < $stageTasks->count() ? $stageTasks->get($slotIndex) : null;
+            $slotKey = 'slot_' . $slotNumber;
+
+            $availablePositions[] = $slotNumber;
+            $moveTargets[] = [
+                'key' => $slotKey,
+                'label' => $slotNumber,
+                'prevTaskId' => $prevTask ? (int) $prevTask->id : null,
+                'nextTaskId' => $nextTask ? (int) $nextTask->id : null,
+                'isCurrent' => $isCurrentStage && $currentSlot === $slotNumber,
+            ];
+
+            if ($isCurrentStage && $currentSlot === $slotNumber) {
+                $currentMoveTargetKey = $slotKey;
+            }
+        }
+
+        return [
+            'availablePositions' => $availablePositions,
+            'moveTargets' => $moveTargets,
+            'currentMoveTargetKey' => $currentMoveTargetKey,
+            'defaultMoveTargetKey' => 'slot_' . $totalSlots,
+        ];
+    }
+
+    private function getCurrentStageSlotIndex($task, $stageTasks, $isCurrentStage)
+    {
+        if (!$isCurrentStage || !$task) {
+            return null;
+        }
+
+        $slotNumber = 1;
+        foreach ($stageTasks as $stageTask) {
+            if ((float) $task->position > (float) $stageTask->position) {
+                $slotNumber++;
+                continue;
+            }
+
+            break;
+        }
+
+        return $slotNumber;
     }
 
     public function getAssigneesByBoard($board_id, $search = '')
@@ -525,8 +591,8 @@ class BoardService
 
             // Check if the board is already in the list
             if (!in_array($boardId, $recentBoardIds)) {
-                // If there are already 3 boards, remove the last one
-                if (count($recentBoardIds) >= 3) {
+                // Keep the 4 most recently opened boards for the dashboard view.
+                if (count($recentBoardIds) >= 4) {
                     array_pop($recentBoardIds);
                 }
             } else {
@@ -564,11 +630,17 @@ class BoardService
             return [];
         }
 
+        if (!is_array($recentBoardIds)) {
+            $recentBoardIds = [];
+        }
+
         $currentUser = User::find($userId);
 
         if (!PermissionManager::isAdmin($userId)){
             $recentBoardIds = array_intersect($recentBoardIds, $currentUser->whichBoards->pluck('id')->toArray());
         }
+
+        $recentBoardIds = array_values(array_slice($recentBoardIds, 0, 4));
 
         // This is for checking if that board is exists
         // TODO: we will remove this code in future version
@@ -708,64 +780,97 @@ class BoardService
             ->get();
     }
 
-    public function deleteInvitation($invitationId, $boardId = null)
+    public function deleteInvitation($invitationId)
     {
-        $query = Meta::query();
-        if ($boardId) {
-            $query->where('object_id', $boardId)
-                  ->where('object_type', Constant::OBJECT_TYPE_BOARD);
-        }
-        $query->findOrFail($invitationId)->delete();
+        Meta::findOrFail($invitationId)->delete();
     }
 
-    public function hasDataChanged($boardId)
+    public function hasDataChanged($boardId, $includeArchived = false, $since = null)
     {
         $stages = [];
         $labels = [];
         $tasks = [];
-        $taskDeleted = false;
-        $stageDeleted = false;
-        $labelDeleted = false;
-        $oneMinuteAgoTimestamp = current_time('timestamp') - 60; // Get the current timestamp and subtract 60 seconds
-        $oneMinuteAgo = date_i18n('Y-m-d H:i:s', $oneMinuteAgoTimestamp); // Format the timestamp into the desired format in GMT
+        $syncStartedAt = current_time('mysql');
+        $isCursorRequest = !empty($since);
+        $forceFullSync = false;
+
+        if ($isCursorRequest) {
+            $lastUpdated = $this->normalizeSyncCursor($since, $syncStartedAt);
+            $forceFullSync = !$lastUpdated;
+        } else {
+            $oneMinuteAgoTimestamp = current_time('timestamp') - 60;
+            $lastUpdated = date_i18n('Y-m-d H:i:s', $oneMinuteAgoTimestamp);
+        }
 
         $board = Board::find($boardId);
         if (!$board) {
             throw new \Exception(esc_html__("Board doesn't exists", 'fluent-boards'));
         }
-        // if stage in this board has been deleted
-        $stageDeleted = Activity::where('object_id', $boardId)->where('updated_at', '>=', $oneMinuteAgo)->where('action', 'deleted')->where('column', 'stage')->exists();
+        $boardUpdatedAt = $this->formatSyncTimestamp($board->updated_at);
+        $boardChanged = !$isCursorRequest || $forceFullSync || $boardUpdatedAt >= $lastUpdated;
 
-        if ($stageDeleted) {
-            $stages = $board->stages;
+        // Reset the local list if a change can remove an item from the user's current view.
+        $stageActivityQuery = Activity::where('object_id', $boardId)
+            ->where('object_type', Constant::ACTIVITY_BOARD)
+            ->where('updated_at', '>=', $lastUpdated)
+            ->where('column', 'stage');
+
+        $stageResetRequired = $forceFullSync || (clone $stageActivityQuery)
+            ->whereIn('action', ['deleted', 'archived', 'restored'])
+            ->exists();
+
+        if ($stageResetRequired) {
+            $stagesQuery = Stage::where('board_id', $boardId)->orderBy('position', 'asc');
+            if (!$includeArchived) {
+                $stagesQuery->whereNull('archived_at');
+            }
+            $stages = $stagesQuery->get();
         } else {
-            $stages = (new StageService())->getLastOneMinuteUpdatedStages($boardId);
+            $stages = (new StageService())->getLastOneMinuteUpdatedStages($boardId, $lastUpdated, $includeArchived);
         }
 
-        $labelDeleted = Activity::where('object_id', $boardId)->where('updated_at', '>=', $oneMinuteAgo)->where('action', 'deleted')->where('column', 'label')->exists();
-        if ($labelDeleted) {
-            $labels = $board->labels;
+        $labelResetRequired = $forceFullSync || Activity::where('object_id', $boardId)
+            ->where('object_type', Constant::ACTIVITY_BOARD)
+            ->where('updated_at', '>=', $lastUpdated)
+            ->where('action', 'deleted')
+            ->where('column', 'label')
+            ->exists();
+        if ($labelResetRequired) {
+            $labelsQuery = Label::where('board_id', $boardId)->orderBy('position', 'asc');
+            if (!$includeArchived) {
+                $labelsQuery->whereNull('archived_at');
+            }
+            $labels = $labelsQuery->get();
         } else {
-            $labels = (new LabelService())->getLastOneMinuteUpdatedLabels($boardId);
+            $labels = (new LabelService())->getLastOneMinuteUpdatedLabels($boardId, $lastUpdated, $includeArchived);
         }
 
-        // if task in this board has been deleted
-        $taskDeletedOrMovedFormBoard = Activity::where('object_id', $boardId)
-            ->where('updated_at', '>=', $oneMinuteAgo)
+        $stageArchiveRestored = !$forceFullSync && (clone $stageActivityQuery)
+            ->whereIn('action', ['archived', 'restored'])
+            ->exists();
+
+        $taskResetRequired = $forceFullSync || $stageArchiveRestored || Activity::where('object_id', $boardId)
+            ->where('object_type', Constant::ACTIVITY_BOARD)
+            ->where('updated_at', '>=', $lastUpdated)
             ->where(function($query) {
                 $query->where('action', 'deleted')
-                    ->orWhere('action', 'moved');
+                    ->orWhere('action', 'moved')
+                    ->orWhere('action', 'archived')
+                    ->orWhere('action', 'restored');
             })
             ->where('column', 'task')
             ->exists();
-        if ($taskDeletedOrMovedFormBoard) {
+        if ($taskResetRequired) {
             $tasksQuery = Task::query()
                 ->where([
                     'board_id'    => $boardId,
                     'parent_id'   => null,
-                    'archived_at' => null
                 ])
                 ->with(['assignees', 'labels', 'watchers']);
+
+            if (!$includeArchived) {
+                $tasksQuery->whereNull('archived_at');
+            }
 
             if (!!defined('FLUENT_BOARDS_PRO_VERSION')) {
                 $tasksQuery->with('customFields');
@@ -773,7 +878,7 @@ class BoardService
 
             $tasks = $tasksQuery->orderBy('due_at', 'ASC')->get();
         } else {
-            $tasks = (new TaskService())->getLastOneMinuteUpdatedTasks($boardId);
+            $tasks = (new TaskService())->getLastOneMinuteUpdatedTasks($boardId, $lastUpdated, $includeArchived);
         }
 
         foreach ($tasks as $task) {
@@ -790,14 +895,61 @@ class BoardService
             $board->custom_fields = $board->customFields;
         }
 
+        $boardPayload = $boardChanged ? $board : (object) [];
+        $hasChanges = $boardChanged
+            || $stageResetRequired
+            || $labelResetRequired
+            || $taskResetRequired
+            || count($stages)
+            || count($labels)
+            || count($tasks);
+
         return [
-            'board'        => $board,
-            'stages'       => $stages,
-            'labels'       => $labels,
-            'tasks'        => $tasks,
-            'taskDeleted'  => $taskDeletedOrMovedFormBoard,
-            'stageDeleted' => $stageDeleted,
+            'board'              => $boardPayload,
+            'stages'             => $stages,
+            'labels'             => $labels,
+            'tasks'              => $tasks,
+            'taskDeleted'        => $taskResetRequired,
+            'stageDeleted'       => $stageResetRequired,
+            'labelDeleted'       => $labelResetRequired,
+            'taskResetRequired'  => $taskResetRequired,
+            'stageResetRequired' => $stageResetRequired,
+            'labelResetRequired' => $labelResetRequired,
+            'has_changes'        => (bool) $hasChanges,
+            'synced_at'          => $syncStartedAt,
+            'sync_reset'         => $forceFullSync,
         ];
+    }
+
+    private function normalizeSyncCursor($since, $syncStartedAt)
+    {
+        if (!is_string($since)) {
+            return null;
+        }
+
+        $since = trim($since);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $since)) {
+            return null;
+        }
+
+        if ($since > $syncStartedAt) {
+            return null;
+        }
+
+        if (strtotime($since) < strtotime('-24 hours', strtotime($syncStartedAt))) {
+            return null;
+        }
+
+        return $since;
+    }
+
+    private function formatSyncTimestamp($timestamp)
+    {
+        if ($timestamp instanceof \DateTimeInterface) {
+            return $timestamp->format('Y-m-d H:i:s');
+        }
+
+        return (string) $timestamp;
     }
 
     public function getAssociatedBoards($associatedId)

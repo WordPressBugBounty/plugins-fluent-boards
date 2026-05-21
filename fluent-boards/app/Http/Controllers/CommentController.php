@@ -27,15 +27,12 @@ class CommentController extends Controller
 
     public function getComments(Request $request, $board_id, $task_id)
     {
-        $board_id = absint($board_id);
-        $task_id = absint($task_id);
         try {
-            Task::where('board_id', $board_id)->where('id', $task_id)->firstOrFail();
             $filter = $request->getSafe('filter', 'sanitize_text_field');
             $per_page =  10;
 
-            $comments = $this->commentService->getComments($task_id, $per_page, $filter);
-            $totalComments = $this->commentService->getTotal($task_id);
+            $comments = $this->commentService->getComments($task_id, $per_page, $filter, $board_id);
+            $totalComments = $this->commentService->getTotal($task_id, $board_id);
 
             return $this->sendSuccess([
                 'comments' => $comments,
@@ -103,12 +100,12 @@ class CommentController extends Controller
                 $commentData['description'] = $this->commentService->checkIfCommentHaveLinks($description);
             }
 
-            $comment = $this->commentService->create($commentData, $task_id);
+            $comment = $this->commentService->create($commentData, $task_id, $board_id);
             $comment['user'] = $comment->user;
 
             $usersToSendEmail = [];
             if ($comment->type == 'reply') {
-                $parentComment = Comment::where('board_id', (int) $board_id)->where('id', $comment->parent_id)->firstOrFail();
+                $parentComment = Comment::findOrFail($comment->parent_id);
                 $commenterId = $parentComment->created_by;
                 if ($commenterId != get_current_user_id())
                 {
@@ -180,7 +177,7 @@ class CommentController extends Controller
                 $mentionData = array_filter(array_map('intval', $rawMentionData));
             }
             
-            $comment = $this->commentService->update($commentData, $comment_id, $mentionData);
+            $comment = $this->commentService->update($commentData, $comment_id, $mentionData, $board_id);
 
             if (!$comment) {
                 $errorMessage = __('Unauthorized Action', 'fluent-boards');
@@ -215,11 +212,8 @@ class CommentController extends Controller
 
     public function deleteComment($board_id, $comment_id)
     {
-        $board_id = absint($board_id);
-        $comment_id = absint($comment_id);
         try {
-            Comment::where('board_id', $board_id)->where('id', $comment_id)->firstOrFail();
-            $this->commentService->delete($comment_id);
+            $this->commentService->delete($comment_id, $board_id);
 
             return $this->sendSuccess([
                 'message' => __('Comment has been deleted', 'fluent-boards'),
@@ -249,7 +243,7 @@ class CommentController extends Controller
                 $mentionData = array_filter(array_map('intval', $rawMentionData));
             }
             
-            $reply = $this->commentService->update($replyData, $reply_id, $mentionData);
+            $reply = $this->commentService->update($replyData, $reply_id, $mentionData, $board_id);
 
             if (!$reply) {
                 $errorMessage = __('Unauthorized Action', 'fluent-boards');
@@ -267,11 +261,8 @@ class CommentController extends Controller
 
     public function deleteReply($board_id, $reply_id)
     {
-        $board_id = absint($board_id);
-        $reply_id = absint($reply_id);
         try {
-            Comment::where('board_id', $board_id)->where('id', $reply_id)->firstOrFail();
-            $this->commentService->deleteReply($reply_id);
+            $this->commentService->deleteReply($reply_id, $board_id);
 
             return $this->sendSuccess([
                 'message' => __('Reply has been deleted', 'fluent-boards'),
@@ -317,6 +308,8 @@ class CommentController extends Controller
             'file.mimetypes' => __('The file must be a image type.', 'fluent-boards')
         ]);
 
+        (new \FluentBoards\App\Services\TaskService())->findTaskOnBoard($task_id, $board_id);
+
         $uploadInfo = UploadService::handleFileUpload( $files, $board_id);
 
         $imageData = $uploadInfo[0];
@@ -339,9 +332,7 @@ class CommentController extends Controller
 
     public function updateCommentPrivacy($board_id, $comment_id)
     {
-        $board_id = absint($board_id);
-        $comment_id = absint($comment_id);
-        $comment = Comment::where('board_id', $board_id)->where('id', $comment_id)->firstOrFail();
+        $comment = $this->commentService->findCommentOnBoard($comment_id, $board_id);
 
         // Check if user has permission to update the comment
         if ($comment->created_by != get_current_user_id()) {

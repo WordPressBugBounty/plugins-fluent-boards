@@ -435,6 +435,10 @@ abstract class AbstractPaginator
      */
     public function setPath($path)
     {
+        if (!preg_match('/^https?:\/\//i', $path)) {
+            $path = App::make('request')->url() . '/' . trim($path, '/');
+        }
+
         $this->path = $path;
 
         return $this;
@@ -724,6 +728,10 @@ abstract class AbstractPaginator
      */
     public function __toString()
     {
-        return (string) $this->toArray();
+        if (method_exists($this, 'render')) {
+            return $this->render();
+        }
+
+        return get_class($this);
     }
 }

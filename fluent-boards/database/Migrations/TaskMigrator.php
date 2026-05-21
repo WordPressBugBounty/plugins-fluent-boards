@@ -72,5 +72,6 @@ class TaskMigrator
                 $wpdb->query($sql);
             }
         }
+
     }
 }

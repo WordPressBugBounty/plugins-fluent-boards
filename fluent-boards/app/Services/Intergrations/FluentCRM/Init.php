@@ -3,6 +3,7 @@
 namespace FluentBoards\App\Services\Intergrations\FluentCRM;
 
 use FluentBoards\App\App;
+use FluentBoards\App\Vite;
 use FluentBoards\App\Services\Intergrations\FluentCRM\Automations\ContactAddedBoardTrigger;
 use FluentBoards\App\Services\Intergrations\FluentCRM\Automations\ContactAddedTaskTrigger;
 use FluentBoards\App\Services\Intergrations\FluentCRM\Automations\StageChangedTrigger;
@@ -28,7 +29,7 @@ class Init
 
     public function registerToContactSection()
     {
-        add_action( 'fluent_crm/global_app_boot_loaded', function () {
+        add_action('fluent_crm/global_app_boot_loaded', function () {
             $this->enqueueCrmContactApp3();
         });
     }
@@ -48,19 +49,14 @@ class Init
             ? ['fluentcrm_admin_app_boot']
             : [];
 
-        wp_enqueue_script(
+        Vite::injectViteClient();
+
+        Vite::enqueueScript(
             $handle,
-            FLUENT_BOARDS_PLUGIN_URL . 'assets/crm-contact-app3.js',
+            'admin/crm-contact-app3/app.js',
             $dependencies,
             FLUENT_BOARDS_PLUGIN_VERSION,
             true
-        );
-
-        wp_enqueue_style(
-            $handle,
-            FLUENT_BOARDS_PLUGIN_URL . 'assets/admin/crm-contact-app3.css',
-            [],
-            FLUENT_BOARDS_PLUGIN_VERSION
         );
 
         wp_localize_script(
@@ -76,7 +72,9 @@ class Init
                 'base_url'         => fluent_boards_page_url(),
                 'admin_url'        => admin_url('admin.php'),
                 'render_in'        => is_admin() ? 'admin' : 'front',
+                'has_pro'          => defined('FLUENT_BOARDS_PRO_VERSION'),
                 'advanced_modules' => fluent_boards_get_pref_settings(),
+                'features'         => fluent_boards_get_features_config(),
             ]
         );
     }

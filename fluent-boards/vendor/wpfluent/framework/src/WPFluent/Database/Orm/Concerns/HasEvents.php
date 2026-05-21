@@ -6,7 +6,6 @@ use FluentBoards\Framework\Events\DispatcherInterface;
 use FluentBoards\Framework\Events\NullDispatcher;
 use FluentBoards\Framework\Support\Arr;
 use InvalidArgumentException;
-use ReflectionClass;
 
 trait HasEvents
 {

@@ -32,6 +32,9 @@
         "classmap": [
             "database/"
         ],
+        "exclude-from-classmap": [
+            "/app/Services/Libs/csv/"
+        ],
         "files": []
     },
     "extra": {

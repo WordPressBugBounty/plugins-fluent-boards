@@ -3,6 +3,7 @@
 namespace FluentBoards\Framework\Support;
 
 use Exception;
+use Traversable;
 use JsonException;
 use FluentBoards\Framework\Foundation\App;
 use FluentBoards\Framework\Support\Helper;
@@ -393,13 +394,26 @@ class Str
      * Determine if a given string contains a given substring.
      *
      * @param  string  $haystack
-     * @param  string|string[]  $needles
+     * @param  string|iterable<string>  $needles
+     * @param  bool  $ignoreCase
      * @return bool
      */
-    public static function contains($haystack, $needles)
+    public static function contains($haystack, $needles, $ignoreCase = false)
     {
-        foreach ((array) $needles as $needle) {
-            if ($needle !== '' && mb_strpos($haystack, $needle) !== false) {
+        if ($ignoreCase) {
+            $haystack = mb_strtolower($haystack);
+        }
+
+        if (! is_iterable($needles)) {
+            $needles = (array) $needles;
+        }
+
+        foreach ($needles as $needle) {
+            if ($ignoreCase) {
+                $needle = mb_strtolower($needle);
+            }
+
+            if ($needle !== '' && str_contains($haystack, $needle)) {
                 return true;
             }
         }
@@ -411,13 +425,14 @@ class Str
      * Determine if a given string contains all array values.
      *
      * @param  string  $haystack
-     * @param  string[]  $needles
+     * @param  iterable<string>  $needles
+     * @param  bool  $ignoreCase
      * @return bool
      */
-    public static function containsAll($haystack, array $needles)
+    public static function containsAll($haystack, $needles, $ignoreCase = false)
     {
         foreach ($needles as $needle) {
-            if (! static::contains($haystack, $needle)) {
+            if (! static::contains($haystack, $needle, $ignoreCase)) {
                 return false;
             }
         }
@@ -444,16 +459,21 @@ class Str
      * Determine if a given string ends with a given substring.
      *
      * @param  string  $haystack
-     * @param  string|string[]  $needles
+     * @param  array|string  $needles
      * @return bool
      */
     public static function endsWith($haystack, $needles)
     {
-        foreach ((array) $needles as $needle) {
-            if (
-                $needle !== '' && $needle !== null
-                && substr($haystack, -strlen($needle)) === (string) $needle
-            ) {
+        if (! is_iterable($needles)) {
+            $needles = (array) $needles;
+        }
+
+        if (is_null($haystack)) {
+            return false;
+        }
+
+        foreach ($needles as $needle) {
+            if ((string) $needle !== '' && str_ends_with($haystack, $needle)) {
                 return true;
             }
         }
@@ -1110,14 +1130,29 @@ class Str
     /**
      * Replace the given value in the given string.
      *
-     * @param  string|string[]  $search
-     * @param  string|string[]  $replace
-     * @param  string|string[]  $subject
-     * @return string
+     * @param  string|iterable<string>  $search
+     * @param  string|iterable<string>  $replace
+     * @param  string|iterable<string>  $subject
+     * @param  bool  $caseSensitive
+     * @return string|string[]
      */
-    public static function replace($search, $replace, $subject)
+    public static function replace($search, $replace, $subject, $caseSensitive = true)
     {
-        return str_replace($search, $replace, $subject);
+        if ($search instanceof Traversable) {
+            $search = (new Collection($search))->all();
+        }
+
+        if ($replace instanceof Traversable) {
+            $replace = (new Collection($replace))->all();
+        }
+
+        if ($subject instanceof Traversable) {
+            $subject = (new Collection($subject))->all();
+        }
+
+        return $caseSensitive
+                ? str_replace($search, $replace, $subject)
+                : str_ireplace($search, $replace, $subject);
     }
 
     /**
@@ -1223,7 +1258,7 @@ class Str
      */
     public static function replaceMatches($pattern, $replace, $subject, $limit = -1)
     {
-        if ($replace instanceof Closure) {
+        if ($replace instanceof \Closure) {
             return preg_replace_callback($pattern, $replace, $subject, $limit);
         }
 
@@ -1412,57 +1447,80 @@ class Str
     }
 
     /**
-     * Remove all whitespace from both ends of a string.
+     * Remove whitespace (including special Unicode spaces) from a string.
      *
-     * @param  string  $value
-     * @param  string|null  $charlist
-     * @return string
+     * Supports trimming from left, right, or both ends, and allows
+     * specifying additional characters to trim.
+     *
+     * @param string      $value    The string to trim.
+     * @param string|null $charlist Optional additional characters to trim.
+     * @param string      $mode     One of 'both' (default), 'left', 'right'.
+     *
+     * @return string The trimmed string.
      */
-    public static function trim($value, $charlist = null)
+    protected static function _unicodeTrim(string $value, ?string $charlist = null, string $mode = 'both'): string
     {
-        if ($charlist === null) {
-            $trimDefaultCharacters = " \n\r\t\v\0";
+        $defaultChars = " \n\r\t\v"; // \0 omitted to avoid null byte errors
 
-            return preg_replace('~^[\s\x{FEFF}\x{200B}\x{200E}'.$trimDefaultCharacters.']+|[\s\x{FEFF}\x{200B}\x{200E}'.$trimDefaultCharacters.']+$~u', '', $value) ?? trim($value);
+        $chars = $charlist ?? $defaultChars;
+        $quoted = preg_quote($chars, '~');
+
+        // Unicode invisible spaces we want to include
+        $unicodeSpaces = '\s\x{FEFF}\x{200B}\x{200E}';
+
+        switch ($mode) {
+            case 'left':
+                $pattern = '~^[' . $unicodeSpaces . $quoted . ']+~u';
+                break;
+            case 'right':
+                $pattern = '~[' . $unicodeSpaces . $quoted . ']+$~u';
+                break;
+            case 'both':
+            default:
+                $pattern = '~^[' . $unicodeSpaces . $quoted . ']+|[' . $unicodeSpaces . $quoted . ']+$~u';
+                break;
         }
 
-        return trim($value, $charlist);
+        return preg_replace($pattern, '', $value) ?? $value;
     }
 
     /**
-     * Remove all whitespace from the beginning of a string.
+     * Remove all whitespace (including special Unicode spaces) from both ends of a string.
      *
-     * @param  string  $value
-     * @param  string|null  $charlist
-     * @return string
+     * @param string      $value    The string to trim.
+     * @param string|null $charlist Optional additional characters to trim.
+     *
+     * @return string The trimmed string.
      */
-    public static function ltrim($value, $charlist = null)
+    public static function trim(string $value, ?string $charlist = null): string
     {
-        if ($charlist === null) {
-            $ltrimDefaultCharacters = " \n\r\t\v\0";
-
-            return preg_replace('~^[\s\x{FEFF}\x{200B}\x{200E}'.$ltrimDefaultCharacters.']+~u', '', $value) ?? ltrim($value);
-        }
-
-        return ltrim($value, $charlist);
+        return static::_unicodeTrim($value, $charlist, 'both');
     }
 
     /**
-     * Remove all whitespace from the end of a string.
+     * Remove all whitespace (including special Unicode spaces) from the beginning of a string.
      *
-     * @param  string  $value
-     * @param  string|null  $charlist
-     * @return string
+     * @param string      $value    The string to trim.
+     * @param string|null $charlist Optional additional characters to trim.
+     *
+     * @return string The trimmed string.
      */
-    public static function rtrim($value, $charlist = null)
+    public static function ltrim(string $value, ?string $charlist = null): string
     {
-        if ($charlist === null) {
-            $rtrimDefaultCharacters = " \n\r\t\v\0";
+        return static::_unicodeTrim($value, $charlist, 'left');
+    }
 
-            return preg_replace('~[\s\x{FEFF}\x{200B}\x{200E}'.$rtrimDefaultCharacters.']+$~u', '', $value) ?? rtrim($value);
-        }
-
-        return rtrim($value, $charlist);
+    /**
+     * Remove all whitespace (including special Unicode spaces) from the end of a string.
+     *
+     * @param string      $value    The string to trim.
+     * @param string|null $charlist Optional additional characters to trim.
+     *
+     * @return string The trimmed string.
+     */
+    public static function rtrim(string $value, ?string $charlist = null): string
+    {
+        return static::_unicodeTrim($value, $charlist, 'right');
     }
 
     /**
@@ -1479,13 +1537,21 @@ class Str
     /**
      * Determine if a given string starts with a given substring.
      *
-     * @param  string  $haystack
-     * @param  string|string[]  $needles
+     * @param string                 $haystack
+     * @param string|iterable<string> $needles
      * @return bool
      */
     public static function startsWith($haystack, $needles)
     {
-        foreach ((array) $needles as $needle) {
+        if (!is_iterable($needles)) {
+            $needles = [$needles];
+        }
+
+        if ($haystack === null) {
+            return false;
+        }
+
+        foreach ($needles as $needle) {
             if ((string) $needle !== '' && strncmp($haystack, $needle, strlen($needle)) === 0) {
                 return true;
             }
@@ -1668,14 +1734,16 @@ class Str
     }
 
     /**
-     * Get the number of words a string contains.
+     * Count the number of words in a UTF-8 string.
      *
-     * @param  string  $string
+     * @param string $string
      * @return int
      */
-    public static function wordCount($string)
+    public static function wordCount(string $string)
     {
-        return str_word_count($string);
+        $words = preg_split('/[^\p{L}\p{N}]+/u', $string, -1, PREG_SPLIT_NO_EMPTY);
+
+        return count($words);
     }
 
     /**

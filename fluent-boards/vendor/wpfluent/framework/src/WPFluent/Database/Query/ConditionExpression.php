@@ -2,7 +2,7 @@
 
 namespace FluentBoards\Framework\Database\Query;
 
-interface ConditionExpression extends Expression
+interface ConditionExpression extends ExpressionInterface
 {
 	// ...
 }

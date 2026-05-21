@@ -8,6 +8,7 @@ use LogicException;
 use RuntimeException;
 use DateTimeInterface;
 use InvalidArgumentException;
+use FluentBoards\Framework\Foundation\App;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Str;
 use FluentBoards\Framework\Support\Helper;
@@ -23,13 +24,14 @@ use FluentBoards\Framework\Database\Query\ConditionExpression;
 use FluentBoards\Framework\Support\ArrayableInterface;
 use FluentBoards\Framework\Database\ConnectionInterface;
 use FluentBoards\Framework\Database\Concerns\BuildsQueries;
+use FluentBoards\Framework\Database\Concerns\BuildsWhereDateClauses;
 use FluentBoards\Framework\Database\Concerns\ExplainsQueries;
 use FluentBoards\Framework\Database\Orm\Relations\Relation;
 use FluentBoards\Framework\Database\Orm\Builder as OrmBuilder;
 
 class Builder
 {
-    use BuildsQueries, ExplainsQueries, ForwardsCalls, MacroableTrait {
+    use BuildsQueries, BuildsWhereDateClauses, ExplainsQueries, ForwardsCalls, MacroableTrait {
         __call as macroCall;
     }
 
@@ -260,8 +262,8 @@ class Builder
      */
     public function __construct(
         ConnectionInterface $connection,
-        Grammar $grammar = null,
-        Processor $processor = null
+        ?Grammar $grammar = null,
+        ?Processor $processor = null
     ) {
         $this->connection = $connection;
         $this->grammar = $grammar ?: $connection->getQueryGrammar();
@@ -303,6 +305,8 @@ class Builder
      */
     public function selectSub($query, $as)
     {
+        $this->grammar->addAlias($as);
+
         [$query, $bindings] = $this->createSub($query);
 
         return $this->selectRaw(
@@ -339,6 +343,8 @@ class Builder
      */
     public function fromSub($query, $as)
     {
+        $this->grammar->addAlias($as);
+
         [$query, $bindings] = $this->createSub($query);
 
         return $this->fromRaw('('.$query.') as '.$this->grammar->wrapTable($as), $bindings);
@@ -455,7 +461,6 @@ class Builder
     /**
      * Force the query to only return distinct results.
      *
-     * @param  mixed  ...$distinct
      * @return $this
      */
     public function distinct()
@@ -480,6 +485,11 @@ class Builder
      */
     public function from($table, $as = null)
     {
+        if (is_string($table) && stripos($table, ' as ') !== false) {
+            [$table, $as] = explode(' as ', $table);
+            $this->grammar->addAlias($as);
+        }
+
         if ($this->isQueryable($table)) {
             return $this->fromSub($table, $as);
         }
@@ -599,6 +609,8 @@ class Builder
      */
     public function joinSub($query, $as, $first, $operator = null, $second = null, $type = 'inner', $where = false)
     {
+        $this->grammar->addAlias($as);
+
         [$query, $bindings] = $this->createSub($query);
 
         $expression = '('.$query.') as '.$this->grammar->wrapTable($as);
@@ -756,6 +768,8 @@ class Builder
      */
     public function crossJoinSub($query, $as)
     {
+        $this->grammar->addAlias($as);
+
         [$query, $bindings] = $this->createSub($query);
 
         $expression = '('.$query.') as '.$this->grammar->wrapTable($as);
@@ -777,6 +791,11 @@ class Builder
      */
     protected function newJoinClause(self $parentQuery, $type, $table)
     {
+        if (stripos($table, ' as ') !== false) {
+            [$_, $as] = explode(' as ', $table);
+            $this->grammar->addAlias($as);
+        }
+        
         return new JoinClause($parentQuery, $type, $table);
     }
 
@@ -1363,7 +1382,11 @@ class Builder
         $values = Arr::flatten($values);
 
         foreach ($values as &$value) {
-            $value = (int) ($value instanceof BackedEnum ? $value->value : $value);
+            if (class_exists('BackedEnum') && $value instanceof \BackedEnum) {
+                $value = (int) $value->value;
+            } else {
+                $value = (int) $value;
+            }
         }
 
         $this->wheres[] = compact('type', 'column', 'values', 'boolean');
@@ -2686,13 +2709,24 @@ class Builder
      * Add an "order by" clause to the query.
      *
      * @param  \Closure|\FluentBoards\Framework\Database\Orm\Builder|\FluentBoards\Framework\Database\Query\Builder|\FluentBoards\Framework\Database\Query\Expression|string  $column
-     * @param  string  $direction
+     * @param  string $direction
+     * @param  array  $allowedColumns
      * @return $this
      *
      * @throws \InvalidArgumentException
      */
-    public function orderBy($column, $direction = 'asc')
+    public function orderBy($column, $direction = 'asc', $allowedColumns = [])
     {
+        if (!empty($allowedColumns) && !in_array($column, $allowedColumns, true)) {
+            throw new LogicException(
+                "Ordering by `$column` is not allowed for this query."
+            );
+        }
+
+        if (!preg_match('/^[a-zA-Z0-9_\.]+$/', $column)) {
+            throw new LogicException("Invalid column name `$column`.");
+        }
+
         if ($this->isQueryable($column)) {
             [$query, $bindings] = $this->createSub($column);
 
@@ -2704,7 +2738,9 @@ class Builder
         $direction = strtolower($direction);
 
         if (! in_array($direction, ['asc', 'desc'], true)) {
-            throw new InvalidArgumentException('Order direction must be "asc" or "desc".');
+            throw new InvalidArgumentException(
+                'Order direction must be "asc" or "desc".'
+            );
         }
 
         $this->{$this->unions ? 'unionOrders' : 'orders'}[] = [
@@ -2770,7 +2806,9 @@ class Builder
     {
         $type = 'Raw';
 
-        $this->{$this->unions ? 'unionOrders' : 'orders'}[] = compact('type', 'sql');
+        $this->{$this->unions ? 'unionOrders' : 'orders'}[] = compact(
+            'type', 'sql'
+        );
 
         $this->addBinding($bindings, $this->unions ? 'unionOrder' : 'order');
 
@@ -3104,7 +3142,7 @@ class Builder
      * @param  (\Closure(): TValue)|null  $callback
      * @return object|TValue
      */
-    public function findOr($id, $columns = ['*'], Closure $callback = null)
+    public function findOr($id, $columns = ['*'], ?Closure $callback = null)
     {
         if ($columns instanceof Closure) {
             $callback = $columns;
@@ -3224,6 +3262,7 @@ class Builder
      * @param  array  $columns
      * @param  string  $pageName
      * @param  int|null  $page
+     * @param  int|null  $total
      * @return \FluentBoards\Framework\Pagination\LengthAwarePaginatorInterface
      */
     public function paginate(
@@ -3239,7 +3278,9 @@ class Builder
 
         $perPage = $perPage instanceof Closure ? $perPage($total) : $perPage;
 
-        $results = $total ? $this->forPage($page, $perPage)->get($columns) : Helper::collect();
+        $results = $total
+            ? $this->forPage($page, $perPage)->get($columns)
+            : Helper::collect();
 
         return $this->paginator($results, $total, $perPage, $page, [
             'path' => Paginator::resolveCurrentPath(),
@@ -3258,7 +3299,12 @@ class Builder
      * @param  int|null  $page
      * @return \FluentBoards\Framework\Pagination\PaginatorInterface
      */
-    public function simplePaginate($perPage = 15, $columns = ['*'], $pageName = 'page', $page = null)
+    public function simplePaginate(
+        $perPage = 15,
+        $columns = ['*'],
+        $pageName = 'page',
+        $page = null
+    )
     {
         $page = $page ?: Paginator::resolveCurrentPage($pageName);
 
@@ -3271,9 +3317,11 @@ class Builder
     }
 
     /**
-     * Get a paginator only supporting simple next and previous links.
+     * Get a cursor paginator for efficient pagination of large datasets.
      *
-     * This is more efficient on larger data-sets, etc.
+     * Cursor pagination uses a unique column value (or multiple columns)
+     * as a pointer, allowing for consistent, efficient
+     * navigation without large OFFSETs.
      *
      * @param  int|null  $perPage
      * @param  array  $columns
@@ -3281,9 +3329,16 @@ class Builder
      * @param  \FluentBoards\Framework\Pagination\Cursor|string|null  $cursor
      * @return \FluentBoards\Framework\Pagination\CursorPaginatorInterface
      */
-    public function cursorPaginate($perPage = 15, $columns = ['*'], $cursorName = 'cursor', $cursor = null)
+    public function cursorPaginate(
+        $perPage = 15,
+        $columns = ['*'],
+        $cursorName = 'cursor',
+        $cursor = null
+    )
     {
-        return $this->paginateUsingCursor($perPage, $columns, $cursorName, $cursor);
+        return $this->paginateUsingCursor(
+            $perPage, $columns, $cursorName, $cursor
+        );
     }
 
     /**
@@ -3907,9 +3962,9 @@ class Builder
     /**
      * Insert new records into the table using a subquery while ignoring errors.
      *
-     * @param  array  $columns
-     * @param  \Closure|\FluentBoards\Framework\Database\Query\Builder|\FluentBoards\Framework\Database\Eloquent\Builder<*>|string  $query
-     * @return int
+     * @param  array<string>  $columns
+     * @param  \Closure|\FluentBoards\Framework\Database\Query\Builder|\FluentBoards\Framework\Database\Orm\Builder|string  $query
+     * @return int|bool  Returns the number of affected rows or false on failure
      */
     public function insertOrIgnoreUsing(array $columns, $query)
     {
@@ -4212,7 +4267,7 @@ class Builder
     /**
      * Get the query builder instances that are used in the union of the query.
      *
-     * @return \Illuminate\Support\Collection
+     * @return \FluentBoards\Framework\Support\Collection
      */
     protected function getUnionBuilders()
     {

@@ -5,8 +5,10 @@ if (!defined('ABSPATH')) exit;
 use FluentBoards\App\Http\Controllers\BoardController;
 use FluentBoards\App\Http\Controllers\CommentController;
 use FluentBoards\App\Http\Controllers\LabelController;
+use FluentBoards\App\Http\Controllers\MCPSettingsController;
 use FluentBoards\App\Http\Controllers\NotificationController;
 use FluentBoards\App\Http\Controllers\OptionsController;
+use FluentBoards\App\Http\Controllers\PublicBoardController;
 use FluentBoards\App\Http\Controllers\ReportController;
 use FluentBoards\App\Http\Controllers\StageController;
 use FluentBoards\App\Http\Controllers\TaskController;
@@ -24,7 +26,6 @@ $router->prefix('tasks')->withPolicy('AuthPolicy')->group(function ($router) {
     $router->get('/stage/{task_id}', [TaskController::class, 'getStageByTask']); //FUTURE: this api need to be relocated
 
     $router->get('/boards-by-type/{type}', [BoardController::class, 'getBoardsByType']);
-    $router->get('/{task_id}/labels', [TaskController::class, 'getLabelsByTask']);
 
     // Task tabs configuration
     $router->get('/task-tabs/config', [TaskController::class, 'getTaskTabsConfig']);
@@ -122,12 +123,18 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->get('/board-menu-items', [BoardController::class, 'getBoardMenuItems'])->int('board_id');
     $router->get('/stage-wise-reports', [ReportController::class, 'getStageWiseBoardReports'])->int('board_id');
 
+    $router->get('/public-access-settings', [BoardController::class, 'getPublicAccessSettings'])->int('board_id');
+    $router->put('/toggle-public-access', [BoardController::class, 'togglePublicAccess'])->int('board_id');
+
 
     //# Tasks under a single board routes
     //# Route prefix: /projects/{id}/tasks
     $router->prefix('/tasks')->group(function ($router) {
         $router->get('/', [TaskController::class, 'getTasksByBoard'])->int('board_id');
+        $router->get('/filtered', [TaskController::class, 'getFilteredBoardTasks'])->int('board_id');
+        $router->get('/table', [TaskController::class, 'getTableTasks'])->int('board_id');
         $router->get('/by-stage', [TaskController::class, 'getTasksByBoardStage'])->int('board_id');
+        $router->get('/stage-page', [TaskController::class, 'getStageTasksPage'])->int('board_id');
         $router->post('/', [TaskController::class, 'create']);
         $router->post('/create-task-from-image', [TaskController::class, 'createTaskFromImage'])->int('board_id');
         $router->get('/archived', [TaskController::class, 'getArchivedTasks'])->int('board_id');
@@ -140,6 +147,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->post('/status-update/{task_id}', [TaskController::class, 'taskStatusUpdate'])->int('task_id');
         $router->delete('/{task_id}', [TaskController::class, 'deleteTask'])->int('board_id')->int('task_id');
         $router->put('/{task_id}/move-to-next-stage', [TaskController::class, 'moveTaskToNextStage'])->int('board_id')->int('task_id');
+        $router->put('/{task_id}/pin', [TaskController::class, 'toggleTaskPinned'])->int('board_id')->int('task_id');
 
         // Comments Routes Area
         $router->get('/{task_id}/comments', [CommentController::class, 'getComments'])->int('board_id')->int('task_id');
@@ -173,6 +181,11 @@ $router->prefix('admin')->withPolicy('AdminPolicy')->group(function ($router) {
 
     $router->get('/general-settings', [OptionsController::class, 'getGeneralSettings']);
     $router->post('/general-settings', [OptionsController::class, 'saveGeneralSettings']);
+
+    $router->get('/mcp/status', [MCPSettingsController::class, 'status']);
+    $router->post('/mcp/toggle', [MCPSettingsController::class, 'toggle']);
+    $router->post('/mcp/install-adapter', [MCPSettingsController::class, 'installAdapter']);
+    $router->get('/mcp/config-snippet', [MCPSettingsController::class, 'getConfigSnippet']);
 
     $router->get('pages', [OptionsController::class, 'getPages']);
 
@@ -215,6 +228,13 @@ $router->prefix('notifications')->withPolicy('UserPolicy')->group(function ($rou
 
 $router->prefix('contacts/{board_id}')->withPolicy('SingleBoardPolicy')->group(function ($router) {
     $router->get('/', [TaskController::class, 'getAssociatedCrmContacts'])->int('board_id');
+});
+
+$router->prefix('public/boards/{board_id}')->withPolicy('PublicBoardPolicy')->group(function ($router) {
+    $router->get('/', [PublicBoardController::class, 'find'])->int('board_id');
+    $router->get('/tasks', [PublicBoardController::class, 'getTasksByBoard'])->int('board_id');
+    $router->get('/tasks/by-stage', [PublicBoardController::class, 'getTasksByBoardStage'])->int('board_id');
+    $router->get('/tasks/stage-page', [PublicBoardController::class, 'getStageTasksPage'])->int('board_id');
 });
 
 // User utility routes

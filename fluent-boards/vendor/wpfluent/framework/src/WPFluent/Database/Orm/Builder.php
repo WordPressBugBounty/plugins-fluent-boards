@@ -13,6 +13,7 @@ use FluentBoards\Framework\Support\Helper;
 use FluentBoards\Framework\Pagination\Paginator;
 use FluentBoards\Framework\Support\ForwardsCalls;
 use FluentBoards\Framework\Support\ArrayableInterface;
+use FluentBoards\Framework\Support\HelperFunctionsTrait;
 use FluentBoards\Framework\Database\Query\Expression;
 use FluentBoards\Framework\Database\Concerns\BuildsQueries;
 use FluentBoards\Framework\Database\RecordsNotFoundException;
@@ -27,9 +28,13 @@ use FluentBoards\Framework\Database\Query\Builder as QueryBuilder;
  * @property-read HigherOrderBuilderProxy $orWhere
  *
  * @mixin \FluentBoards\Framework\Database\Query\Builder
+ *
+ * @template TModel of \FluentBoards\Framework\Database\Orm\Model
  */
 class Builder
 {
+    use HelperFunctionsTrait;
+    
     use BuildsQueries, ForwardsCalls, QueriesRelationships {
         BuildsQueries::sole as baseSole;
     }
@@ -224,7 +229,7 @@ class Builder
      * @param  array|null  $scopes
      * @return $this
      */
-    public function withoutGlobalScopes(array $scopes = null)
+    public function withoutGlobalScopes(?array $scopes = null)
     {
         if (! is_array($scopes)) {
             $scopes = array_keys($this->scopes);
@@ -523,7 +528,7 @@ class Builder
     {
         $result = $this->find($id, $columns);
 
-        $id = $id instanceof Arrayable ? $id->toArray() : $id;
+        $id = $id instanceof ArrayableInterface ? $id->toArray() : $id;
 
         if (is_array($id)) {
             if (count($result) !== count(array_unique($id))) {
@@ -568,13 +573,9 @@ class Builder
      * @param  mixed  $id
      * @param  (\Closure(): TValue)|list<string>|string  $columns
      * @param  (\Closure(): TValue)|null  $callback
-     * @return (
-     *     $id is (\FluentBoards\Framework\Support\ArrayableInterface<array-key, mixed>|array<mixed>)
-     *     ? \FluentBoards\Framework\Database\Orm\Collection<int, TModel>
-     *     : TModel|TValue
-     * )
+     * @return TModel|TValue|\FluentBoards\Framework\Database\Orm\Collection
      */
-    public function findOr($id, $columns = ['*'], Closure $callback = null)
+    public function findOr($id, $columns = ['*'], ?Closure $callback = null)
     {
         if ($columns instanceof Closure) {
             $callback = $columns;
@@ -679,7 +680,7 @@ class Builder
      * @param  \Closure|null  $callback
      * @return \FluentBoards\Framework\Database\Orm\Model|static|mixed
      */
-    public function firstOr($columns = ['*'], Closure $callback = null)
+    public function firstOr($columns = ['*'], ?Closure $callback = null)
     {
         if ($columns instanceof Closure) {
             $callback = $columns;
@@ -2123,6 +2124,7 @@ class Builder
         }
 
         if ($method === 'mixin') {
+            // @phpstan-ignore-next-line
             return static::registerMixin($parameters[0], $parameters[1] ?? true);
         }
 

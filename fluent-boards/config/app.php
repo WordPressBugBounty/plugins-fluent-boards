@@ -10,6 +10,6 @@
      'hook_prefix'    => 'fluent_boards/',
      'rest_namespace' => 'fluent-boards',
      'rest_version'   => 'v2',
-     'env'            => 'dev',
+     'env' => 'production',
      'timezone'       => 'UTC',
  ];

@@ -19,6 +19,7 @@ use FluentBoards\App\Services\BoardService;
 use FluentBoards\App\Services\UploadService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\App\Services\PermissionManager;
+use FluentBoards\App\Services\PublicAccessService;
 use FluentBoards\App\Hooks\Handlers\BoardHandler;
 use FluentBoards\App\Hooks\Handlers\BoardMenuHandler;
 use FluentBoards\App\Services\LabelService;
@@ -84,6 +85,15 @@ class BoardController extends Controller
             $boardIds = ProHelper::getBoardIdsByFolder($folderId);
             $relatedBoardsQuery = $relatedBoardsQuery->whereIn('id', $boardIds);
         }
+
+        // Filter out boards that are templates (exclude boards where settings->is_template is true)
+        $relatedBoardsQuery = $relatedBoardsQuery->where(function ($query) {
+            $query->whereNull('settings')
+                  ->orWhere(function ($subQuery) {
+                      $subQuery->where('settings', 'NOT LIKE', '%"is_template";b:1%')
+                               ->where('settings', 'NOT LIKE', '%"is_template":true%');
+                  });
+        });
 
         // Add search functionality
         if (!empty($searchInput)) {
@@ -413,13 +423,22 @@ class BoardController extends Controller
         }
     }
 
-    public function find($board_id)
+    public function find(Request $request, $board_id)
     {
         $board = Board::findOrFail($board_id);
+        $includeArchived = filter_var($request->get('include_archived', false), FILTER_VALIDATE_BOOLEAN);
         $board->background = maybe_unserialize($board->background);
         $board->createdOn = $board->created_at->format('Y-m-d');
 
-        $board->load(['users', 'stages', 'labels', 'owner']);
+        $board->load(['users', 'labels', 'owner']);
+
+        if ($includeArchived) {
+            $board->stages = Stage::where('board_id', $board_id)
+                ->orderBy('position', 'asc')
+                ->get();
+        } else {
+            $board->load('stages');
+        }
 
         if (defined('FLUENT_BOARDS_PRO')){
             $customFiledPositionMeta = $board->getMetaByKey('custom_field_positions');
@@ -444,7 +463,8 @@ class BoardController extends Controller
         $board = apply_filters('fluent_boards/board_find', $board);
 
         return [
-            'board' => $board
+            'board'     => $board,
+            'synced_at' => current_time('mysql')
         ];
     }
 
@@ -472,11 +492,13 @@ class BoardController extends Controller
 
     public function archiveStage($board_id, $stage_id)
     {
-        try {
-            $stage = Stage::findOrFail($stage_id);
-            $board = Board::findOrFail($stage->board_id);
+        $board_id = absint($board_id);
+        $stage_id = absint($stage_id);
 
-            $updatedStage = $this->boardService->archiveStage($board->id, $stage);
+        try {
+            $stage = $this->findStageOnBoard($stage_id, $board_id);
+
+            $updatedStage = $this->boardService->archiveStage($board_id, $stage);
 
             return $this->sendSuccess([
                 'updatedStage' => $updatedStage,
@@ -489,11 +511,13 @@ class BoardController extends Controller
 
     public function restoreStage($board_id, $stage_id)
     {
-        try {
-            $stage = Stage::findOrFail($stage_id);
-            $board = Board::findOrFail($board_id);
+        $board_id = absint($board_id);
+        $stage_id = absint($stage_id);
 
-            $updatedStage = $this->boardService->restoreStage($board->id, $stage);
+        try {
+            $stage = $this->findStageOnBoard($stage_id, $board_id);
+
+            $updatedStage = $this->boardService->restoreStage($board_id, $stage);
 
             return $this->sendSuccess([
                 'success' => true,
@@ -514,6 +538,10 @@ class BoardController extends Controller
         }
         $incomingList = array_map('intval', $incomingList);
         try {
+            foreach ($incomingList as $stageId) {
+                $this->findStageOnBoard($stageId, $board_id);
+            }
+
             $this->boardService->repositionStages($board_id, $incomingList);
             return $this->sendSuccess([
                 'message'       => __('Stages Reordered', 'fluent-boards'),
@@ -773,8 +801,11 @@ class BoardController extends Controller
      */
     public function changeStageView($board_id, $stage_id)
     {
+        $board_id = absint($board_id);
+        $stage_id = absint($stage_id);
+
         try {
-            $stage = Stage::findOrFail($stage_id);
+            $stage = $this->findStageOnBoard($stage_id, $board_id);
             $message = __('The stage is made public!', 'fluent-boards');
             $settings = $stage->settings;
 
@@ -847,13 +878,17 @@ class BoardController extends Controller
      * @return $availablePositions as an array
      * @throws \Exception
      */
-    public function getStageTaskAvailablePositions($board_id, $stage_id)
+    public function getStageTaskAvailablePositions(Request $request, $board_id, $stage_id)
     {
         try {
             if ($board_id && $stage_id) {
-                $availablePositions = $this->boardService->getStageTaskAvailablePositions($board_id, $stage_id);
+                $taskId = $request->getSafe('task_id', 'intval');
+                $availablePositions = $this->boardService->getStageTaskAvailablePositions($board_id, $stage_id, $taskId);
                 return $this->sendSuccess([
-                    'availablePositions' => $availablePositions
+                    'availablePositions' => $availablePositions['availablePositions'],
+                    'moveTargets' => $availablePositions['moveTargets'],
+                    'currentMoveTargetKey' => $availablePositions['currentMoveTargetKey'],
+                    'defaultMoveTargetKey' => $availablePositions['defaultMoveTargetKey'],
                 ], 200);
             } else {
                 $message = '';
@@ -915,9 +950,11 @@ class BoardController extends Controller
         ], 200);
     }
 
-    public function hasDataChanged($board_id)
+    public function hasDataChanged(Request $request, $board_id)
     {
-        return $this->boardService->hasDataChanged($board_id);
+        $includeArchived = filter_var($request->get('include_archived', false), FILTER_VALIDATE_BOOLEAN);
+        $since = $request->getSafe('since', 'sanitize_text_field');
+        return $this->boardService->hasDataChanged($board_id, $includeArchived, $since);
     }
 
     public function createStage(Request $request, $board_id)
@@ -968,7 +1005,7 @@ class BoardController extends Controller
 
     public function archiveAllTasksInStage($board_id, $stage_id)
     {
-        $updates = $this->stageService->archiveAllTasksInStage($stage_id, $board_id);
+        $updates = $this->stageService->archiveAllTasksInStage($stage_id);
         return [
             'message'      => __('Tasks have been archived', 'fluent-boards'),
             'updatedTasks' => $updates,
@@ -1232,6 +1269,64 @@ class BoardController extends Controller
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 500);
         }
+    }
+
+    public function getPublicAccessSettings($board_id)
+    {
+        $board_id = absint($board_id);
+        $board = Board::findOrFail($board_id);
+
+        $enabled = (bool) $board->getMetaByKey('public_access_enabled');
+        $shortcode = $enabled ? '[fluent_board_public id="' . $board_id . '"]' : '';
+
+        return $this->sendSuccess([
+            'enabled'   => $enabled,
+            'shortcode' => $shortcode,
+        ], 200);
+    }
+
+    public function togglePublicAccess(Request $request, $board_id)
+    {
+        $board_id = absint($board_id);
+        $board = Board::findOrFail($board_id);
+
+        $enabled = filter_var(
+            $request->getSafe('enabled', 'sanitize_text_field', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        $board->updateMeta('public_access_enabled', $enabled ? '1' : '');
+
+        $shortcode = $enabled ? '[fluent_board_public id="' . $board_id . '"]' : '';
+
+        return $this->sendSuccess([
+            'message'   => $enabled
+                ? __('Public access has been enabled', 'fluent-boards')
+                : __('Public access has been disabled', 'fluent-boards'),
+            'enabled'   => $enabled,
+            'shortcode' => $shortcode,
+        ], 200);
+    }
+
+    /**
+     * Resolve a stage only when it belongs to the requested board.
+     *
+     * @param int $stageId
+     * @param int $boardId
+     * @return Stage
+     * @throws \Exception
+     */
+    private function findStageOnBoard($stageId, $boardId)
+    {
+        $stage = Stage::where('id', absint($stageId))
+            ->where('board_id', absint($boardId))
+            ->first();
+
+        if (!$stage) {
+            throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
+        }
+
+        return $stage;
     }
 
 }

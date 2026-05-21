@@ -24,6 +24,7 @@ class StageController extends Controller
 
         try {
             $validatedData = $this->updateStagePropValidationAndSanitation($col, $value);
+            $this->findStageOnBoard($stage_id, $board_id);
 
             $stage = $this->stageService->updateStageProperty($col, $validatedData[$col], $stage_id);
 
@@ -62,6 +63,7 @@ class StageController extends Controller
         $stage_id = absint($stage_id);
         $order   = $request->getSafe('order', 'sanitize_text_field');
         $orderBy = $request->getSafe('orderBy', 'sanitize_text_field');
+        $this->findStageOnBoard($stage_id, $board_id);
 
         $updatedTasks = $this->stageService->sortStageTasks($order, $orderBy, $stage_id);
         return [
@@ -76,7 +78,7 @@ class StageController extends Controller
         $stage_id = $request->getSafe('stageId', 'intval');
         $position = $request->getSafe('newPosition', 'intval');
         try{
-            $stage = Stage::findOrFail($stage_id);
+            $stage = $this->findStageOnBoard($stage_id, $board_id);
             $stage->moveToNewPosition($position);
             do_action('fluent_boards/board_stages_reordered', $board_id, [$stage_id]);
             return $this->sendSuccess([
@@ -101,7 +103,7 @@ class StageController extends Controller
             'cover_bg' => 'nullable'
         ]);
         try {
-            $oldStage = Stage::findOrFail($stage_id);
+            $oldStage = $this->findStageOnBoard($stage_id, $board_id);
             $board = $oldStage->board;
             $stages = $board->stages()->where('id', '!=', $stage_id)->get();
 
@@ -123,5 +125,26 @@ class StageController extends Controller
         $data = Helper::sanitizeStage($data);
 
         return $this->validate($data, $rules);
+    }
+
+    /**
+     * Resolve a stage only when it belongs to the requested board.
+     *
+     * @param int $stageId
+     * @param int $boardId
+     * @return Stage
+     * @throws \Exception
+     */
+    private function findStageOnBoard($stageId, $boardId)
+    {
+        $stage = Stage::where('id', absint($stageId))
+            ->where('board_id', absint($boardId))
+            ->first();
+
+        if (!$stage) {
+            throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
+        }
+
+        return $stage;
     }
 }

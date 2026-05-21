@@ -51,7 +51,6 @@ $app->addCustomAction('task_archived', 'ActivityHandler@taskArchived', 10, 1);
 
 $app->addCustomAction('board_created', 'BoardHandler@boardCreated', 10, 1);
 $app->addCustomAction('before_board_deleted', 'BoardHandler@beforeBoardDeleted', 10, 2);
-$app->addCustomAction('board_deleted', 'BoardHandler@boardDeleted', 10, 1);
 $app->addCustomAction('board_updated', 'BoardHandler@boardUpdated', 10, 2);
 $app->addCustomAction('stage_updated', 'BoardHandler@boardStageUpdated', 10, 3);
 $app->addCustomAction('board_stage_moved', 'BoardHandler@boardStageMoved', 10, 2);
@@ -151,7 +150,7 @@ if(isset($_GET['fbs']) && $_GET['fbs'] == 1) {
     // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public file serving endpoint, security validated by hash in handler
     if(isset($_GET['fbs_comment_image'])) {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public routing check, security validated in handler
-        if(isset($_GET['fbs_type']) == 'public_url') {
+        if(isset($_GET['fbs_type']) && $_GET['fbs_type'] == 'public_url') {
             add_action('init', function() {
                 (new \FluentBoards\App\Hooks\Handlers\ExternalPages())->view_uploaded_comment_image();
             });
@@ -174,4 +173,54 @@ if(isset($_GET['redirect']) && $_GET['redirect'] == 'to_task') {
         });
     }
 }
+// Stage Archive Handler - Archive tasks when stage is archived, restore when stage is restored
+$app->addAction('fluent_boards/stage_archived_with_tasks', 'StageArchiveHandler@onStageArchived', 10, 2);
+$app->addAction('fluent_boards/stage_restored_with_tasks', 'StageArchiveHandler@onStageRestored', 10, 2);
 
+/*
+ * MCP - Register Fluent Boards abilities for the WordPress Abilities API.
+ *
+ * This mirrors FluentCRM's MCP architecture: on WordPress installs without the
+ * Abilities API / WP MCP Adapter, `wp_register_ability` is undefined and the
+ * integration skips silently. Admins can opt out with the `mcp_enabled` option.
+ */
+add_filter('fluent_kit/mcp_products', [\FluentBoards\App\Modules\MCP\MCPInit::class, 'registerToolkitProduct'], 10, 2);
+add_filter('fluent_kit/mcp_toggle_handlers', function ($handlers) {
+    $handlers['fluent-boards'] = [
+        'get_enabled' => function () {
+            return fluent_boards_get_option('mcp_enabled', 'yes') === 'yes';
+        },
+        'set_enabled' => function ($enabled) {
+            fluent_boards_update_option('mcp_enabled', $enabled ? 'yes' : 'no');
+        },
+    ];
+
+    return $handlers;
+});
+
+add_action('init', function () {
+    if (!function_exists('wp_register_ability')) {
+        return;
+    }
+
+    if (fluent_boards_get_option('mcp_enabled', 'yes') !== 'yes') {
+        return;
+    }
+
+    (new \FluentBoards\App\Modules\MCP\MCPInit())->init();
+}, 5);
+
+$invalidateMcpContext = [\FluentBoards\App\Modules\MCP\Tools\ContextTools::class, 'invalidateCache'];
+foreach ([
+    'fluent_boards/board_created',
+    'fluent_boards/board_updated',
+    'fluent_boards/before_board_deleted',
+    'fluent_boards/board_stage_added',
+    'fluent_boards/stage_updated',
+    'fluent_boards/stage_deleted',
+    'fluent_boards/board_label_created',
+    'fluent_boards/board_label_updated',
+    'fluent_boards/board_label_deleted',
+] as $mcpContextHook) {
+    add_action($mcpContextHook, $invalidateMcpContext);
+}

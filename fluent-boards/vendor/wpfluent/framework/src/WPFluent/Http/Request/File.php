@@ -66,7 +66,7 @@ class File extends SplFileInfo implements Contract, JsonSerializable, ArrayAcces
      * 
      * @param  string $path
      * @param  int|null $size
-     * @param  string|nill $error
+     * @param  string|null $error
      * @return void
      */
     protected function init($path, $size, $error)
@@ -144,6 +144,11 @@ class File extends SplFileInfo implements Contract, JsonSerializable, ArrayAcces
     public function isValid()
     {
         $isOk = UPLOAD_ERR_OK === $this->getError();
+
+        // Allow fake uploads in tests
+        if (str_contains(App::make()->env(), 'test')) {
+            return $isOk;
+        }
 
         return $isOk && is_uploaded_file($this->getPathname());
     }
@@ -423,7 +428,7 @@ class File extends SplFileInfo implements Contract, JsonSerializable, ArrayAcces
      *
      * @param string $directory Target Path
      * @param string $name Target file name (optional)
-     * @return self
+     * @return string
      * @throws RuntimeException
      */
     protected function getTargetFile($directory, $name = null)
@@ -473,6 +478,26 @@ class File extends SplFileInfo implements Contract, JsonSerializable, ArrayAcces
         }
 
         return $name;
+    }
+
+    /**
+     * Retrieve the extension of the uploaded file.
+     * 
+     * @return string
+     */
+    public function extension()
+    {
+        return $this->guessExtension();
+    }
+
+    /**
+     * Get the temporary file path.
+     *
+     * @return string
+     */
+    public function path()
+    {
+        return $this->getPathname();
     }
 
     /**

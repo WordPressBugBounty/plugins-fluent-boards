@@ -62,14 +62,14 @@ class ExternalPages
 
         $attachment = $this->getUploadedImageByHash($attachmentHash);
 
+        if (!$attachment) {
+            die(esc_html__('Invalid Attachment Hash', 'fluent-boards'));
+        }
+
         if (in_array($attachment->object_type, [Constant::COMMENT_IMAGE])) {
             $attachment->load('comment');
         } elseif (in_array($attachment->object_type, [Constant::TASK_DESCRIPTION])) {
             $attachment['task'] = Task::find($attachment->object_id);
-        }
-
-        if (!$attachment) {
-            die(esc_html__('Invalid Attachment Hash', 'fluent-boards'));
         }
 
         // check signature hash
@@ -158,11 +158,9 @@ class ExternalPages
     private function isFrontendEnabled()
     {
         $storedSettings = get_option('fluent_boards_modules', []);
-        if ($storedSettings && is_array($storedSettings)) {
-            $settings = maybe_serialize($storedSettings);
-        }
+        $settings = is_string($storedSettings) ? maybe_unserialize($storedSettings) : $storedSettings;
 
-        if (isset($settings['frontend']['enabled'])) {
+        if (is_array($settings) && isset($settings['frontend']['enabled'])) {
             return $settings['frontend']['enabled'];
         }
 

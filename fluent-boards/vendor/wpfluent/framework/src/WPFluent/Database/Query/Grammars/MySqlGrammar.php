@@ -157,7 +157,7 @@ class MySqlGrammar extends Grammar
         $limit = (int) $query->groupLimit['value'];
         $offset = $query->offset;
 
-        if (isset($offset)) {
+        if ($offset !== null) {
             $offset = (int) $offset;
             $limit += $offset;
 
@@ -187,7 +187,7 @@ class MySqlGrammar extends Grammar
 
         $sql = 'select `laravel_table`.*'.$partition.' from '.$from.' having `laravel_row` <= '.$limit;
 
-        if (isset($offset)) {
+        if ($offset !== null) {
             $sql .= ' and `laravel_row` > '.$offset;
         }
 

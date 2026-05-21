@@ -368,7 +368,7 @@ class LazyCollection implements CanBeEscapedWhenCastToString, Enumerable
      * @param  callable|null  $callback
      * @return static
      */
-    public function filter(callable $callback = null)
+    public function filter(?callable $callback = null)
     {
         if (is_null($callback)) {
             $callback = function ($value) {
@@ -392,7 +392,7 @@ class LazyCollection implements CanBeEscapedWhenCastToString, Enumerable
      * @param  mixed  $default
      * @return mixed
      */
-    public function first(callable $callback = null, $default = null)
+    public function first(?callable $callback = null, $default = null)
     {
         $iterator = $this->getIterator();
 
@@ -416,7 +416,7 @@ class LazyCollection implements CanBeEscapedWhenCastToString, Enumerable
     /**
      * Get a flattened list of the items in the collection.
      *
-     * @param  int  $depth
+     * @param  int|float  $depth
      * @return static
      */
     public function flatten($depth = INF)
@@ -633,7 +633,7 @@ class LazyCollection implements CanBeEscapedWhenCastToString, Enumerable
      * @param  mixed  $default
      * @return mixed
      */
-    public function last(callable $callback = null, $default = null)
+    public function last(?callable $callback = null, $default = null)
     {
         $needle = $placeholder = new stdClass;
 

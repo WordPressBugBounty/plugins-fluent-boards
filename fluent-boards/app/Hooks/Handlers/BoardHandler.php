@@ -62,7 +62,7 @@ class BoardHandler
     public function taskCreatedOnBoard($task)
     {
         $boardId = $task->board_id;
-        $this->updateBoardTaskCount($boardId, 1);
+        $this->updateBoardTaskCount($boardId);
         $taskStage = $task->stage;
         $settings = ['task_id' => $task->id];
         $this->createLogActivity($boardId, 'created', 'task', null, $task->title, 'on stage '.$taskStage->title, $settings, $task->created_by);
@@ -81,20 +81,6 @@ class BoardHandler
     public function beforeBoardDeleted($board, $options = [])
     {
         // do something
-    }
-
-    public function boardDeleted($board)
-    {
-        // do something // commented for better code
-        $taskIdsByBoard = (array) Task::where('board_id', '=', $board->id)->pluck('id')->toArray();
-        foreach ($taskIdsByBoard as $taskId) {
-            $task = Task::find($taskId);
-            $task->delete();
-            do_action('fluent_boards/task_deleted', $task);
-        }
-//        TaskActivity::whereIn('task_id', $taskIdsByBoard)->delete();
-//        TaskAssignee::whereIn('task_id', $taskIdsByBoard)->delete();
-//        Task::destroy($taskIdsByBoard);
     }
 
     public function boardUpdated($board, $oldBoard)
@@ -194,10 +180,10 @@ class BoardHandler
     {
         if(!$task->archived_at){
             $this->createLogActivity($task->board_id, 'restored', 'task', $task->title);
-            $this->updateBoardTaskCount($task->board_id, 1);
+            $this->updateBoardTaskCount($task->board_id);
         }else{
             $this->createLogActivity($task->board_id, 'archived', 'task', $task->title);
-            $this->updateBoardTaskCount($task->board_id, -1);
+            $this->updateBoardTaskCount($task->board_id);
         }
     }
 
@@ -415,9 +401,9 @@ class BoardHandler
     public function taskMovedFromBoard($task, $oldBoard, $newBoard)
     {
         // add tasks_count in the board
-        $this->updateBoardTaskCount($newBoard->id, 1);
+        $this->updateBoardTaskCount($newBoard->id);
         // subtract tasks_count in the board
-        $this->updateBoardTaskCount($oldBoard->id, -1);
+        $this->updateBoardTaskCount($oldBoard->id);
 
         $this->createLogActivity($oldBoard->id, 'moved', 'task', $task->title . ' to ' . $newBoard->title);
         $this->createLogActivity($newBoard->id, 'added', 'task', $task->title . ' from ' . $oldBoard->title);
@@ -441,11 +427,12 @@ class BoardHandler
                 ])->delete();
         }catch (\Exception $e){}
     }
-    private function updateBoardTaskCount($boardId, $count)
+    public function updateBoardTaskCount($boardId)
     {
         $board = Board::find($boardId);
         $settings = $board->settings ?? [];
-        $settings['tasks_count'] = $board->tasks->where('parent_id', null)->whereNull('archived_at')->count();
+        $stageIds = Stage::where('board_id', $boardId)->whereNull('archived_at')->pluck('id')->toArray();
+        $settings['tasks_count'] = $board->tasks->where('parent_id', null)->whereNull('archived_at')->whereIn('stage_id', $stageIds)->count();
         $board->settings = $settings;
         $board->save();
     }

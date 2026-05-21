@@ -78,7 +78,13 @@ class WebhookController extends Controller
         if (isset($data['name'])) {
             $data['name'] = sanitize_text_field($data['name']);
         }
-        $webhook->find($id)->saveChanges($data);
+
+        $foundWebhook = $webhook->find($id);
+        if (!$foundWebhook) {
+            return $this->sendError(__('Webhook not found', 'fluent-boards'), 404);
+        }
+
+        $foundWebhook->saveChanges($data);
 
         return [
             'webhooks' => $webhook->latest()->get(),
@@ -275,6 +281,11 @@ class WebhookController extends Controller
         }
     
         $webhook = Meta::find($id);
+
+        if (!$webhook || $webhook->object_type !== 'outgoing_webhook') {
+            return $this->sendError('Outgoing webhook not found.', 404);
+        }
+
         $webhook->value = $data;
         $webhook->save();
 

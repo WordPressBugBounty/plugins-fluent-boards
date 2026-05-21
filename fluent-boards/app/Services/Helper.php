@@ -54,6 +54,65 @@ class Helper
         return $data;
     }
 
+    /**
+     * Normalize a nullable datetime value so task flows can safely persist NULL.
+     *
+     * @param mixed $value
+     * @return mixed|null
+     */
+    public static function normalizeDateValue($value)
+    {
+        if ($value === null || is_bool($value)) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+
+            if ($value === '') {
+                return null;
+            }
+
+            $normalizedValue = strtolower($value);
+
+            if (in_array($normalizedValue, ['none', 'null'], true)) {
+                return null;
+            }
+
+            if (in_array($value, ['0000-00-00', '0000-00-00 00:00:00'], true)) {
+                return null;
+            }
+
+            if (preg_match('/^(\d{4})-/', $value, $matches) && (int) $matches[1] < 1900) {
+                return null;
+            }
+
+            if (strtotime($value) === false) {
+                return null;
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * Normalize a list of nullable datetime keys inside an attribute array.
+     *
+     * @param array $data
+     * @param array $dateKeys
+     * @return array
+     */
+    public static function normalizeDates($data, $dateKeys = [])
+    {
+        foreach ($dateKeys as $dateKey) {
+            if (array_key_exists($dateKey, $data)) {
+                $data[$dateKey] = self::normalizeDateValue($data[$dateKey]);
+            }
+        }
+
+        return $data;
+    }
+
     public static function sanitizeTask($data)
     {
         $fieldMaps = [
@@ -69,6 +128,7 @@ class Helper
             'remind_at'      => 'sanitize_text_field',
             'scope'          => 'sanitize_text_field',
             'source'         => 'sanitize_text_field',
+            'source_id'      => 'sanitize_text_field',
             'description'    => 'wp_kses_post',
             'due_date'       => 'sanitize_text_field',
             'start_at'       => 'sanitize_text_field',
@@ -324,10 +384,10 @@ class Helper
 
     public static function sanitizeUserCollections($users)
     {
-        if (empty($users) || !is_array($users)) {
+        if (empty($users)) {
             return $users;
         }
-        
+
         foreach ($users as $key => $user) {
             if (is_object($user) && isset($user->pivot)) {
                 $settings = maybe_unserialize($user->pivot->settings);
@@ -343,8 +403,15 @@ class Helper
             return $users;
         }
 
-        if ($users) {
+        if (is_object($users) && method_exists($users, 'makeHidden')) {
             $users->makeHidden(['user_email', 'user_nicename', 'user_registered', 'user_url', 'user_status']);
+        } elseif (is_array($users)) {
+            foreach ($users as &$user) {
+                if (is_array($user)) {
+                    unset($user['user_email'], $user['user_nicename'], $user['user_registered'], $user['user_url'], $user['user_status']);
+                }
+            }
+            unset($user);
         }
 
         return $users;
@@ -562,5 +629,55 @@ class Helper
         $allowedTypes = apply_filters('fluent_boards/task_reminder_types', $allowedTypes);
 
         return $allowedTypes;
+    }
+
+    public static function translateActivities($activities)
+    {
+        $actionTranslations = [
+            'changed'  => __('changed', 'fluent-boards'),
+            'updated'  => __('updated', 'fluent-boards'),
+            'added'    => __('added', 'fluent-boards'),
+            'removed'  => __('removed', 'fluent-boards'),
+            'created'  => __('created', 'fluent-boards'),
+            'closed'   => __('closed', 'fluent-boards'),
+            'reopened' => __('reopened', 'fluent-boards'),
+            'joined'   => __('joined', 'fluent-boards'),
+            'left'     => __('left', 'fluent-boards'),
+            'cloned'   => __('cloned', 'fluent-boards'),
+            'deleted'  => __('deleted', 'fluent-boards'),
+            'archived' => __('archived', 'fluent-boards'),
+            'restored' => __('restored', 'fluent-boards'),
+            'set'      => __('set', 'fluent-boards'),
+        ];
+
+        $columnTranslations = [
+            'task'                 => __('task', 'fluent-boards'),
+            'description'          => __('description', 'fluent-boards'),
+            'board'                => __('board', 'fluent-boards'),
+            'assignee'             => __('assignee', 'fluent-boards'),
+            'label'                => __('label', 'fluent-boards'),
+            'Due Date'             => __('Due Date', 'fluent-boards'),
+            'Start Date'           => __('Start Date', 'fluent-boards'),
+            'priority'             => __('priority', 'fluent-boards'),
+            'comment'              => __('comment', 'fluent-boards'),
+            'a reply'              => __('a reply', 'fluent-boards'),
+            'subtask'              => __('subtask', 'fluent-boards'),
+            'subtask group'        => __('subtask group', 'fluent-boards'),
+            'subtask group title'  => __('subtask group title', 'fluent-boards'),
+            'stage'                => __('stage', 'fluent-boards'),
+            'the associate email'  => __('the associate email', 'fluent-boards'),
+            'attachment'           => __('attachment', 'fluent-boards'),
+            'repeat task'          => __('repeat task', 'fluent-boards'),
+            'Repeat Task'          => __('Repeat Task', 'fluent-boards'),
+        ];
+
+        foreach ($activities as $activity) {
+            if (isset($actionTranslations[$activity->action])) {
+                $activity->action = $actionTranslations[$activity->action];
+            }
+            if (isset($columnTranslations[$activity->column])) {
+                $activity->column = $columnTranslations[$activity->column];
+            }
+        }
     }
 }

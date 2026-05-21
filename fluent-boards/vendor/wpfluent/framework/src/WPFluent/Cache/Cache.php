@@ -58,7 +58,7 @@ class Cache
         $key = static::key($key);
 
         if (static::isPersistent()) {
-            return wp_cache_set($key, $value, null, $ttl);
+            return wp_cache_set($key, $value, static::cacheGroup(), $ttl);
         } else {
             return static::filePut($key, $value, $ttl);
         }
@@ -81,7 +81,6 @@ class Cache
      * Retrieve data from the cache.
      *
      * @param  string  $key
-     * @param  mixed   $default
      * @return mixed
      */
     public static function get($key)
@@ -89,7 +88,7 @@ class Cache
         $key = static::key($key);
 
         if (static::isPersistent()) {
-            $value = wp_cache_get($key, null, false, $found);
+            $value = wp_cache_get($key, static::cacheGroup(), false, $found);
             $value = $found ? $value : null;
         } else {
             $value = static::fileGet($key) ?: null;
@@ -109,10 +108,22 @@ class Cache
         $key = static::key($key);
 
         if (static::isPersistent()) {
-            return wp_cache_delete($key, static::$cacheGroup);
+            return wp_cache_delete($key, static::cacheGroup());
         }
 
         return static::fileForget($key);
+    }
+
+    /**
+     * The group key for the cache.
+     * 
+     * @return string
+     */
+    public static function cacheGroup()
+    {
+        $slug = App::config()->get('app.slug');
+
+        return 'wpfluent_cache_group_' . $slug;
     }
 
     /**
@@ -127,7 +138,7 @@ class Cache
         $key = static::key($key);
 
         if (static::isPersistent()) {
-            return wp_cache_set($key, $value, null, 0);
+            return wp_cache_set($key, $value, static::cacheGroup(), 0);
         } else {
             return static::filePut($key, $value, 0);
         }
@@ -152,12 +163,11 @@ class Cache
         }
 
         try {
-            if (($value = $callback()) && !is_wp_error($value)) {
+            $value = $callback();
+            if (!is_wp_error($value)) {
                 static::set($key, $value, $ttl);
-
                 return $value;
             }
-
         } catch (Throwable $e) {
             error_log("Cache callback error [{$key}]: " . $e->getMessage());
         }
@@ -206,23 +216,28 @@ class Cache
      */
     public static function flush()
     {
-        $key = App::config()->get('app.slug') . '_cache_';
-
         if (static::isPersistent()) {
-            
-            global $wp_object_cache;
-            
-            $pattern =  '~^'. preg_quote($key, '~') . '~i';
-            
-            $keys = preg_grep($pattern, array_keys($wp_object_cache->cache));
+            // Preferred: Use wp_cache_flush_group if available
+            if (function_exists('wp_cache_flush_group')) {
+                return wp_cache_flush_group(static::cacheGroup());
+            }
 
-            foreach ($keys as $key) {
-                unset($wp_object_cache->cache[$key]);
+            // Fallback: Manual flush for in-memory cache
+            global $wp_object_cache;
+            $group = static::cacheGroup();
+
+            if (!isset($wp_object_cache->cache[$group])) {
+                return false;
+            }
+
+            foreach (array_keys($wp_object_cache->cache[$group]) as $key) {
+                unset($wp_object_cache->cache[$group][$key]);
             }
 
             return true;
         }
 
+        // For non-persistent cache (e.g., file cache fallback)
         return static::fileFlush();
     }
 
@@ -247,7 +262,7 @@ class Cache
     {
         $slug = App::config()->get('app.slug');
         
-        return $slug . '_cache_' . sanitize_key($key);
+        return $slug . '_wpfluent_cache_' . sanitize_key($key);
     }
 
     /**

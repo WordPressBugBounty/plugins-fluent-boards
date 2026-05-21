@@ -81,7 +81,7 @@ class LabelController extends Controller
             'board_term_id' => 'required|integer',
         ]);
         try {
-            $label = $this->labelService->createLabelForTask($labelData);
+            $label = $this->labelService->createLabelForTask($labelData, $board_id);
 
             return $this->sendSuccess([
                 'message' => __('Label has been added', 'fluent-boards'),
@@ -97,7 +97,7 @@ class LabelController extends Controller
         $board_id = absint($board_id);
         $task_id = absint($task_id);
         try {
-            $labels = $this->labelService->getLabelsByTask($task_id);
+            $labels = $this->labelService->getLabelsByTask($task_id, $board_id);
 
             return $this->sendSuccess([
                 'labels' => $labels,
@@ -113,7 +113,7 @@ class LabelController extends Controller
         $task_id = absint($task_id);
         $label_id = absint($label_id);
         try {
-            $this->labelService->deleteLabelOfTask($task_id, $label_id);
+            $this->labelService->deleteLabelOfTask($task_id, $label_id, $board_id);
 
             return $this->sendSuccess([
                 'message' => __('Label has been deleted', 'fluent-boards'),
@@ -128,7 +128,7 @@ class LabelController extends Controller
         $board_id = absint($board_id);
         $label_id = absint($label_id);
         try {
-            $this->labelService->deleteLabelOfBoard($label_id);
+            $this->labelService->deleteLabelOfBoard($label_id, $board_id);
 
             return $this->sendSuccess([
                 'message' => __('Label has been deleted', 'fluent-boards'),
@@ -149,7 +149,7 @@ class LabelController extends Controller
             'label' => 'nullable|string',
         ]);
         try {
-            $label = $this->labelService->editLabelofBoard($labelData, $label_id);
+            $label = $this->labelService->editLabelofBoard($labelData, $label_id, $board_id);
             do_action('fluent_boards/board_label_updated', $label);
 
             return $this->sendSuccess([

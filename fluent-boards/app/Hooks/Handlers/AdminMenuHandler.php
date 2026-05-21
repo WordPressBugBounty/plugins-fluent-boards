@@ -9,6 +9,7 @@ use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\TransStrings;
+use FluentBoards\App\Vite;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Collection;
 use FluentBoards\App\Services\PermissionManager;
@@ -307,35 +308,53 @@ class AdminMenuHandler
 
         $app = App::getInstance();
 
-        $assets = $app['url.assets'];
-
         $slug = $app->config->get('app.slug');
 
+        // Inject Vite HMR client in dev mode
+        Vite::injectViteClient();
+
         $isRtl = is_rtl();
-        $adminAppCss = 'admin/admin.css';
-        if($isRtl) {
-            $adminAppCss = 'admin/admin-rtl.css';
+        $adminAppCss = $isRtl ? 'scss/admin.scss' : 'scss/admin.scss';
+        Vite::enqueueStyle($slug . '_admin_app', $adminAppCss);
+
+        // In production, load the RTL version if needed
+        if ($isRtl && !Vite::underDevelopment()) {
+            $assets = $app['url.assets'];
+            wp_enqueue_style(
+                $slug . '_admin_app_rtl',
+                $assets . 'admin/admin-rtl.css',
+                [$slug . '_admin_app'],
+                FLUENT_BOARDS_PLUGIN_VERSION
+            );
         }
-        wp_enqueue_style(
-            $slug . '_admin_app',
-            $assets . $adminAppCss,
-            [],
-            FLUENT_BOARDS_PLUGIN_VERSION
-        );
+
+        // Enqueue merged chunk CSS (Vue SFC styles) in production
+        if (!Vite::underDevelopment()) {
+            $assets = $app['url.assets'];
+            $styleCssPath = FLUENT_BOARDS_PLUGIN_PATH . 'assets/admin/style.css';
+            if (file_exists($styleCssPath)) {
+                wp_enqueue_style(
+                    $slug . '_vite_style',
+                    $assets . 'admin/style.css',
+                    [$slug . '_admin_app'],
+                    FLUENT_BOARDS_PLUGIN_VERSION
+                );
+            }
+        }
 
         do_action('fluent-boards_loading_app');
 
-        wp_enqueue_script(
+        Vite::enqueueScript(
             $slug . '_admin_app',
-            $assets . 'admin/app.min.js',
+            'admin/app.js',
             ['jquery'],
             FLUENT_BOARDS_PLUGIN_VERSION,
             true
         );
 
-        wp_enqueue_script(
+        Vite::enqueueStaticScript(
             $slug . '_global_admin',
-            $assets . 'admin/global_admin.js',
+            'admin/global_admin.js',
             [],
             FLUENT_BOARDS_PLUGIN_VERSION,
             true
@@ -379,7 +398,8 @@ class AdminMenuHandler
                 'photo'                      => fluent_boards_user_avatar($currentUser->user_email, $currentUser->display_name),
                 'fluent_boards_role'         => $roleAndPermissions['role'],
                 'fluent_boards_capabilities' => $roleAndPermissions['permissions'],
-                'is_wp_admin'                => user_can($currentUser->ID, 'manage_options') ? 'yes' : 'no'
+                'is_wp_admin'                => user_can($currentUser->ID, 'manage_options') ? 'yes' : 'no',
+                'can_create_board'           => PermissionManager::userHasBoardCreationPermission($currentUser->ID)
             ],
             'base_url'                        => fluent_boards_page_url(),
             'site_url'                        => site_url('/'),

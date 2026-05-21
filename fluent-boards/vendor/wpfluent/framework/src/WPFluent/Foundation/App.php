@@ -4,32 +4,30 @@ namespace FluentBoards\Framework\Foundation;
 
 use FluentBoards\Framework\Container\Contracts\BindingResolutionException;
 
+/**
+ * @method static db();
+ * @method static view();
+ * @method static events();
+ * @method static config();
+ * @method static request();
+ * @method static response();
+ * @method static encrypter();
+ * @method static validator();
+ */
+
 class App
 {
     /**
      * Application instance
      * 
-     * @var FluentBoards\Framework\Foundation\Application
+     * @var \FluentBoards\Framework\Foundation\Application
      */
     protected static $instance = null;
 
     /**
-     * Resolve dynamically accessed class.
-     * 
-     * @param  string $module
-     * @return string
-     */
-    protected static function resolve($module)
-    {
-        $pieces = explode('\\', __NAMESPACE__);
-        array_pop($pieces) && $prefix = implode('\\', $pieces);
-        return $prefix . '\\' . str_replace('.', '\\', $module);
-    }
-
-    /**
      * Set the application instance
      * 
-     * @param FluentBoards\Framework\Foundation\Application $app
+     * @param \FluentBoards\Framework\Foundation\Application $app
      */
     public static function setInstance($app)
     {
@@ -41,24 +39,15 @@ class App
      * 
      * @param  string $module The binding/key name for a component.
      * @param  array $parameters constructor dependencies if any.
-     * @return FluentBoards\Framework\Foundation\Application|mixed
+     * @return \FluentBoards\Framework\Foundation\Application|mixed
      */
     public static function getInstance($module = null, $parameters = [])
     {
-        try {
-            if ($module) {
-                return static::$instance->make($module, $parameters);
-            }
-
-            return static::$instance;
-
-        } catch (BindingResolutionException $e) {
-            if (class_exists($class = static::resolve($module))) {
-                return static::$instance->make($class, $parameters);
-            }
-
-            throw $e;
+        if ($module) {
+            return static::$instance->make($module, $parameters);
         }
+
+        return static::$instance;
     }
 
     /**
@@ -66,7 +55,7 @@ class App
      * 
      * @param  string $module The binding/key name for a component.
      * @param  array $parameters constructor dependencies if any.
-     * @return FluentBoards\Framework\Foundation\Application|mixed
+     * @return \FluentBoards\Framework\Foundation\Application|mixed
      */
     public static function make($module = null, $parameters = [])
     {

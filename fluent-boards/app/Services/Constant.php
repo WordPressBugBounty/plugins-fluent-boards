@@ -55,7 +55,10 @@ class Constant{
 
     const OBJECT_TYPE_USER_TASK_WATCH = 'task_user_watch';
 
+    const OBJECT_TYPE_TASK_DEPENDENCY = 'task_dependency';
+
     const IS_TASK_TEMPLATE = 'is_template';
+    const IS_TASK_PINNED = 'is_pinned';
 
     const BOARD_USER_SETTINGS = [
         'is_admin'           => false
@@ -341,4 +344,6 @@ class Constant{
     const SUBTASK_GROUP_CHILD = 'subtask_group_id';
 
     const USER_PINNED_BOARDS = 'pinned_boards';
+    
+    const META_KEY_ARCHIVED_BY_STAGE = 'archived_by_stage';
 }

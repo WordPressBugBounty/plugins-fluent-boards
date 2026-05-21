@@ -75,6 +75,10 @@ class NotificationService
         $notification = NotificationUser::where('user_id', $user->ID)
                                             ->where('notification_id', $notificationId)
                                             ->first();
+        if (!$notification) {
+            throw new \Exception(esc_html__('Notification could not be found', 'fluent-boards'), 404);
+        }
+
         $notification->marked_read_at = current_time('mysql');
         $notification->save();
         return $notification;
@@ -191,24 +195,6 @@ class NotificationService
         return false;
     }
 
-    public function checkIfEmailEnabledGlobally($userId, $purpose)
-    {
-        $globalSettings = $this->getGlobalNotificationSettingsOfUser($userId);
-
-        if($globalSettings){
-            $preferences = maybe_unserialize($globalSettings['value']);
-            if(!array_key_exists($purpose, $preferences)){
-                $preferences[$purpose] = true;
-                $globalSettings->preferences = $preferences;
-                $globalSettings->save();
-                return true;
-            }
-            return $preferences[$purpose];
-        }
-
-        return true;
-    }
-
     public function mentionInComment($comment, $mentionedUserIds)
     {
         $uniqueIds = array_unique($mentionedUserIds);
@@ -250,6 +236,41 @@ class NotificationService
             ->with('activitist')->orderBy('created_at', 'desc')->count();
         return $unreadNotifications;
     }
+
+    public function getUnreadNotificationCountsByTaskIds($taskIds)
+    {
+        $userId = get_current_user_id();
+        if (!$userId) {
+            throw new \Exception(esc_html__('You are not allowed to do that', 'fluent-boards'), 403);
+        }
+
+        $taskIds = array_values(array_filter(array_map('intval', (array) $taskIds)));
+        if (!$taskIds) {
+            return [];
+        }
+
+        $rows = Notification::query()
+            // Board/list views can return many tasks at once, so unread counts are
+            // grouped in one query instead of issuing a count query per task.
+            ->selectRaw('task_id, COUNT(*) as unread_count')
+            ->join(
+                (new NotificationUser())->getTable(),
+                'fbs_notifications.id',
+                '=',
+                'fbs_notification_users.notification_id'
+            )
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
+            ->where('fbs_notification_users.user_id', $userId)
+            ->whereNull('fbs_notification_users.marked_read_at')
+            ->whereIn('task_id', $taskIds)
+            ->groupBy('task_id')
+            ->get();
+
+        $notificationCounts = [];
+        foreach ($rows as $row) {
+            $notificationCounts[(int) $row->task_id] = (int) $row->unread_count;
+        }
+
+        return $notificationCounts;
+    }
 }
-
-
