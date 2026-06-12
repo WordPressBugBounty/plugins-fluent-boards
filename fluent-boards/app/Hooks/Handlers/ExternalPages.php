@@ -146,7 +146,7 @@ class ExternalPages
             wp_redirect($page_url);
             exit;
         } else {
-            $urlBase = apply_filters('fluent_boards/app_url');
+            $urlBase = apply_filters('fluent_boards/app_url', admin_url('admin.php?page=fluent-boards#/'));
             $page_url = $urlBase . 'boards/' . $task->board_id . '/tasks/' . $task->id . '-' .substr($task->title, 0, 10);
             wp_redirect($page_url);
             exit;

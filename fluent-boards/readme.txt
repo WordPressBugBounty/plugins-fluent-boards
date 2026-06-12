@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.95
+Stable tag: 1.95.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -170,8 +170,17 @@ You can filter any task by assignees, stages, and task priorities.
 
 == Changelog ==
 
+= v1.95.2 (Date: June 12, 2026) =
+- Fixed: Tasks filter issue
+- Fixed: Table View title sort issue
+- Fixed: UI Issue in Stage Reorder
+- Fixed: Critical error from task comment email links
+- Fixed: Attachment issue when moving task to another board
+- Fixed: Folder edit issue
+- Other improvements & bug fixes
+
 = v1.95 (Date: May 21, 2026) =
-- New: Gantt Chart View
+- New: Gantt Chart View 
 - New: MCP Support for AI Agents
 - New: Pin Tasks
 - New: Anyone with Permission Can Create Boards

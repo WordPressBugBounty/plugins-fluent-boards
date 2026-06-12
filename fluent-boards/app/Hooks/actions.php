@@ -110,7 +110,6 @@ $app->addCustomAction('task_attachment_deleted', 'ActivityHandler@taskAttachment
 $app->addCustomAction('task_attachment_deleted', 'TaskHandler@taskAttachmentDeleted', 10, 1);
 // Removed: direct call is made from Comment::deleting to TaskHandler@commentImageDeleted
 $app->addAction('deleted_user', 'BoardHandler@deleteUserRelatedData', 10, 3);
-$app->addAction('delete_attachment', 'FileHandler@mediaFileDeleted', 10, 1);
 
 $app->addCustomAction('task_created', 'TaskHandler@onTaskCreated', 10, 1);
 $app->addCustomAction('comment_created', 'TaskHandler@onCommentCreated', 10, 1);

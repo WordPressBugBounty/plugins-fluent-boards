@@ -271,7 +271,7 @@ class AttachmentFileService
 
         $sourcePath = $this->resolveLocalPath($source, $sourceBoardId);
         if (!$sourcePath || !file_exists($sourcePath)) {
-            throw new \Exception(esc_html__('Attachment file could not be found.', 'fluent-boards'));
+            return $result;
         }
 
         $targetDir = $this->getBoardDir($targetBoardId);
@@ -358,14 +358,22 @@ class AttachmentFileService
 
         if (!empty($attachment->full_url)) {
             $uploadDir = wp_upload_dir();
-            $pathFromUrl = str_replace($uploadDir['baseurl'], $uploadDir['basedir'], $attachment->full_url);
+            $pathFromUrl = rawurldecode(str_replace($uploadDir['baseurl'], $uploadDir['basedir'], $attachment->full_url));
             if (file_exists($pathFromUrl)) {
                 return $pathFromUrl;
+            }
+
+            if ($boardId) {
+                $urlPath = wp_parse_url($attachment->full_url, PHP_URL_PATH);
+                $pathFromBoardUrl = $urlPath ? $this->getBoardDir($boardId) . DIRECTORY_SEPARATOR . basename(rawurldecode($urlPath)) : null;
+                if ($pathFromBoardUrl && file_exists($pathFromBoardUrl)) {
+                    return $pathFromBoardUrl;
+                }
             }
         }
 
         if ($boardId && !empty($attachment->file_path)) {
-            $pathFromBoard = $this->getBoardDir($boardId) . DIRECTORY_SEPARATOR . basename($attachment->file_path);
+            $pathFromBoard = $this->getBoardDir($boardId) . DIRECTORY_SEPARATOR . basename(rawurldecode($attachment->file_path));
             if (file_exists($pathFromBoard)) {
                 return $pathFromBoard;
             }

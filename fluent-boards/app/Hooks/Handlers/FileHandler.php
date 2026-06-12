@@ -4,8 +4,6 @@ namespace FluentBoards\App\Hooks\Handlers;
 
 use DateTimeImmutable;
 use Exception;
-use FluentBoards\App\Models\Meta;
-use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Libs\FileSystem;
 use FluentBoards\App\Models\Attachment;
 use function Sodium\add;
@@ -127,16 +125,4 @@ class FileHandler
         }
     }
 
-    /**
-     * This function will delete meta where default board default image is used.
-     * @param $id
-     * @return void
-     */
-    public function mediaFileDeleted($id)
-    {
-        $boardImage = Meta::where('object_id', $id)->where('object_type', Constant::BOARD_DEFAULT_IMAGE)->first();
-        if($boardImage) {
-            $boardImage->delete();
-        }
-    }
 }

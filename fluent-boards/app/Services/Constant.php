@@ -121,11 +121,6 @@ class Constant{
         'table_view_created_at' => true,
     ];
 
-
-    const BOARD_DEFAULT_IMAGE = 'board_default_image';
-    const BOARD_DEFAULT_IMAGE_URL = 'https://fluentboards.com/shared-files/';
-
-
     const TRELLO_COLOR_MAP = [
         "green" => "#4bce97",
         "yellow" => "#f5cd47",

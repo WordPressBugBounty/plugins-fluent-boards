@@ -1446,9 +1446,9 @@ class TaskService
             // the existing client-side filter semantics.
             $tasksQuery->where(function ($query) use ($commonIds) {
                 $query->whereHas('assignees', function ($assigneeQuery) use ($commonIds) {
-                    $assigneeQuery->whereIn('ID', $commonIds);
+                    $assigneeQuery->whereIn('users.ID', $commonIds);
                 })->orWhereHas('watchers', function ($watcherQuery) use ($commonIds) {
-                    $watcherQuery->whereIn('ID', $commonIds);
+                    $watcherQuery->whereIn('users.ID', $commonIds);
                 });
             });
         }
@@ -1461,7 +1461,7 @@ class TaskService
 
                 if ($assigneeOnlyIds) {
                     $query->orWhereHas('assignees', function ($assigneeQuery) use ($assigneeOnlyIds) {
-                        $assigneeQuery->whereIn('ID', $assigneeOnlyIds);
+                        $assigneeQuery->whereIn('users.ID', $assigneeOnlyIds);
                     });
                 }
             });
@@ -1469,9 +1469,9 @@ class TaskService
 
         if ($watcherOnlyIds) {
             $tasksQuery->whereHas('watchers', function ($watcherQuery) use ($watcherOnlyIds) {
-                $watcherQuery->whereIn('ID', $watcherOnlyIds);
+                $watcherQuery->whereIn('users.ID', $watcherOnlyIds);
             })->whereDoesntHave('assignees', function ($assigneeQuery) use ($watcherOnlyIds) {
-                $assigneeQuery->whereIn('ID', $watcherOnlyIds);
+                $assigneeQuery->whereIn('users.ID', $watcherOnlyIds);
             });
         }
     }

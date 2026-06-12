@@ -153,7 +153,7 @@ class TransStrings
             'FluentBoards will search in the users of this site'                                  => __('FluentBoards will search in the users of this site', 'fluent-boards'),
             'Font Size'                                                                           => __('Font Size', 'fluent-boards'),
             'Font Style'                                                                          => __('Font Style', 'fluent-boards'),
-            'Frontend Portal'                                                                     => __('Frontend Portal', 'fluent-boards'),
+            'Front Portal'                                                                        => __('Front Portal', 'fluent-boards'),
             'Go Back'                                                                             => __('Go Back', 'fluent-boards'),
             'Go to Ticket'                                                                        => __('Go to Ticket', 'fluent-boards'),
             'Go to boards'                                                                        => __('Go to boards', 'fluent-boards'),

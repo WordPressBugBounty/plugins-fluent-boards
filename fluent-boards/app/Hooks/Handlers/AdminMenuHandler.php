@@ -234,7 +234,7 @@ class AdminMenuHandler
         if ($isDiffUrl) {
             $menuItems['front'] = [
                 'key'       => 'front',
-                'label'     => __('Frontend Portal', 'fluent-boards'),
+                'label'     => __('Front Portal', 'fluent-boards'),
                 'target'    => '_blank',
                 'permalink' => fluent_boards_page_url()
             ];

@@ -10,11 +10,22 @@ use FluentBoards\App\Services\Constant;
 
 class NotificationHandler
 {
+    /**
+     * Add a generic comment notification for watchers who were not explicitly mentioned.
+     *
+     * Mentioned users receive the higher-priority mention notification separately, so they
+     * should not also receive a generic comment notification for the same comment.
+     *
+     * @param \FluentBoards\App\Models\Comment $comment
+     * @return void
+     */
     public function addCommentNotification($comment)
     {
         if($comment->task_id){
             $task = Task::findOrFail($comment->task_id);
+            $mentionedUserIds = $this->getMentionedUserIdsFromComment($comment);
             $userIdsWhoGetNotification = $this->findUsersWhoWillGetNotification($task);
+            $userIdsWhoGetNotification = $this->excludeMentionedUsersFromNotificationRecipients($userIdsWhoGetNotification, $mentionedUserIds);
             if(count($userIdsWhoGetNotification) > 0){
                 $plainDescription = wp_strip_all_tags($comment->description);
                 $action = $comment->parent_id ? 'task_reply_added' : 'comment_created';
@@ -24,6 +35,43 @@ class NotificationHandler
                 $notification->users()->attach($userIdsWhoGetNotification);
             }
         }
+    }
+
+    /**
+     * Get normalized mentioned user IDs from a comment's stored settings.
+     *
+     * @param \FluentBoards\App\Models\Comment $comment
+     * @return array
+     */
+    private function getMentionedUserIdsFromComment($comment)
+    {
+        $settings = $comment->settings;
+
+        if (!is_array($settings) || empty($settings['mentioned_id']) || !is_array($settings['mentioned_id'])) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('intval', $settings['mentioned_id'])));
+    }
+
+    /**
+     * Remove mentioned users from generic notification recipients.
+     *
+     * @param array $recipientIds
+     * @param array $mentionedUserIds
+     * @return array
+     */
+    private function excludeMentionedUsersFromNotificationRecipients($recipientIds, $mentionedUserIds)
+    {
+        $mentionedUserIds = array_filter(array_map('intval', $mentionedUserIds));
+
+        if (!$mentionedUserIds) {
+            return array_values($recipientIds);
+        }
+
+        return array_values(array_filter($recipientIds, function ($recipientId) use ($mentionedUserIds) {
+            return !in_array((int) $recipientId, $mentionedUserIds, true);
+        }));
     }
 
     public function mentionInCommentNotification($comment, $mentionIds)

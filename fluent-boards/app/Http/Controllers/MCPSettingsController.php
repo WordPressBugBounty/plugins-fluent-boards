@@ -174,14 +174,12 @@ class MCPSettingsController extends Controller
 
             case 'claude-desktop':
                 $env = [
-                    'WP_API_URL'      => $endpoint,
-                    'WP_API_USERNAME' => $usernamePlaceholder,
-                    'WP_API_PASSWORD' => $passwordPlaceholder,
+                    'WP_API_URL'                   => $endpoint,
+                    'WP_API_USERNAME'              => $usernamePlaceholder,
+                    'WP_API_PASSWORD'              => $passwordPlaceholder,
+                    'OAUTH_ENABLED'                => 'false',
+                    'NODE_TLS_REJECT_UNAUTHORIZED' => '0',
                 ];
-
-                if ($isLocalDev) {
-                    $env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
-                }
 
                 $snippet = wp_json_encode([
                     'mcpServers' => [
@@ -194,9 +192,6 @@ class MCPSettingsController extends Controller
                 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
                 $instructions = __('Paste into the Claude Desktop config file, then restart Claude Desktop.', 'fluent-boards');
-                if ($isLocalDev) {
-                    $instructions .= ' ' . __('Local dev mode is on, so NODE_TLS_REJECT_UNAUTHORIZED is included for self-signed SSL.', 'fluent-boards');
-                }
                 break;
 
             case 'claude-code':
