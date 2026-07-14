@@ -19,7 +19,11 @@ class BoardService
 {
     public function getBoardsByType($type)
     {
-        return Board::where('type', $type)->whereNull('archived_at')->orderBy('created_at', 'ASC')->get();
+        return Board::where('type', sanitize_text_field($type))
+            ->whereNull('archived_at')
+            ->byAccessUser(get_current_user_id())
+            ->orderBy('created_at', 'ASC')
+            ->get();
     }
 
     public function deleteBoard($boardId)
@@ -952,14 +956,25 @@ class BoardService
         return (string) $timestamp;
     }
 
-    public function getAssociatedBoards($associatedId)
+    public function getAssociatedBoards($associatedId, $userId = null)
     {
+        $associatedId = absint($associatedId);
+        $userId = $userId ?: get_current_user_id();
+
+        if (!$associatedId || !$userId) {
+            return [];
+        }
+
         $boardIds = Meta::query()->where('value', $associatedId)
             ->where('object_type', Constant::OBJECT_TYPE_BOARD)
             ->where('key', Constant::BOARD_ASSOCIATED_CRM_CONTACT)
             ->pluck('object_id');
 
-        return Board::query()->whereIn('id', $boardIds)->with('stages', 'users')->get();
+        return Board::query()
+            ->whereIn('id', $boardIds)
+            ->byAccessUser($userId)
+            ->with('stages', 'users')
+            ->get();
     }
 
     private function deleteBoardMeta($boardId)
@@ -1218,7 +1233,10 @@ class BoardService
             // Convert to array of integers
             $intIds = array_map('intval', $ids);
 
-            return Board::whereIn('id', $intIds)->whereNull('archived_at')->get();
+            return Board::whereIn('id', $intIds)
+                ->whereNull('archived_at')
+                ->byAccessUser(get_current_user_id())
+                ->get();
         }
     }
 

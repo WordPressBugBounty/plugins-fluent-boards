@@ -1649,20 +1649,34 @@ class TaskService
             return [];
         }
 
-        // Load only the relationships rendered by the FluentCRM profile tab.
-        $tasks = Task::query()
+        $isAdmin = PermissionManager::isAdmin($userId);
+        $editableBoardIds = [];
+
+        $tasksQuery = Task::query()
             ->where('crm_contact_id', $associatedId)
             ->with(['board', 'stage', 'assignees', 'subtaskGroup', 'subtaskGroup.subtasks', 'subtaskGroup.subtasks.assignees'])
-            ->orderBy('due_at', 'ASC')
-            ->get();
+            ->orderBy('due_at', 'ASC');
 
-        // Batch board access once so each task avoids its own permission query.
-        $editableBoardIds = array_map('intval', PermissionManager::getBoardIdsForUser($userId));
+        if ($isAdmin) {
+            $tasksQuery->whereHas('board', function ($query) {
+                $query->whereNull('archived_at');
+            });
+        } else {
+            $editableBoardIds = array_map('intval', PermissionManager::getBoardIdsForUser($userId));
+
+            if (!$editableBoardIds) {
+                return [];
+            }
+
+            $tasksQuery->whereIn('board_id', $editableBoardIds);
+        }
+
+        $tasks = $tasksQuery->get();
 
         foreach ($tasks as $task) {
             $task->isOverdue = $task->isOverdue();
             $task->isUpcoming = $task->upcoming();
-            $task->can_edit = in_array((int)$task->board_id, $editableBoardIds, true);
+            $task->can_edit = $isAdmin || in_array((int)$task->board_id, $editableBoardIds, true);
 
             $task->assignees = Helper::sanitizeUserCollections($task->assignees);
 

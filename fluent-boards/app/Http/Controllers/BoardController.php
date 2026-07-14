@@ -1005,19 +1005,43 @@ class BoardController extends Controller
 
     public function archiveAllTasksInStage($board_id, $stage_id)
     {
-        $updates = $this->stageService->archiveAllTasksInStage($stage_id);
-        return [
-            'message'      => __('Tasks have been archived', 'fluent-boards'),
-            'updatedTasks' => $updates,
-        ];
+        $board_id = absint($board_id);
+        $stage_id = absint($stage_id);
+
+        try {
+            $this->findStageOnBoard($stage_id, $board_id);
+            $updates = $this->stageService->archiveAllTasksInStage($stage_id, $board_id);
+
+            return [
+                'message'      => __('Tasks have been archived', 'fluent-boards'),
+                'updatedTasks' => $updates,
+            ];
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 400);
+        }
     }
 
     public function getAssociatedBoards(Request $request, $associated_id)
     {
-        $associatedBoards = $this->boardService->getAssociatedBoards($associated_id);
+        if (!$this->currentUserCanReadCrmContacts()) {
+            return $this->sendError(esc_html__('You do not have permission to view CRM contact boards', 'fluent-boards'), 403);
+        }
+
+        $associatedBoards = $this->boardService->getAssociatedBoards($associated_id, get_current_user_id());
         return [
             'boards' => $associatedBoards,
         ];
+    }
+
+    private function currentUserCanReadCrmContacts()
+    {
+        $permissionManager = 'FluentCrm\\App\\Services\\PermissionManager';
+
+        if (!class_exists($permissionManager)) {
+            return false;
+        }
+
+        return (bool) $permissionManager::currentUserCan('fcrm_read_contacts');
     }
 
     public function duplicateBoard(Request $request, $board_id)

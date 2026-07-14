@@ -6,11 +6,13 @@ use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\TaskMeta;
+use FluentBoards\App\Models\Relation;
 use FluentBoards\App\App;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\AttachmentFileService;
+use FluentBoards\App\Services\PermissionManager;
 
 class StageService
 {
@@ -200,7 +202,50 @@ class StageService
 
     public function importStagesFromBoard($board_id, $selectedStages, $position = null)
     {
-        $targetStages = Stage::whereIn('id', $selectedStages)->get();
+        $board_id = absint($board_id);
+        $selectedStages = array_values(array_unique(array_filter(array_map('absint', (array) $selectedStages))));
+
+        if (!$selectedStages) {
+            return;
+        }
+
+        $targetStages = Stage::whereIn('id', $selectedStages)
+            ->whereNull('archived_at')
+            ->get();
+
+        if (count($targetStages) !== count($selectedStages)) {
+            throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
+        }
+
+        $sourceBoardIds = array_values(array_unique(array_map('absint', $targetStages->pluck('board_id')->toArray())));
+
+        if (in_array(0, $sourceBoardIds, true)) {
+            throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
+        }
+
+        $userId = get_current_user_id();
+
+        if (!$userId) {
+            throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
+        }
+
+        if (!PermissionManager::isAdmin($userId)) {
+            $allowedBoardIds = Relation::where('foreign_id', $userId)
+                ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+                ->whereIn('object_id', $sourceBoardIds)
+                ->pluck('object_id')
+                ->toArray();
+
+            $allowedBoardIds = array_map('intval', $allowedBoardIds);
+            $unauthorizedBoardIds = array_filter($sourceBoardIds, function ($sourceBoardId) use ($allowedBoardIds) {
+                return !in_array($sourceBoardId, $allowedBoardIds, true);
+            });
+
+            if ($unauthorizedBoardIds) {
+                throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
+            }
+        }
+
         $stageMapForCopyingTask = array();
         $stageIdsToCopy = array();
 
@@ -359,9 +404,17 @@ class StageService
         }
         return $tasks;
     }
-    public function archiveAllTasksInStage($stage_id)
+    public function archiveAllTasksInStage($stage_id, $boardId = null)
     {
-        $tasks = Task::where('stage_id', $stage_id)->whereNull('parent_id')->whereNull('archived_at')->get();
+        $tasksQuery = Task::where('stage_id', absint($stage_id))
+            ->whereNull('parent_id')
+            ->whereNull('archived_at');
+
+        if ($boardId) {
+            $tasksQuery->where('board_id', absint($boardId));
+        }
+
+        $tasks = $tasksQuery->get();
         foreach ($tasks as $task) {
             $task->position = 0;
             $task->archived_at = current_time('mysql');
