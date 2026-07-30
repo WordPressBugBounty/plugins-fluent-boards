@@ -13,6 +13,8 @@ use FluentBoards\App\Services\TaskService;
  */
 class TaskTools
 {
+    const MAX_ASSIGNEES_PER_CALL = 50;
+
     public static function canMoveTask($params = [])
     {
         $sourceBoardId = isset($params['board_id']) ? absint($params['board_id']) : 0;
@@ -109,9 +111,9 @@ class TaskTools
         ];
 
         if (!empty($params['priority'])) {
-            if (!in_array($params['priority'], ['low', 'medium', 'high'], true)) {
+            if (!in_array($params['priority'], self::getAllowedTaskPriorities(), true)) {
                 return MCPHelper::error('invalid_param', __('Invalid task priority', 'fluent-boards'), [
-                    'allowed' => ['low', 'medium', 'high'],
+                    'allowed' => self::getAllowedTaskPriorities(),
                 ]);
             }
             $taskData['priority'] = sanitize_text_field($params['priority']);
@@ -124,7 +126,7 @@ class TaskTools
         }
 
         if (!empty($params['description'])) {
-            $taskData['description'] = wp_kses_post($params['description']);
+            $taskData['description'] = MCPHelper::sanitizeMarkdown($params['description']);
         }
 
         if (!empty($params['crm_contact_id'])) {
@@ -132,9 +134,10 @@ class TaskTools
         }
 
         $task = (new TaskService())->createTask($taskData, $board->id);
+        MCPHelper::loadTaskDetails($task);
 
         return [
-            'task'    => MCPHelper::formatTaskSummary($task),
+            'task'    => MCPHelper::formatTask($task),
             'message' => __('Task has been successfully created', 'fluent-boards'),
         ];
     }
@@ -153,7 +156,7 @@ class TaskTools
         $service = new TaskService();
         $updatable = [
             'title'          => 'text',
-            'description'    => 'html',
+            'description'    => 'markdown',
             'status'         => 'text',
             'priority'       => 'nullable_text',
             'due_at'         => 'nullable_text',
@@ -254,6 +257,91 @@ class TaskTools
         ];
     }
 
+    /**
+     * Core assignee management. Pro also ships add-task-assignee/remove-task-assignee; this works
+     * without Pro and adds a sync mode.
+     */
+    public static function assignTask($params = [])
+    {
+        $task = MCPHelper::resolveTask($params);
+        if (is_wp_error($task)) {
+            return $task;
+        }
+
+        if (!MCPHelper::canWriteBoard($task->board_id)) {
+            return MCPHelper::error('forbidden', __('You do not have permission to update this task', 'fluent-boards'));
+        }
+
+        $mode = !empty($params['mode']) ? sanitize_text_field($params['mode']) : 'add';
+        if (!in_array($mode, ['add', 'remove', 'sync'], true)) {
+            return MCPHelper::error('invalid_param', __('Invalid assignment mode', 'fluent-boards'), [
+                'allowed' => ['add', 'remove', 'sync'],
+            ]);
+        }
+
+        $hasUserIds = array_key_exists('user_ids', $params);
+        $userIds = MCPHelper::sanitizeIdArray($params['user_ids'] ?? []);
+        if (!$hasUserIds && !empty($params['user_id'])) {
+            $userIds = [absint($params['user_id'])];
+        }
+
+        if (!$userIds && !($mode === 'sync' && $hasUserIds && is_array($params['user_ids']))) {
+            return MCPHelper::error('invalid_param', __('Provide user_id or user_ids', 'fluent-boards'));
+        }
+
+        if (count($userIds) > self::MAX_ASSIGNEES_PER_CALL) {
+            return MCPHelper::error('invalid_param', __('Too many users in one call', 'fluent-boards'), [
+                'max' => self::MAX_ASSIGNEES_PER_CALL,
+            ]);
+        }
+
+        // fbs_relations has no foreign key, so an unknown id would persist as an assignee
+        // and a watcher that no user can ever be loaded for.
+        $unknownIds = self::findUnknownUserIds($userIds);
+        if ($unknownIds) {
+            return MCPHelper::error('not_found', __('Some users do not exist', 'fluent-boards'), [
+                'unknown_user_ids' => $unknownIds,
+            ]);
+        }
+
+        $task->load('assignees');
+        $currentIds = [];
+        foreach ($task->assignees as $assignee) {
+            $currentIds[] = (int) $assignee->ID;
+        }
+
+        // updateAssignee() toggles, so only feed it genuine changes.
+        if ($mode === 'add') {
+            $toAdd = array_diff($userIds, $currentIds);
+            $toRemove = [];
+        } elseif ($mode === 'remove') {
+            $toAdd = [];
+            $toRemove = array_intersect($userIds, $currentIds);
+        } else {
+            $toAdd = array_diff($userIds, $currentIds);
+            $toRemove = array_diff($currentIds, $userIds);
+        }
+
+        $service = new TaskService();
+
+        foreach (array_merge($toRemove, $toAdd) as $userId) {
+            $service->updateAssignee($userId, $task);
+            $task->load('assignees');
+        }
+
+        MCPHelper::loadTaskDetails($task);
+
+        return [
+            'task_id'   => (int) $task->id,
+            'board_id'  => (int) $task->board_id,
+            'mode'      => $mode,
+            'added'     => array_values($toAdd),
+            'removed'   => array_values($toRemove),
+            'assignees' => MCPHelper::formatUserList($task->assignees),
+            'message'   => __('Task assignees have been updated', 'fluent-boards'),
+        ];
+    }
+
     public static function archiveTask($params = [])
     {
         $task = MCPHelper::resolveTask($params);
@@ -277,10 +365,30 @@ class TaskTools
         ];
     }
 
+    /**
+     * @return array Ids with no matching WordPress user, in the order supplied.
+     */
+    private static function findUnknownUserIds($userIds)
+    {
+        $found = get_users([
+            'include' => $userIds,
+            'fields'  => 'ID',
+            'number'  => count($userIds),
+        ]);
+
+        $found = array_map('intval', (array) $found);
+
+        return array_values(array_diff($userIds, $found));
+    }
+
     private static function sanitizeUpdateValue($value, $type)
     {
         if ($type === 'html') {
             return wp_kses_post((string) $value);
+        }
+
+        if ($type === 'markdown') {
+            return MCPHelper::sanitizeMarkdown($value);
         }
 
         if ($type === 'array') {
@@ -306,13 +414,29 @@ class TaskTools
             ]);
         }
 
-        if ($field === 'priority' && $value !== '' && $value !== null && !in_array($value, ['low', 'medium', 'high'], true)) {
+        if ($field === 'priority' && $value !== '' && $value !== null && !in_array($value, self::getAllowedTaskPriorities(), true)) {
             return MCPHelper::error('invalid_param', __('Invalid task priority', 'fluent-boards'), [
-                'allowed' => ['low', 'medium', 'high'],
+                'allowed' => self::getAllowedTaskPriorities(),
             ]);
         }
 
         return true;
+    }
+
+    /**
+     * Get priority keys allowed by the task priority filter.
+     *
+     * @return array
+     */
+    private static function getAllowedTaskPriorities()
+    {
+        return array_map('strval', array_keys(apply_filters('fluent_boards/task_priorities', [
+            ''       => __('No priority', 'fluent-boards'),
+            'urgent' => __('Urgent', 'fluent-boards'),
+            'high'   => __('High', 'fluent-boards'),
+            'medium' => __('Medium', 'fluent-boards'),
+            'low'    => __('Low', 'fluent-boards'),
+        ])));
     }
 
     private static function sanitizeArray($value)

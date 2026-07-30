@@ -4,6 +4,7 @@ namespace FluentBoards\App\Services;
 
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\Meta;
+use FluentBoards\App\Models\Notification;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Models\Board;
@@ -234,18 +235,22 @@ class UserService
                 'paginationInfo' => [
                     'current_page' => 1,
                     'last_page' => 1,
+                    'per_page' => (int) $per_page,
                     'total' => 0,
                 ],
             ];
         }
 
+        // Table view needs the labels column; list view ignores the extra relation.
+        $taskRelations = ['stage', 'board', 'labels'];
+
         if($taskType == 'assigned') {
-            $tasksQuery = $user->assignedTasks()->with(['stage', 'board'])->whereNull('archived_at')->whereNull('parent_id')->whereIn('board_id', $allowedBoardIds);
+            $tasksQuery = $user->assignedTasks()->with($taskRelations)->whereNull('archived_at')->whereNull('parent_id')->whereIn('board_id', $allowedBoardIds);
         } else if($taskType == 'mentioned') {
-            $tasksQuery = $user->mentionedTasks()->with(['stage', 'board'])->whereNull('archived_at')->whereNull('parent_id')->whereIn('board_id', $allowedBoardIds);
+            $tasksQuery = $user->mentionedTasks()->with($taskRelations)->whereNull('archived_at')->whereNull('parent_id')->whereIn('board_id', $allowedBoardIds);
         } else {
             // Get the task assigned to the user
-        $tasksQuery = $user->tasks()->with(['stage', 'board'])->whereNull('archived_at') ->whereIn('board_id', $allowedBoardIds);
+        $tasksQuery = $user->tasks()->with($taskRelations)->whereNull('archived_at') ->whereIn('board_id', $allowedBoardIds);
 
         switch ($taskType) {
             case 'upcoming':
@@ -300,7 +305,7 @@ class UserService
 
         // Apply ordering based on the specified order and orderBy
         if ($orderBy === 'priority') {
-            $tasksQuery->orderByRaw("FIELD(priority, 'High', 'Medium', 'Low') {$order}");
+            $tasksQuery->orderByRaw("FIELD(priority, 'urgent', 'high', 'medium', 'low') {$order}");
         } else if ($orderBy === 'due_at') {
             $tasksQuery->orderByRaw("ISNULL(due_at), due_at {$order}");
         } else {
@@ -314,8 +319,60 @@ class UserService
             'paginationInfo' => [
                 'current_page' => $tasks->currentPage(),
                 'last_page'    => $tasks->lastPage(),
+                'per_page'     => (int) $tasks->perPage(),
                 'total'        => $tasks->total(),
             ],
+        ];
+    }
+
+    /**
+     * Get totals for each task category available in the profile task tabs.
+     */
+    public function getMemberTaskCounts($userId, $boardIds = [])
+    {
+        $user = User::find($userId);
+        $currentUserId = get_current_user_id();
+        $allowedBoardIds = PermissionManager::getBoardIdsForUser($currentUserId);
+
+        if (!$user || empty($allowedBoardIds)) {
+            return array_fill_keys(
+                ['due_today', 'assigned', 'upcoming', 'overdue', 'mentioned', 'completed', 'others'],
+                0
+            );
+        }
+
+        if ($currentUserId != $user->ID && !PermissionManager::isAdmin()) {
+            $currentUser = User::find($currentUserId);
+            $currentUserBoardIds = $currentUser->boards->pluck('id')->toArray();
+            $boardIds = empty($boardIds)
+                ? $currentUserBoardIds
+                : array_intersect($boardIds, $currentUserBoardIds);
+        }
+
+        // Keep the count queries aligned with the profile list without loading task models or relations.
+        $applyTaskScope = function ($query) use ($allowedBoardIds, $boardIds) {
+            $query->whereNull('archived_at')
+                ->whereNull('parent_id')
+                ->whereIn('board_id', $allowedBoardIds);
+
+            if (!empty($boardIds)) {
+                $query->whereIn('board_id', $boardIds);
+            }
+
+            return $query;
+        };
+        $watchedTasks = function () use ($user, $applyTaskScope) {
+            return $applyTaskScope($user->tasks());
+        };
+
+        return [
+            'due_today' => (int) $watchedTasks()->dueToday()->count(),
+            'assigned'  => (int) $applyTaskScope($user->assignedTasks())->count(),
+            'upcoming'  => (int) $watchedTasks()->upcoming()->count(),
+            'overdue'   => (int) $watchedTasks()->overdue()->count(),
+            'mentioned' => (int) $applyTaskScope($user->mentionedTasks())->count(),
+            'completed' => (int) $watchedTasks()->where('status', 'closed')->count(),
+            'others'    => (int) $watchedTasks()->whereNull('due_at')->count(),
         ];
     }
 
@@ -377,5 +434,64 @@ class UserService
             $boards = $user->whichBoards;
         }
         return $boards;
+    }
+
+    /**
+     * Returns four aggregate counts for a member's stats widget.
+     *
+     * Cross-user access is scoped to boards shared with the requesting user,
+     * matching the contract of getMemberBoards() and getMemberAssociatedTasks().
+     * Unread notifications are personal and only returned for self or admin.
+     */
+    public function getMemberStats(int $user_id): array
+    {
+        $empty = ['assigned_tasks' => 0, 'completed_tasks' => 0, 'total_boards' => 0, 'unread_notifications' => 0];
+
+        $user = User::find($user_id);
+        if (!$user) {
+            return $empty;
+        }
+
+        $currentUserId = get_current_user_id();
+        $isSelfOrAdmin = ($currentUserId === $user_id) || PermissionManager::isAdmin($currentUserId);
+
+        // For cross-user access, restrict counts to boards the requesting user can also see.
+        $allowedBoardIds = null;
+        if (!$isSelfOrAdmin) {
+            $currentUser     = User::find($currentUserId);
+            $allowedBoardIds = $currentUser ? $currentUser->whichBoards->pluck('id')->toArray() : [];
+            if (empty($allowedBoardIds)) {
+                return $empty;
+            }
+        }
+
+        $assignedBase = $user->assignedTasks()->whereNull('archived_at')->whereNull('parent_id');
+        if ($allowedBoardIds !== null) {
+            $assignedBase->whereIn('board_id', $allowedBoardIds);
+        }
+
+        $boardsQuery = $user->whichBoards();
+        if ($allowedBoardIds !== null) {
+            $boardsQuery->whereIn('fbs_boards.id', $allowedBoardIds);
+        }
+
+        // Use Notification model with object_type guard — matches NotificationService::newNotificationNumber().
+        // Notifications are personal; return 0 when a non-admin views another member's profile.
+        $unreadNotifications = 0;
+        if ($isSelfOrAdmin) {
+            $unreadNotifications = Notification::query()
+                ->where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
+                ->whereHas('users', function ($q) use ($user_id) {
+                    $q->where('user_id', $user_id)->whereNull('marked_read_at');
+                })
+                ->count();
+        }
+
+        return [
+            'assigned_tasks'       => (int) (clone $assignedBase)->where('status', '!=', 'closed')->count(),
+            'completed_tasks'      => (int) (clone $assignedBase)->where('status', 'closed')->count(),
+            'total_boards'         => (int) $boardsQuery->count(),
+            'unread_notifications' => (int) $unreadNotifications,
+        ];
     }
 }

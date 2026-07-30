@@ -37,14 +37,6 @@ class Tasks
 {
     private $instance = null;
 
-    private $allowedInstanceMethods = [
-        'all',
-        'get',
-        'find',
-        'first',
-        'paginate'
-    ];
-
     public function __construct(Task $instance)
     {
         $this->instance = $instance;
@@ -67,7 +59,7 @@ class Tasks
         }
 
         //checking if current user has access to board
-        if (!PermissionManager::userHasPermission($board_id)) {
+        if (!$this->canReadBoard($board_id)) {
             return false;
         }
 
@@ -109,8 +101,12 @@ class Tasks
         if (!empty($id)) {
             $task = Task::where('id', $id)->first();
 
+            if (!$task) {
+                return false;
+            }
+
             //checking if current user has access to board
-            if (!PermissionManager::userHasPermission($task->board_id)) {
+            if (!$this->canReadBoard($task->board_id)) {
                 return false;
             }
             return $task;
@@ -144,7 +140,7 @@ class Tasks
 
             foreach ($tasks as $task) {
                 //checking if current user has access to board
-                if (PermissionManager::userHasPermission($task->board_id)) {
+                if ($this->canReadBoard($task->board_id)) {
                     $permittedTasks[] = $task;
                 }
             }
@@ -155,6 +151,12 @@ class Tasks
     }
 
 
+    /**
+     * Create a task only when the current user can write to the target board.
+     *
+     * @param array $data
+     * @return Task|false
+     */
     public function create($data)
     {
         if (empty($data)) {
@@ -162,6 +164,15 @@ class Tasks
         }
 
         if (empty($data['title']) || empty($data['board_id']) || empty($data['stage_id'])) {
+            return false;
+        }
+
+        if (!$this->canWriteBoard($data['board_id'])) {
+            return false;
+        }
+
+        $stage = Stage::where('id', $data['stage_id'])->where('board_id', $data['board_id'])->first();
+        if (!$stage) {
             return false;
         }
 
@@ -187,8 +198,8 @@ class Tasks
 
 
 
-        if(!empty($taskData['priority']) && !in_array($taskData['priority'], ['low', 'medium', 'high'])) {
-            $taskData['priority'] = 'low';
+        if(!empty($taskData['priority']) && !in_array($taskData['priority'], $this->getAllowedTaskPriorities(), true)) {
+            $taskData['priority'] = '';
         }
         if(!empty($taskData['status']) && !in_array($taskData['status'], ['open', 'closed'])) {
             $taskData['status'] = 'open';
@@ -266,7 +277,7 @@ class Tasks
             'stage_id',
             'parent_id',
             'status', // open | closed
-            'priority', // low | medium | high
+            'priority', // urgent | high | medium | low | blank
             'source',
             'source_id',
             'description',
@@ -373,7 +384,7 @@ class Tasks
         }
 
         //checking if current user has access to board
-        if (!PermissionManager::userHasPermission($task->board_id)) {
+        if (!$this->canWriteBoard($task->board_id)) {
             return false;
         }
 
@@ -411,7 +422,7 @@ class Tasks
         }
 
         //checking if current user has access to board
-        if (!PermissionManager::userHasPermission($task->board_id)) {
+        if (!$this->canWriteBoard($task->board_id)) {
             return false;
         }
 
@@ -438,7 +449,7 @@ class Tasks
         }
 
         //checking if current user has access to board
-        if (!PermissionManager::userHasPermission($task->board_id)) {
+        if (!$this->canWriteBoard($task->board_id)) {
             return false;
         }
 
@@ -459,8 +470,23 @@ class Tasks
         return $task;
     }
 
+    /**
+     * Update a task property only when the current user can write to the task board.
+     *
+     * @param int $taskId
+     * @param string $property
+     * @param mixed $value
+     * @return Task|false
+     */
     public function updateProperty($taskId, $property, $value)
     {
+        $taskId = absint($taskId);
+        $property = sanitize_text_field($property);
+
+        if (!$taskId || !$property) {
+            return false;
+        }
+
         $taskService = new TaskService();
         $task = Task::where('id', $taskId)->first();
 
@@ -468,13 +494,49 @@ class Tasks
             return false;
         }
 
-        $allowedColumns = ['title', 'description', 'due_at', 'priority', 'status', 'source', 'source_id', 'crm_contact_id'];
-
-        if(!in_array($property, $allowedColumns)) {
+        if (!$this->canWriteBoard($task->board_id)) {
             return false;
         }
 
-        $taskService->updateTaskProperty($task, $property, $value);
+        $allowedColumns = ['title', 'description', 'due_at', 'priority', 'status', 'source', 'source_id', 'crm_contact_id'];
+
+        if(!in_array($property, $allowedColumns, true)) {
+            return false;
+        }
+
+        switch ($property) {
+            case 'description':
+                $sanitizedValue = wp_kses_post((string) $value);
+                break;
+
+            case 'due_at':
+                $sanitizedValue = $value === null || $value === '' ? null : sanitize_text_field((string) $value);
+                break;
+
+            case 'priority':
+                $sanitizedValue = $value === null ? null : sanitize_text_field((string) $value);
+                if ($sanitizedValue !== null && $sanitizedValue !== '' && !in_array($sanitizedValue, $this->getAllowedTaskPriorities(), true)) {
+                    return false;
+                }
+                break;
+
+            case 'status':
+                $sanitizedValue = sanitize_text_field((string) $value);
+                if (!in_array($sanitizedValue, ['open', 'closed'], true)) {
+                    return false;
+                }
+                break;
+
+            case 'crm_contact_id':
+                $sanitizedValue = $value === null || $value === '' ? null : absint($value);
+                break;
+
+            default:
+                $sanitizedValue = sanitize_text_field((string) $value);
+                break;
+        }
+
+        $task = $taskService->updateTaskProperty($property, $sanitizedValue, $task);
 
         return $task;
 
@@ -549,6 +611,7 @@ class Tasks
 
         $data['board_id'] = $boardId;
         $data['parent_id'] = $task->id;
+        unset($data['started_at']);
 
         // Ensure group_id is provided and valid
         if (!empty($data['group_id'])) {
@@ -568,7 +631,7 @@ class Tasks
                     $group = TaskMeta::create([
                         'task_id' => $task->id,
                         'key' => Constant::SUBTASK_GROUP_NAME,
-                        'value' => __('Subtask Group 1', 'fluent-boards')
+                        'value' => __('Untitled Group', 'fluent-boards')
                     ]);
                 }
 
@@ -584,7 +647,7 @@ class Tasks
                 $group = TaskMeta::create([
                     'task_id' => $task->id,
                     'key' => Constant::SUBTASK_GROUP_NAME,
-                    'value' => __('Subtask Group 1', 'fluent-boards')
+                    'value' => __('Untitled Group', 'fluent-boards')
                 ]);
             }
 
@@ -620,7 +683,17 @@ class Tasks
         if (!$this->hasProAndBoardAccess($boardId)) {
             return false;
         }
-        return $this->updateProperty($subtaskId, $property, $value);
+
+        $subtask = Task::where('id', $subtaskId)->where('parent_id', $taskId)->where('board_id', $boardId)->first();
+        if (!$subtask) {
+            return false;
+        }
+
+        if ($property === 'started_at') {
+            $value = null;
+        }
+
+        return $this->updateProperty($subtask->id, $property, $value);
     }
 
 
@@ -637,6 +710,10 @@ class Tasks
         }
 
         $subtask = Task::where('id', $subtaskId)->where('parent_id', $taskId)->where('board_id', $boardId)->first();
+        if (!$subtask) {
+            return false;
+        }
+
         $deletedTask = clone $subtask;
 
         $options = null;
@@ -655,21 +732,57 @@ class Tasks
      */
     private function hasProAndBoardAccess($boardId)
     {
-        return defined('FLUENT_BOARDS_PRO_VERSION') && PermissionManager::userHasPermission($boardId);
+        return defined('FLUENT_BOARDS_PRO_VERSION') && $this->canWriteBoard($boardId);
     }
 
 
-    public function getInstance()
-    {
-        return $this->instance;
-    }
-
+    /**
+     * Block raw model proxy calls so board access cannot be bypassed.
+     *
+     * @param string $method
+     * @param array $params
+     * @throws \Exception
+     */
     public function __call($method, $params)
     {
-        if (in_array($method, $this->allowedInstanceMethods)) {
-            return call_user_func_array([$this->instance, $method], $params);
-        }
-
         throw new \Exception(esc_html(sprintf('Method %s does not exist.', $method)));
+    }
+
+    /**
+     * Check if the current user can read a board.
+     *
+     * @param int $boardId
+     * @return bool
+     */
+    private function canReadBoard($boardId)
+    {
+        return PermissionManager::userHasBoardPermission($boardId, 'GET');
+    }
+
+    /**
+     * Check if the current user can write to a board.
+     *
+     * @param int $boardId
+     * @return bool
+     */
+    private function canWriteBoard($boardId)
+    {
+        return PermissionManager::userHasBoardPermission($boardId, 'POST');
+    }
+
+    /**
+     * Get priority keys allowed by the task priority filter.
+     *
+     * @return array
+     */
+    private function getAllowedTaskPriorities()
+    {
+        return array_map('strval', array_keys(apply_filters('fluent_boards/task_priorities', [
+            ''       => __('No priority', 'fluent-boards'),
+            'urgent' => __('Urgent', 'fluent-boards'),
+            'high'   => __('High', 'fluent-boards'),
+            'medium' => __('Medium', 'fluent-boards'),
+            'low'    => __('Low', 'fluent-boards'),
+        ])));
     }
 }

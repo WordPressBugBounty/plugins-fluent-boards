@@ -53,20 +53,15 @@ class NotificationController extends Controller
         }
     }
 
+    /**
+     * Return the current user's board notification settings with safe defaults.
+     */
     public function getBoardNotificationSettings($board_id)
     {
         $board_id = absint($board_id);
         try {
             $userId = get_current_user_id();
-            $currentSettings = [];
-            $boardSettings = $this->notificationService->getBoardNotificationSettingsOfUser($board_id, $userId);
-            if ($boardSettings && $boardSettings->preferences) {
-                $unserializedData = maybe_unserialize($boardSettings->preferences);
-                // Validate unserialized data is an array
-                if (is_array($unserializedData)) {
-                    $currentSettings = $unserializedData;
-                }
-            }
+            $currentSettings = $this->notificationService->getBoardNotificationSettingsWithDefaults($board_id, $userId);
 
             return $this->sendSuccess([
                 'currentSettings' => $currentSettings,

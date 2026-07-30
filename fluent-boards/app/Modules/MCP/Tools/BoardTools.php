@@ -3,8 +3,10 @@
 namespace FluentBoards\App\Modules\MCP\Tools;
 
 use FluentBoards\App\Models\Board;
+use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Modules\MCP\Helpers\MCPHelper;
 use FluentBoards\App\Services\BoardService;
+use FluentBoards\App\Services\FolderService;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\LabelService;
 use FluentBoards\App\Services\PermissionManager;
@@ -15,6 +17,8 @@ use FluentBoards\App\Services\StageService;
  */
 class BoardTools
 {
+    const MAX_MEMBERS_PER_BOARD_CREATE = 50;
+
     public static function canReadBoard($params = [])
     {
         $boardId = isset($params['board_id']) ? absint($params['board_id']) : 0;
@@ -110,26 +114,45 @@ class BoardTools
             ]);
         }
 
+        $memberIds = self::validateBoardMemberIds($params['member_ids'] ?? []);
+        if (is_wp_error($memberIds)) {
+            return $memberIds;
+        }
+
+        $description = isset($params['description']) ? MCPHelper::sanitizeMarkdown($params['description']) : '';
+
         $boardData = Helper::sanitizeBoard([
             'title'          => $title,
-            'description'    => isset($params['description']) ? wp_kses_post($params['description']) : '',
+            'description'    => '',
             'type'           => $type,
             'currency'       => !empty($params['currency']) ? sanitize_text_field($params['currency']) : 'USD',
             'crm_contact_id' => !empty($params['crm_contact_id']) ? absint($params['crm_contact_id']) : 0,
         ]);
+        $boardData['description'] = $description;
 
         $boardService = new BoardService();
         $labelService = new LabelService();
         $stageService = new StageService();
 
         $board = $boardService->createBoard($boardData);
-        $labelService->createDefaultLabel($board->id);
+
+        self::createBoardLabels($labelService, $board->id, $params['labels'] ?? null);
+
+        $stages = self::sanitizeStages($params['stages'] ?? []);
 
         if ($type === 'roadmap') {
-            $stageService->createRoadmapStages($board, self::sanitizeRoadmapStages($params['stages'] ?? []));
+            if (!$stages) {
+                $stages = self::defaultRoadmapStages();
+            }
+            $stageService->createRoadmapStages($board, $stages);
+        } elseif ($stages) {
+            $stageService->createStages($board, $stages);
+            self::applyStageStatusOverrides($board->id, $stages);
         } else {
             $stageService->createDefaultStages($board);
         }
+
+        self::addBoardMembers($boardService, $board->id, $memberIds);
 
         if (!empty($boardData['crm_contact_id'])) {
             $boardService->updateAssociateMember($boardData['crm_contact_id'], $board->id);
@@ -137,8 +160,8 @@ class BoardTools
 
         do_action('fluent_boards/board_created', $board);
 
-        if (defined('FLUENT_BOARDS_PRO') && !empty($params['folder_id']) && class_exists('FluentBoardsPro\App\Services\FolderService')) {
-            (new \FluentBoardsPro\App\Services\FolderService())->addBoardToFolder(absint($params['folder_id']), [$board->id]);
+        if (!empty($params['folder_id'])) {
+            (new FolderService())->addBoardToFolder(absint($params['folder_id']), [$board->id]);
         }
 
         $board = Board::with(['stages', 'labels', 'users'])->find($board->id);
@@ -168,7 +191,7 @@ class BoardTools
         ];
     }
 
-    private static function sanitizeRoadmapStages($stages)
+    private static function sanitizeStages($stages)
     {
         $items = [];
 
@@ -186,13 +209,168 @@ class BoardTools
                 continue;
             }
 
-            $items[] = [
+            $item = [
                 'title'    => $title,
                 'slug'     => !empty($stage['slug']) ? sanitize_title($stage['slug']) : sanitize_title($title),
                 'position' => !empty($stage['position']) ? absint($stage['position']) : $index + 1,
             ];
+
+            if (!empty($stage['default_task_status']) && in_array($stage['default_task_status'], ['open', 'closed'], true)) {
+                $item['default_task_status'] = $stage['default_task_status'];
+            }
+
+            $items[] = $item;
         }
 
         return $items;
+    }
+
+    private static function defaultRoadmapStages()
+    {
+        return [
+            [
+                'title'    => 'Pending',
+                'slug'     => 'pending',
+                'position' => 1,
+            ],
+            [
+                'title'    => 'Under Consideration',
+                'slug'     => 'under_consideration',
+                'position' => 2,
+            ],
+            [
+                'title'    => 'Planned',
+                'slug'     => 'planned',
+                'position' => 3,
+            ],
+            [
+                'title'    => 'Launched',
+                'slug'     => 'launched',
+                'position' => 4,
+            ],
+        ];
+    }
+
+    private static function validateBoardMemberIds($memberIds)
+    {
+        if (!is_array($memberIds)) {
+            return MCPHelper::error('invalid_param', __('member_ids must be an array', 'fluent-boards'));
+        }
+
+        if (count($memberIds) > self::MAX_MEMBERS_PER_BOARD_CREATE) {
+            return MCPHelper::error('invalid_param', __('Too many members in one call', 'fluent-boards'), [
+                'max' => self::MAX_MEMBERS_PER_BOARD_CREATE,
+            ]);
+        }
+
+        $memberIds = MCPHelper::sanitizeIdArray($memberIds);
+        if (!$memberIds) {
+            return [];
+        }
+
+        $found = get_users([
+            'include' => $memberIds,
+            'fields'  => 'ID',
+            'number'  => count($memberIds),
+        ]);
+        $found = array_map('intval', (array) $found);
+        $unknownIds = array_values(array_diff($memberIds, $found));
+
+        if ($unknownIds) {
+            return MCPHelper::error('not_found', __('Some users do not exist', 'fluent-boards'), [
+                'unknown_user_ids' => $unknownIds,
+            ]);
+        }
+
+        return $memberIds;
+    }
+
+    /**
+     * StageService::createStages() only marks stages titled "completed"/"done" as closing stages,
+     * so honour explicit per-stage statuses once the stages exist.
+     */
+    private static function applyStageStatusOverrides($boardId, $stages)
+    {
+        $overrides = [];
+        foreach ($stages as $index => $stage) {
+            if (!empty($stage['default_task_status'])) {
+                $overrides[$index] = $stage['default_task_status'];
+            }
+        }
+
+        if (!$overrides) {
+            return;
+        }
+
+        $created = Stage::where('board_id', $boardId)
+            ->whereNull('archived_at')
+            ->orderBy('position', 'asc')
+            ->get();
+
+        foreach ($overrides as $index => $status) {
+            $stage = $created[$index] ?? null;
+            if (!$stage) {
+                continue;
+            }
+
+            $settings = $stage->settings ?: [];
+            if (($settings['default_task_status'] ?? '') === $status) {
+                continue;
+            }
+
+            $settings['default_task_status'] = $status;
+            $stage->settings = $settings;
+            $stage->save();
+        }
+    }
+
+    /**
+     * Mirrors BoardController::createBoardLabelsFromRequest().
+     */
+    private static function createBoardLabels($labelService, $boardId, $labels)
+    {
+        if (!is_array($labels) || !$labels) {
+            $labelService->createDefaultLabel($boardId);
+            return;
+        }
+
+        foreach ($labels as $label) {
+            if (!is_array($label)) {
+                continue;
+            }
+
+            $labelData = Helper::sanitizeLabel([
+                'label'    => $label['title'] ?? ($label['label'] ?? ''),
+                'bg_color' => $label['bg_color'] ?? '',
+                'color'    => $label['color'] ?? '',
+            ]);
+
+            if (empty($labelData['label']) && empty($labelData['bg_color'])) {
+                continue;
+            }
+
+            $labelService->createLabel([
+                'label'    => $labelData['label'] ?? '',
+                'bg_color' => !empty($labelData['bg_color']) ? $labelData['bg_color'] : '#f3f4f6',
+                'color'    => !empty($labelData['color']) ? $labelData['color'] : '#1B2533',
+            ], $boardId);
+        }
+    }
+
+    private static function addBoardMembers($boardService, $boardId, $memberIds)
+    {
+        if (!$memberIds) {
+            return;
+        }
+
+        $currentUserId = get_current_user_id();
+
+        foreach ($memberIds as $memberId) {
+            if ($memberId === $currentUserId) {
+                continue;
+            }
+
+            $boardService->addMembersInBoard($boardId, $memberId);
+        }
     }
 }

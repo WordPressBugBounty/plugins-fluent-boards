@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.95.3
+Stable tag: 2.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -15,7 +15,7 @@ FluentBoards is a next-gen project management solution, designed to revolutioniz
 
 Create projects, assign members, set priority, manage multi-stage workflows, receive work updates, and administrate projects - all at your fingertips without leaving the dashboard.
 
-[youtube https://www.youtube.com/watch?v=Sd97tDTveQ0]
+[youtube https://www.youtube.com/watch?v=I3q_6OF02bY]
 
 = 🧐WHAT MAKES FLUENTBOARDS SPECIAL? =
 🛡 Ensure the complete security of your data
@@ -170,7 +170,30 @@ You can filter any task by assignees, stages, and task priorities.
 
 == Changelog ==
 
-= v1.95.3 (Date: July 14, 2026) =
+= v2.0.0 (Date: July 30, 2026) =
+- New: Completely New UI/UX synced with Fluent System
+- New: Featured dashboard with recently opened boards and notifications
+- New: Dark Mode with Light / Dark / System theme switching
+- New: Newly designed Task details Modal with next/previous task navigation
+- New: AI Writing Assistant in task descriptions
+- New: AI Powered subtasks generation, summary, labels & priority suggestions,
+- New: Markdown editor for task descriptions
+- New: Rebuilt & Redesigned Reports with Overview, Tasks, Activity, Timesheet and Roadmap screens
+- New: Board template management with editable templates, covers and categories
+- New: Automated board creation from FluentCRM automation actions
+- New: Task Priority enhanced
+- New: MCP tools added for label, stage and task query tools for AI agents
+- New: redesigned member profile stats widget, recent-tasks widget, and activity feed
+- Improvement: Fully responsive admin, including mobile
+- Improvement: Improved Label management experience
+- Improvement: Improved Change stage or move task to other boards experience
+- Improvement: Some attachments preview UX improved
+- Improvement: Redesigned Kanban, List, Table, Calendar and Gantt views
+- Improvement: Redesigned comments, activity feed and notifications
+- Improvement: Redesigned attachments with per-file upload progress
+- Other improvements & bug fixes
+
+= v1.95.3 (Date: July 14, 2026)
 - Fixed: Minor Security Issue Fixed (Thanks to Diogo Pinto)
 
 = v1.95.2 (Date: June 12, 2026) =

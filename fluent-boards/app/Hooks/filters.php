@@ -19,3 +19,4 @@ $app->addCustomFilter('ajax_options_non_board_wordpress_users', 'TaskHandler@sea
 $app->addCustomFilter('ajax_options_crm_contacts', 'TaskHandler@searchContact', 10, 3);
 $app->addCustomFilter('task_attachment_file_upload', 'FileHandler@handleUpload', 10, 1);
 $app->addCustomFilter('wp_editor_media_file_upload', 'FileHandler@handleMediaFileUpload', 10, 1 );
+$app->addCustomFilter('board_find', 'BoardHandler@attachFolderToBoard', 10, 1);

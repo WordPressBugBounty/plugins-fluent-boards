@@ -8,6 +8,7 @@ use FluentBoards\Framework\Support\Arr;
 
 class UploadService
 {
+    const MAX_FILE_UPLOAD_BYTES = 104857600;
 
     /**
      * @throws \Exception
@@ -37,20 +38,58 @@ class UploadService
     }
 
     public function getFileUploadLimit() {
-        // Logic for calculating file upload limit as in your original code
-        return min(
-            wp_convert_hr_to_bytes(ini_get('upload_max_filesize')),
-            wp_convert_hr_to_bytes(ini_get('post_max_size')),
-            wp_max_upload_size()
-        );
+        return (int) apply_filters('fluent_boards/upload_file_size_limit', self::MAX_FILE_UPLOAD_BYTES);
     }
 
     public function isFileTypeSupported($file)
     {
-        // Define supported file types that are generally allowed by user
-        $allowedMimeTypes = get_allowed_mime_types();
-        // Check if the file type is supported
-        return in_array(strtolower($file['type']), $allowedMimeTypes);
+        // Validate by extension against our allow-list. This is more reliable than the
+        // browser-provided mime, which is empty/inconsistent for types like .json and .md.
+        $ext = strtolower(pathinfo(Arr::get($file, 'name', ''), PATHINFO_EXTENSION));
+        if (!$ext) {
+            return false;
+        }
+
+        foreach (array_keys(self::getAllowedMimeMap()) as $extPattern) {
+            if (in_array($ext, explode('|', $extPattern), true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Allow-list of upload types as an extension => mime map (WordPress defaults plus
+     * common developer/document formats). Shared by validateFile() and wp_handle_upload()
+     * so both agree. Executable/script types are intentionally excluded.
+     *
+     * @return array
+     */
+    public static function getAllowedMimeMap()
+    {
+        $extraMimes = [
+            'json'      => 'application/json',
+            'md'        => 'text/markdown',
+            'markdown'  => 'text/markdown',
+            'csv'       => 'text/csv',
+            'txt'       => 'text/plain',
+            'log'       => 'text/plain',
+            'xml'       => 'text/xml',
+            'yaml|yml'  => 'text/yaml',
+            'webp'      => 'image/webp',
+            'avif'      => 'image/avif',
+            'heic'      => 'image/heic',
+            'zip'       => 'application/zip',
+            'rar'       => 'application/vnd.rar',
+            '7z'        => 'application/x-7z-compressed',
+            'tar'       => 'application/x-tar',
+            'gz|gzip'   => 'application/gzip',
+        ];
+
+        $map = array_merge(get_allowed_mime_types(), $extraMimes);
+
+        return apply_filters('fluent_boards/upload_allowed_mimes', $map);
     }
 
 }

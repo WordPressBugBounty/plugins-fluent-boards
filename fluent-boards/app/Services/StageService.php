@@ -7,6 +7,7 @@ use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Models\Relation;
+use FluentBoards\App\Models\User;
 use FluentBoards\App\App;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\Framework\Support\Arr;
@@ -61,9 +62,19 @@ class StageService
             ]
         ];
     }
+
+    /**
+     * Update one stage property and emit side effects for real title transitions.
+     *
+     * @param string $col
+     * @param mixed $value
+     * @param int $stageId
+     * @return Stage
+     */
     public function updateStageProperty($col, $value, $stageId)
     {
         $stage = Stage::findOrFail($stageId);
+        $stageBeforeUpdate = clone $stage;
 
         if ('title' == $col) {
             $stage = $this->updateTitle($value, $stage);
@@ -76,6 +87,14 @@ class StageService
         } elseif ('archived_at' == $col) {
             $stage = $this->updateArchivedAt($value, $stage);
         }
+
+        if ('title' == $col && $stageBeforeUpdate->title !== $stage->title) {
+            do_action('fluent_boards/stage_updated', $stage->board_id, [
+                'title'    => $stage->title,
+                'cover_bg' => $stage->bg_color
+            ], $stageBeforeUpdate);
+        }
+
         return $stage;
     }
 
@@ -94,6 +113,81 @@ class StageService
         }
 
         return $stagesQuery->get();
+    }
+
+    /**
+     * Get archived stages newest-first with archive actor metadata.
+     *
+     * @param array $data
+     * @param int $boardId
+     * @return mixed
+     * @throws \Exception
+     */
+    public function getArchivedStages($data, $boardId)
+    {
+        if (!$boardId) {
+            throw new \Exception(esc_html__('Board id is required', 'fluent-boards'));
+        }
+
+        $noPagination = !empty($data['noPagination']);
+        $perPage = max(1, min(50, absint($data['per_page'] ?? 30)));
+        $page = max(1, absint($data['page'] ?? 1));
+
+        $stagesQuery = Stage::where('board_id', $boardId)
+            ->whereNotNull('archived_at')
+            ->orderBy('archived_at', 'DESC')
+            ->orderBy('id', 'DESC');
+
+        if ($noPagination) {
+            $stages = $stagesQuery->get();
+        } else {
+            $stages = $stagesQuery->paginate($perPage, ['*'], 'page', $page);
+        }
+
+        $this->attachArchivedStageActors($stages);
+
+        return $stages;
+    }
+
+    /**
+     * Attach nullable archived-by fields from stage settings without per-stage user queries.
+     *
+     * @param mixed $stages
+     * @return void
+     */
+    private function attachArchivedStageActors($stages)
+    {
+        $archivedByIds = [];
+
+        foreach ($stages as $stage) {
+            $stage->archived_by_id = null;
+            $stage->archived_by = null;
+
+            $settings = is_array($stage->settings) ? $stage->settings : [];
+            $archivedById = !empty($settings['archived_by_id']) ? absint($settings['archived_by_id']) : 0;
+
+            if ($archivedById) {
+                $stage->archived_by_id = $archivedById;
+                $archivedByIds[] = $archivedById;
+            }
+        }
+
+        $archivedByIds = array_values(array_unique(array_filter($archivedByIds)));
+
+        if (empty($archivedByIds)) {
+            return;
+        }
+
+        $users = User::whereIn('ID', $archivedByIds)->get()->keyBy('ID');
+
+        foreach ($stages as $stage) {
+            if (!$stage->archived_by_id) {
+                continue;
+            }
+
+            $user = $users->get($stage->archived_by_id);
+            $stage->archived_by = $user ? Helper::sanitizeUserCollections($user) : null;
+        }
     }
 
     private function updateTitle($value, $stage)
@@ -175,29 +269,57 @@ class StageService
         }
     }
 
-    public function copyStagesOfBoard($board, $fromBoardId, $isWithTemplates='no')
+    /**
+     * Copy all active stages and their settings to another board in display order.
+     *
+     * @param Board  $board
+     * @param int    $fromBoardId
+     * @param string $isWithTemplates
+     * @param array|null $stageIds
+     * @return array
+     */
+    public function copyStagesOfBoard($board, $fromBoardId, $isWithTemplates = 'no', $stageIds = null)
     {
-        $stages = Stage::where('board_id', $fromBoardId)->where('type', 'stage')->whereNull('archived_at')->orderBy('position', 'asc')->get();
-        $stageMapForCopyingTask = array();
-        foreach($stages as $key => $stage)
-        {
-            $stageToSave = array();
-            $stageToSave['title'] = $stage['title'];
-            $stageToSave['board_id'] = $board->id;
-            $stageToSave['slug'] = str_replace(' ', '-', strtolower($stage['title']));
-            $stageToSave['type'] = 'stage';
-            $stageToSave['position'] = $key + 1;
-            $stageToSave['bg_color'] = $stage['bg_color'];
-            $stageToSave['settings'] = [
-                'default_task_status' => $stage->settings['default_task_status']
-            ];
-            if (!empty($stage->settings['is_template']) && $isWithTemplates == 'yes') {
-                $stageToSave['settings']['is_template'] = $stage->settings['is_template'];
+        $stageQuery = Stage::where('board_id', $fromBoardId)
+            ->where('type', 'stage')
+            ->whereNull('archived_at');
+
+        if (is_array($stageIds)) {
+            $stageIds = array_values(array_filter(array_map('absint', $stageIds)));
+
+            if (!$stageIds) {
+                return [];
             }
-            $newStage = Stage::create($stageToSave);
-            $stageMapForCopyingTask[$stage['id']] = $newStage->id;
+
+            $stageQuery->whereIn('id', $stageIds);
         }
-        return $stageMapForCopyingTask;
+
+        $stages = $stageQuery->orderBy('position', 'asc')->get();
+        $stageMap = [];
+
+        foreach ($stages as $key => $stage) {
+            $settings = $stage->settings ?: [];
+
+            // Board copies must not turn their stages into reusable stage templates.
+            if ($isWithTemplates !== 'yes') {
+                unset($settings['is_template']);
+            }
+
+            $stageData = [
+                'title'    => $stage->title,
+                'board_id' => $board->id,
+                'slug'     => str_replace(' ', '-', strtolower($stage->title)),
+                'type'     => 'stage',
+                'position' => $key + 1,
+                'bg_color' => $stage->bg_color,
+                'settings' => $settings,
+            ];
+
+            $newStage = Stage::create($stageData);
+            $stageMap[$stage->id] = $newStage->id;
+        }
+
+        return $stageMap;
     }
 
     public function importStagesFromBoard($board_id, $selectedStages, $position = null)
@@ -461,13 +583,11 @@ class StageService
             $stageToPush['board_id'] = $board->id;
             $stageToPush['position'] = $index + 1;
             $stageToPush['slug'] = $this->createSlug($stage['title']);
-
-            if (Arr::get($stage, 'title') == 'Completed') {
-                $stageToPush['settings'] = [
-                    'default_task_status' => 'closed',
-                    'is_template' => false
-                ];
-            }
+            $closedStageTitles = ['completed', 'done'];
+            $stageToPush['settings'] = [
+                'default_task_status' => in_array(strtolower(Arr::get($stage, 'title')), $closedStageTitles) ? 'closed' : 'open',
+                'is_template' => false
+            ];
 
             $stage = Stage::create($stageToPush);
             if($index == 0){
@@ -507,7 +627,7 @@ class StageService
         // Apply ordering based on the specified order and orderBy
         switch ($order) {
             case 'priority':
-                $tasksQuery->orderByRaw("FIELD(priority, 'High', 'Medium', 'Low') {$orderBy}");
+                $tasksQuery->orderByRaw("FIELD(priority, 'urgent', 'high', 'medium', 'low') {$orderBy}");
                 break;
 
             case 'due_at':

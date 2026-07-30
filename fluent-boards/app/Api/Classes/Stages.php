@@ -14,20 +14,18 @@ class Stages
 {
     private $instance = null;
 
-    private $allowedInstanceMethods
-        = [
-            'all',
-            'get',
-            'find',
-            'first',
-            'paginate',
-        ];
-
     public function __construct(Stage $stage)
     {
         $this->instance = $stage;
     }
 
+    /**
+     * Get a stage only when the current user can read its board.
+     *
+     * @param int|string $id
+     * @param array $with
+     * @return Stage|false
+     */
     public function getStage($id, $with = [])
     {
         if ( ! $id) {
@@ -40,6 +38,10 @@ class Stages
             return false;
         }
 
+        if (!$this->canReadBoard($stage->board_id)) {
+            return false;
+        }
+
         return $stage;
     }
 
@@ -49,7 +51,7 @@ class Stages
             return false;
         }
 
-        if ( ! PermissionManager::userHasPermission($boardId)) {
+        if (!$this->canReadBoard($boardId)) {
             return false;
         }
 
@@ -80,7 +82,7 @@ class Stages
         }
 
         // Check if current user has access to board
-        if (!PermissionManager::userHasPermission($data['board_id'])) {
+        if (!$this->canWriteBoard($data['board_id'])) {
             return false;
         }
 
@@ -110,7 +112,7 @@ class Stages
         }
 
         //checking if current user has access to board
-        if ( ! PermissionManager::userHasPermission($stage->board_id)) {
+        if (!$this->canWriteBoard($stage->board_id)) {
             return false;
         }
 
@@ -133,7 +135,7 @@ class Stages
         }
 
         //checking if current user has access to board
-        if ( ! PermissionManager::userHasPermission($stage->board_id)) {
+        if (!$this->canWriteBoard($stage->board_id)) {
             return false;
         }
 
@@ -157,7 +159,7 @@ class Stages
         }
 
         //checking if current user has access to board
-        if ( ! PermissionManager::userHasPermission($stage->board_id)) {
+        if (!$this->canWriteBoard($stage->board_id)) {
             return false;
         }
 
@@ -167,18 +169,38 @@ class Stages
     }
 
 
-    public function getInstance()
-    {
-        return $this->instance;
-    }
-
+    /**
+     * Block raw model proxy calls so board access cannot be bypassed.
+     *
+     * @param string $method
+     * @param array $params
+     * @throws \Exception
+     */
     public function __call($method, $params)
     {
-        if (in_array($method, $this->allowedInstanceMethods)) {
-            return call_user_func_array([$this->instance, $method], $params);
-        }
-
         throw new \Exception(sprintf('Method %s does not exist.', esc_html($method)));
+    }
+
+    /**
+     * Check if the current user can read a board.
+     *
+     * @param int $boardId
+     * @return bool
+     */
+    private function canReadBoard($boardId)
+    {
+        return PermissionManager::userHasBoardPermission($boardId, 'GET');
+    }
+
+    /**
+     * Check if the current user can write to a board.
+     *
+     * @param int $boardId
+     * @return bool
+     */
+    private function canWriteBoard($boardId)
+    {
+        return PermissionManager::userHasBoardPermission($boardId, 'POST');
     }
 
 

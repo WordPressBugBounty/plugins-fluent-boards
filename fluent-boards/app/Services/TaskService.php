@@ -25,6 +25,8 @@ use FluentRoadmap\App\Models\IdeaReaction;
 
 class TaskService
 {
+    private static $physicalTableNameCache = [];
+
     /**
      * Resolve a task only when it belongs to the requested board.
      *
@@ -51,7 +53,7 @@ class TaskService
             ->first();
 
         if ($task) {
-            return $task;
+            return $this->normalizeTaskDescriptionForEditor($task);
         }
 
         if ($allowParentFallback) {
@@ -64,12 +66,19 @@ class TaskService
                 $parentBoardId = Task::where('id', $task->parent_id)->value('board_id');
 
                 if ((int) $parentBoardId === $boardId) {
-                    return $task;
+                    return $this->normalizeTaskDescriptionForEditor($task);
                 }
             }
         }
 
         throw new \Exception(esc_html__('Task not found', 'fluent-boards'));
+    }
+
+    private function normalizeTaskDescriptionForEditor(Task $task)
+    {
+        $task->description = DescriptionMarkdownConverter::normalize($task->description);
+
+        return $task;
     }
 
     public function createTask($data, $boardId)
@@ -91,6 +100,15 @@ class TaskService
 
         $data['status'] = $stage->defaultTaskStatus();
 
+        // Image covers require a persisted task, so creation only accepts a sanitized color cover.
+        $coverColor = sanitize_hex_color(Arr::get($data, 'settings.cover.backgroundColor', ''));
+        $taskSettings = [];
+        if ($coverColor) {
+            $taskSettings['cover'] = [
+                'backgroundColor' => $coverColor,
+            ];
+        }
+
         if ($board->type == 'roadmap') {
             $current_user = wp_get_current_user();
             $settingData = array(
@@ -100,8 +118,12 @@ class TaskService
                     'email' => $current_user->user_email // email of who posted this feature
                 ],
             );
-            $data['settings'] = $settingData;
+            $data['settings'] = array_merge($taskSettings, $settingData);
             $data['type'] = 'roadmap';
+        } elseif ($taskSettings) {
+            $data['settings'] = $taskSettings;
+        } else {
+            unset($data['settings']);
         }
 
         $providerPosition = Arr::get($data, 'position');
@@ -110,6 +132,9 @@ class TaskService
 
         $data['board_id'] = $boardId;
         $data = Helper::normalizeDates($data, ['due_at', 'started_at', 'last_completed_at', 'archived_at', 'remind_at']);
+        if (isset($data['description'])) {
+            $data['description'] = DescriptionMarkdownConverter::normalize($data['description']);
+        }
 
         $data = array_filter($data);
         $task = (new Task())->createTask($data);
@@ -181,6 +206,7 @@ class TaskService
             ->with(['assignees', 'board', 'stage'])
             ->whereNull('archived_at')
             ->where('parent_id', null)
+            ->excludeTemplateBoards()
             ->orderBy('due_at', 'DESC');
 
         switch ($category) {
@@ -209,6 +235,7 @@ class TaskService
                     ->whereIn('fbs_tasks.id', $taskIds)
                     ->whereNull('fbs_tasks.archived_at')
                     ->whereNull('fbs_tasks.parent_id')
+                    ->excludeTemplateBoards()
                     ->join('fbs_relations as rel', function ($join) use ($currentUserId) {
                         $join->on('rel.object_id', '=', 'fbs_tasks.id')
                             ->where('rel.object_type', Constant::OBJECT_TYPE_TASK_ASSIGNEE)
@@ -231,6 +258,7 @@ class TaskService
                 })->pluck('notification.task_id')->unique();
                 $validTasks = Task::whereIn('id', $taskIds)
                     ->with(['assignees', 'board', 'stage'])
+                    ->excludeTemplateBoards()
                     ->get();
 
                 return $validTasks->toArray();
@@ -252,7 +280,8 @@ class TaskService
         $taskQuery = Task::query()
             ->whereIn('id', $taskIds)
             ->whereNull('archived_at')
-            ->whereNull('parent_id');
+            ->whereNull('parent_id')
+            ->excludeTemplateBoards();
 
         switch ($category) {
             case 'overdue':
@@ -277,6 +306,7 @@ class TaskService
                     ->whereIn('fbs_tasks.id', $taskIds)
                     ->whereNull('fbs_tasks.archived_at')
                     ->whereNull('fbs_tasks.parent_id')
+                    ->excludeTemplateBoards()
                     ->join('fbs_relations as rel', function ($join) use ($currentUserId) {
                         $join->on('rel.object_id', '=', 'fbs_tasks.id')
                             ->where('rel.object_type', Constant::OBJECT_TYPE_TASK_ASSIGNEE)
@@ -284,11 +314,60 @@ class TaskService
                     });
 
                 return (int) $taskQuery->distinct()->count('fbs_tasks.id');
+            case 'mentioned':
+                $currentUserId = get_current_user_id();
+                $taskIds = NotificationUser::where('user_id', $currentUserId)
+                    ->with(['notification' => function ($query) {
+                        $query->where('action', 'task_comment_mentioned')
+                              ->with('task');
+                    }])
+                    ->get()
+                    ->filter(function ($userNotification) {
+                        $notification = $userNotification->notification;
+
+                        return $notification && $notification->task && is_null($notification->task->archived_at) && is_null($notification->task->parent_id);
+                    })
+                    ->pluck('notification.task_id')
+                    ->unique();
+
+                return Task::whereIn('id', $taskIds)->excludeTemplateBoards()->count();
             default:
                 return 0;
         }
 
         return (int) $taskQuery->count();
+    }
+
+    /**
+     * Unlink a Fluent Support ticket from a board-scoped task.
+     *
+     * @param int $taskId
+     * @param int $boardId
+     * @return Task
+     * @throws \Exception
+     */
+    public function removeSupportTicketLink($taskId, $boardId)
+    {
+        $taskId = absint($taskId);
+        $boardId = absint($boardId);
+        $task = $this->findTaskOnBoard($taskId, $boardId);
+
+        if ($task->source !== Constant::TASK_SOURCE_FLUENT_SUPPORT || !$task->source_id) {
+            return $task;
+        }
+
+        $ticketId = $task->source_id;
+        $settings = is_array($task->settings) ? $task->settings : [];
+        unset($settings['author']);
+
+        $task->source = null;
+        $task->source_id = null;
+        $task->settings = $settings ?: null;
+        $task->save();
+
+        do_action('fluent_boards/support_ticket_unlinked', $task, $ticketId);
+
+        return $task;
     }
 
     /*
@@ -303,8 +382,14 @@ class TaskService
 //            'reminder_type',
             'remind_at',
             'log_minutes',
+            'source',
+            'source_id',
             'settings'
         ];
+
+        if ($col === 'description') {
+            $value = DescriptionMarkdownConverter::normalize($value);
+        }
 
         if (in_array($col, $validColumns) && $task->{$col} != $value) {
             if ($col === 'remind_at') {
@@ -557,7 +642,7 @@ class TaskService
 
     private function updateDescription($col, $value, $task, $oldTask)
     {
-        $task->description = $value;
+        $task->description = DescriptionMarkdownConverter::normalize($value);
         $task->save();
         do_action('fluent_boards/task_content_updated', $task, $col, $oldTask);
     }
@@ -1016,18 +1101,145 @@ class TaskService
     
     public function getIdeaVoteStatistics($taskId)
     {
-        return IdeaReaction::where('object_id', $taskId)
-            ->where('object_type', 'idea')
-            ->where('type', 'upvote')
-            ->count();
+        $taskId = absint($taskId);
+        $voteStatistics = $this->getIdeaVoteStatisticsByTaskIds([$taskId]);
+
+        return $voteStatistics[$taskId] ?? 0;
+    }
+
+    public function loadIdeaVoteStatistics($tasks)
+    {
+        $taskIds = [];
+
+        foreach ($tasks as $task) {
+            $taskId = absint($task->id);
+            if ($taskId) {
+                $taskIds[] = $taskId;
+            }
+        }
+
+        $voteStatistics = $this->getIdeaVoteStatisticsByTaskIds($taskIds);
+
+        foreach ($tasks as $task) {
+            $task->vote_statistics = $voteStatistics[(int) $task->id] ?? 0;
+        }
+
+        return $tasks;
+    }
+
+    private function getIdeaVoteStatisticsByTaskIds(array $taskIds)
+    {
+        global $wpdb;
+
+        $taskIds = array_values(array_unique(array_filter(array_map('absint', $taskIds))));
+
+        if (!$taskIds) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($taskIds), '%d'));
+        $ideaReactionTable = $this->getIdeaReactionTable();
+        $counts = [];
+
+        if ($ideaReactionTable) {
+            $rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT object_id, COUNT(*) as total FROM {$ideaReactionTable} WHERE object_id IN ({$placeholders}) AND object_type = %s AND type = %s GROUP BY object_id",
+                    array_merge($taskIds, ['idea', 'upvote'])
+                )
+            );
+
+            foreach ($rows as $row) {
+                $counts[(int) $row->object_id] = (int) $row->total;
+            }
+
+            return $counts;
+        }
+
+        $taskMetaTable = $this->getPhysicalTableName((new TaskMeta())->getTable());
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT task_id, COALESCE(MAX(CAST(value AS UNSIGNED)), 0) as total FROM {$taskMetaTable} WHERE task_id IN ({$placeholders}) AND `key` = %s GROUP BY task_id",
+                array_merge($taskIds, ['upvote'])
+            )
+        );
+
+        foreach ($rows as $row) {
+            $counts[(int) $row->task_id] = (int) $row->total;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Returns the canonical SQL expression for an idea's upvote count.
+     *
+     * The roadmap reaction table is authoritative when it exists; legacy task
+     * metadata remains the fallback for installations without that table.
+     */
+    public function getIdeaVoteStatisticsSelect()
+    {
+        $taskTable = $this->getPhysicalTableName((new Task())->getTable());
+
+        return $this->buildIdeaVoteStatisticsSelect($taskTable);
+    }
+
+    private function buildIdeaVoteStatisticsSelect($taskTable)
+    {
+        $ideaReactionTable = $this->getIdeaReactionTable();
+
+        if ($ideaReactionTable) {
+            return "(SELECT COUNT(*) FROM {$ideaReactionTable} WHERE {$ideaReactionTable}.object_id = {$taskTable}.id AND {$ideaReactionTable}.object_type = 'idea' AND {$ideaReactionTable}.type = 'upvote')";
+        }
+
+        $taskMetaTable = $this->getPhysicalTableName((new TaskMeta())->getTable());
+
+        return "(SELECT COALESCE(MAX(CAST({$taskMetaTable}.value AS UNSIGNED)), 0) FROM {$taskMetaTable} WHERE {$taskMetaTable}.task_id = {$taskTable}.id AND {$taskMetaTable}.key = 'upvote')";
+    }
+
+    private function getIdeaReactionTable()
+    {
+        $table = $this->getPhysicalTableName((new IdeaReaction())->getTable(), false);
+
+        if ($table) {
+            return $table;
+        }
+
+        return '';
+    }
+
+    private function getPhysicalTableName($table, $usePrefixedFallback = true)
+    {
+        global $wpdb;
+        $cacheKey = $table . '|' . (int) $usePrefixedFallback;
+
+        if (array_key_exists($cacheKey, self::$physicalTableNameCache)) {
+            return self::$physicalTableNameCache[$cacheKey];
+        }
+
+        $candidates = array_values(array_unique([
+            $wpdb->prefix . $table,
+            $table,
+        ]));
+
+        foreach ($candidates as $candidate) {
+            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($candidate))) === $candidate) {
+                self::$physicalTableNameCache[$cacheKey] = $candidate;
+                return $candidate;
+            }
+        }
+
+        self::$physicalTableNameCache[$cacheKey] = $usePrefixedFallback ? $wpdb->prefix . $table : '';
+
+        return self::$physicalTableNameCache[$cacheKey];
     }
 
 
     /**
-     * Summary of getArchivedOrCompletedTasks
-     * this function will return completd tasks or archived tasks based on users input and also can search by name
-     * @param mixed $data
-     * @param mixed $taskType
+     * Get a bounded paginated list of archived board tasks with their latest archive actor.
+     *
+     * @param array $data
+     * @param int $boardId
      * @return mixed
      * @throws \Exception
      */
@@ -1037,8 +1249,9 @@ class TaskService
             throw new \Exception(esc_html__('Board id is required', 'fluent-boards'));
         }
 
-        $per_page = isset($data['per_page']) ? $data['per_page'] : 20;
-        $page = isset($data['page']) ? $data['page'] : 1;
+        // Bound the task page so the related activity and user batch queries stay predictable.
+        $perPage = max(1, min(50, absint($data['per_page'] ?? 20)));
+        $page = max(1, absint($data['page'] ?? 1));
         $tasksQuery = Task::where('board_id', $boardId)->whereNotNull('archived_at');
 
         if (!empty($data['query'])) {
@@ -1054,7 +1267,49 @@ class TaskService
             }
         }
 
-        return $tasksQuery->orderBy('created_at', 'DESC')->with('assignees')->paginate($per_page, ['*'], 'page', $page);
+        $tasks = $tasksQuery->orderBy('created_at', 'DESC')->with('assignees')->paginate($perPage, ['*'], 'page', $page);
+
+        $taskIds = [];
+        foreach ($tasks as $task) {
+            $taskIds[] = (int) $task->id;
+            $task->archived_by_id = null;
+            $task->archived_by = null;
+        }
+
+        if (empty($taskIds)) {
+            return $tasks;
+        }
+
+        $activityIds = Activity::whereIn('object_id', $taskIds)
+            ->where('object_type', Constant::ACTIVITY_TASK)
+            ->where('action', 'archived')
+            ->where('column', 'task')
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('object_id')
+            ->pluck('id')
+            ->toArray();
+
+        if (empty($activityIds)) {
+            return $tasks;
+        }
+
+        $activities = Activity::whereIn('id', $activityIds)
+            ->with('user')
+            ->get()
+            ->keyBy('object_id');
+
+        foreach ($tasks as $task) {
+            $activity = $activities->get($task->id);
+
+            if (!$activity) {
+                continue;
+            }
+
+            $task->archived_by_id = $activity->created_by ? (int) $activity->created_by : null;
+            $task->archived_by = $activity->user ? Helper::sanitizeUserCollections($activity->user) : null;
+        }
+
+        return $tasks;
     }
 
     public function getTableTasks($boardId, $data = [])
@@ -1066,7 +1321,7 @@ class TaskService
         $search = isset($data['search']) ? sanitize_text_field($data['search']) : '';
         $stageFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'stage', []));
         $taskStatusFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'task_status', []));
-        $priorityFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'priority', []));
+        $priorityFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'priority', []), true);
         $assigneeFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'assignee', []));
         $labelFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'labels', []));
         $watcherFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'watchers', []));
@@ -1074,6 +1329,8 @@ class TaskService
         $customFieldFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'custom_fields', []));
         $dueDateFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'due_date', []));
         $includeArchived = !empty($data['include_archived']) || in_array('archived', $taskStatusFilters, true);
+        $board = Board::select('id', 'type')->find($boardId);
+        $isRoadmapBoard = $board && $board->type === 'roadmap';
 
         $perPage = max(1, min(150, $perPage));
         $page = max(1, $page);
@@ -1082,39 +1339,68 @@ class TaskService
         $sortColumnMap = [
             'title' => 'title',
             'status' => 'status',
+            'stage_id' => 'stage_id',
+            'priority' => 'priority',
+            'due_at' => 'due_at',
             'created_at' => 'created_at',
+            'updated_at' => 'updated_at',
             'position' => 'position',
         ];
+
+        if ($isRoadmapBoard) {
+            $sortColumnMap['vote_statistics'] = 'vote_statistics';
+        }
+
         $sortColumn = Arr::get($sortColumnMap, $sortBy, 'position');
+        $taskTable = (new Task())->getTable();
+        $taskColumnNames = [
+            'id',
+            'title',
+            'slug',
+            'board_id',
+            'parent_id',
+            'type',
+            'stage_id',
+            'status',
+            'priority',
+            'archived_at',
+            'remind_at',
+            'reminder_type',
+            'started_at',
+            'due_at',
+            'last_completed_at',
+            'position',
+            'comments_count',
+            'created_by',
+            'settings',
+            'source',
+            'source_id',
+            'created_at',
+            'updated_at',
+        ];
+        $taskColumns = array_map(function ($columnName) use ($taskTable) {
+            return "{$taskTable}.{$columnName}";
+        }, $taskColumnNames);
 
         $tasksQuery = Task::query()
             // Table rows only need row-level fields; modal open rehydrates the full task.
-            ->select([
-                'id',
-                'title',
-                'slug',
-                'board_id',
-                'parent_id',
-                'stage_id',
-                'status',
-                'priority',
-                'archived_at',
-                'remind_at',
-                'reminder_type',
-                'started_at',
-                'due_at',
-                'last_completed_at',
-                'position',
-                'comments_count',
-                'created_by',
-                'settings',
-                'source',
-                'source_id',
-                'created_at',
-            ])
             ->with(['assignees', 'labels', 'watchers'])
             ->where('board_id', $boardId)
             ->whereNull('parent_id');
+
+        if ($isRoadmapBoard) {
+            $taskSqlTable = $this->getPhysicalTableName($taskTable);
+            $taskSqlColumns = [];
+
+            foreach ($taskColumnNames as $columnName) {
+                $taskSqlColumns[] = "{$taskSqlTable}.{$columnName}";
+            }
+
+            $taskSqlColumns[] = $this->buildIdeaVoteStatisticsSelect($taskSqlTable) . ' as vote_statistics';
+            $tasksQuery->selectRaw(implode(', ', $taskSqlColumns));
+        } else {
+            $tasksQuery->select($taskColumns);
+        }
 
         if (!$includeArchived && !$taskStatusFilters) {
             $tasksQuery->whereNull('archived_at');
@@ -1147,7 +1433,7 @@ class TaskService
         $search = isset($data['search']) ? sanitize_text_field($data['search']) : '';
         $stageFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'stage', []));
         $taskStatusFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'task_status', []));
-        $priorityFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'priority', []));
+        $priorityFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'priority', []), true);
         $assigneeFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'assignee', []));
         $labelFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'labels', []));
         $watcherFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'watchers', []));
@@ -1182,6 +1468,7 @@ class TaskService
                 'settings',
                 'source',
                 'source_id',
+                'updated_at',
             ])
             ->with(['assignees', 'labels', 'watchers'])
             ->where('board_id', $boardId)
@@ -1210,16 +1497,16 @@ class TaskService
             ->get();
     }
 
-    private function sanitizeTableFilterValues($values)
+    private function sanitizeTableFilterValues($values, $allowEmpty = false)
     {
         if (!is_array($values)) {
-            $values = ($values === null || $values === '') ? [] : [$values];
+            $values = ($values === null || (!$allowEmpty && $values === '')) ? [] : [$values];
         }
 
         return array_values(array_filter(array_map(static function ($value) {
             return sanitize_text_field($value);
-        }, $values), static function ($value) {
-            return $value !== '';
+        }, $values), static function ($value) use ($allowEmpty) {
+            return $allowEmpty || $value !== '';
         }));
     }
 
@@ -1267,7 +1554,24 @@ class TaskService
         }
 
         if ($priorityFilters) {
-            $tasksQuery->whereIn('priority', array_map('strtolower', $priorityFilters));
+            $priorityFilters = array_map('strtolower', $priorityFilters);
+            $hasNoPriorityFilter = in_array('', $priorityFilters, true);
+            $selectedPriorities = array_values(array_filter($priorityFilters, static function ($priority) {
+                return $priority !== '';
+            }));
+
+            $tasksQuery->where(function ($query) use ($hasNoPriorityFilter, $selectedPriorities) {
+                if ($selectedPriorities) {
+                    $query->whereIn('priority', $selectedPriorities);
+                }
+
+                if ($hasNoPriorityFilter) {
+                    $method = $selectedPriorities ? 'orWhere' : 'where';
+                    $query->{$method}(function ($priorityQuery) {
+                        $priorityQuery->whereNull('priority')->orWhere('priority', '');
+                    });
+                }
+            });
         }
 
         if ($contactFilters) {
@@ -1387,11 +1691,14 @@ class TaskService
         }
 
         $nowTimestamp = current_time('timestamp');
+        $startOfTodayTimestamp = strtotime(gmdate('Y-m-d 00:00:00', $nowTimestamp));
+        $dayOfWeek = (int) gmdate('w', $nowTimestamp);
+        $startOfThisWeekTimestamp = strtotime('-' . $dayOfWeek . ' days', $startOfTodayTimestamp);
         $startOfToday = gmdate('Y-m-d 00:00:00', $nowTimestamp);
         $endOfToday = gmdate('Y-m-d 23:59:59', $nowTimestamp);
-        $startOfThisWeek = gmdate('Y-m-d 00:00:00', strtotime('sunday this week', $nowTimestamp));
-        $startOfNextWeek = gmdate('Y-m-d 00:00:00', strtotime('sunday next week', $nowTimestamp));
-        $startOfWeekAfterNext = gmdate('Y-m-d 00:00:00', strtotime('+1 week', strtotime($startOfNextWeek)));
+        $startOfThisWeek = gmdate('Y-m-d 00:00:00', $startOfThisWeekTimestamp);
+        $startOfNextWeek = gmdate('Y-m-d 00:00:00', strtotime('+7 days', $startOfThisWeekTimestamp));
+        $startOfWeekAfterNext = gmdate('Y-m-d 00:00:00', strtotime('+14 days', $startOfThisWeekTimestamp));
         $endOfThisMonth = gmdate('Y-m-t 23:59:59', $nowTimestamp);
         $nowMysql = current_time('mysql');
 
@@ -1720,12 +2027,21 @@ class TaskService
 
         try {
             foreach ($allActiveTasks as $task) {
+                if ($task->parent_id && empty($taskMap[$task->parent_id])) {
+                    continue;
+                }
+
+                $stageId = !empty($task->stage_id) ? (int) $task->stage_id : 0;
+                if (!$task->parent_id && empty($stageMap[$stageId])) {
+                    continue;
+                }
+
                 $newTask = array();
                 $newTask['title'] = $task->title;
                 $newTask['parent_id'] = $task->parent_id ? $taskMap[$task->parent_id] : null;
-                $newTask['description'] = $task->description;
+                $newTask['description'] = DescriptionMarkdownConverter::normalize($task->description);
                 $newTask['board_id'] = $newBoard->id;
-                $newTask['stage_id'] = $stageMap[$task->stage_id];
+                $newTask['stage_id'] = $stageId && isset($stageMap[$stageId]) ? $stageMap[$stageId] : null;
                 $newTask['status'] = $task->status;
                 $newTask['priority'] = $task->priority;
                 $newTask['position'] = $task->position;
@@ -1748,7 +2064,7 @@ class TaskService
                                                 ->where('task_id', $task->id)
                                                 ->first();
 
-                    if ($groupRelationOfTask && $subtaskGroupMap[$groupRelationOfTask->value]) {
+                    if ($groupRelationOfTask && !empty($subtaskGroupMap[$groupRelationOfTask->value])) {
                         TaskMeta::create([
                             'task_id' => $newTask->id,
                             'key' => Constant::SUBTASK_GROUP_CHILD,
@@ -1810,29 +2126,38 @@ class TaskService
     /**
      * @param $taskId
      * @param $perPage
-     * @param $offset
+     * @param $page
      * @param string $filter
+     * @param $boardId
+     * @param string $feedType
      * @return array
      */
-    public function getCommentsAndActivities($taskId, $perPage, $page, string $filter = 'newest', $boardId = null): array
+    public function getCommentsAndActivities($taskId, $perPage, $page, string $filter = 'newest', $boardId = null, string $feedType = 'all'): array
     {
         // Fetch the task
         $task = $boardId ? $this->findTaskOnBoard($taskId, $boardId) : Task::findOrFail($taskId);
+        $feedType = in_array($feedType, ['all', 'comments', 'activities'], true) ? $feedType : 'all';
 
         // Fetch comments and activities separately
-        $comments = $task->comments()->with('user')->orderBy('created_at', 'desc')->get()->toArray();
-        $activities = $task->activities()
-            ->with('user')
-            ->where(function($query) {
-                $query->whereNotIn('column', [ 'comment', 'a reply'])
-                    ->orWhere(function($subQuery) {
-                        $subQuery->whereNotIn('action', ['added', 'updated']);
-                    });
-            })
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->toArray();
+        $comments = [];
+        if ($feedType !== 'activities') {
+            $comments = $task->comments()->with('user')->orderBy('created_at', 'desc')->get()->toArray();
+        }
 
+        $activities = [];
+        if ($feedType !== 'comments') {
+            $activities = $task->activities()
+                ->with('user')
+                ->where(function($query) {
+                    $query->whereNotIn('column', [ 'comment', 'a reply'])
+                        ->orWhere(function($subQuery) {
+                            $subQuery->whereNotIn('action', ['added', 'updated']);
+                        });
+                })
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->toArray();
+        }
 
 
         // Merge comments and activities into a single array
@@ -2653,12 +2978,14 @@ class TaskService
         
         // Get valid priorities including custom ones added by hooks
         $validPriorities = array_keys(apply_filters('fluent_boards/task_priorities', [
-            'low'    => __('Low', 'fluent-boards'),
+            ''       => __('No priority', 'fluent-boards'),
+            'urgent' => __('Urgent', 'fluent-boards'),
+            'high'   => __('High', 'fluent-boards'),
             'medium' => __('Medium', 'fluent-boards'),
-            'high'   => __('High', 'fluent-boards')
+            'low'    => __('Low', 'fluent-boards')
         ]));
         
-        if (!in_array($priority, $validPriorities)) {
+        if (!in_array($priority, $validPriorities, true)) {
             throw new \Exception(esc_html__('Invalid priority level', 'fluent-boards'));
         }
         

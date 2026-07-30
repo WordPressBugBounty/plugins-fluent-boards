@@ -163,6 +163,7 @@ class Helper
             'id'              => 'sanitize_text_field',
             'is_image'        => 'rest_sanitize_boolean',
             'color'           => 'sanitize_text_field', // sanitize_hex_color doesn't work when color code is greater than 6 characters
+            'reset'           => 'rest_sanitize_boolean',
             'created_by'      => 'intval',
         ];
 
@@ -215,12 +216,29 @@ class Helper
             'newPosition' => 'intval',
             'priority'    => 'sanitize_text_field',
             'type'   => 'sanitize_text_field',
+            'description' => 'wp_kses_post',
+            'group_id'    => 'intval',
             'board_id'    => 'intval',
             'created_by'  => 'intval',
             'due_date'    => 'sanitize_text_field',
+            'due_at'      => 'sanitize_text_field',
+            'started_at'  => 'sanitize_text_field',
+            'reminder_type' => 'sanitize_text_field',
+            'remind_at'   => 'sanitize_text_field',
+            'add_to_top'  => 'rest_sanitize_boolean',
         ];
 
-        return self::sanitizeData($data, $fieldMaps);
+        $data = self::sanitizeData($data, $fieldMaps);
+
+        if (!empty($data['assignees']) && is_array($data['assignees'])) {
+            $data['assignees'] = array_slice(array_filter(array_map('intval', $data['assignees'])), 0, 1);
+        }
+
+        if (!empty($data['labels']) && is_array($data['labels'])) {
+            $data['labels'] = array_filter(array_map('intval', $data['labels']));
+        }
+
+        return $data;
     }
 
     public static function createActivity($data)
@@ -482,16 +500,24 @@ class Helper
     {
         return [
             [
-                'id' => 'low',
-                'title' => 'Low'
+                'id' => '',
+                'title' => 'No priority'
+            ],
+            [
+                'id' => 'urgent',
+                'title' => 'Urgent'
+            ],
+            [
+                'id' => 'high',
+                'title' => 'High'
             ],
             [
                 'id' => 'medium',
                 'title' => 'Medium'
             ],
             [
-                'id' => 'high',
-                'title' => 'High'
+                'id' => 'low',
+                'title' => 'Low'
             ],
         ];
     }
@@ -581,6 +607,25 @@ class Helper
         return self::sanitizeData($data, $fieldMaps);
     }
 
+    /**
+     * Sanitize the author snapshot supplied by an external task integration.
+     *
+     * @param mixed $author
+     * @return array
+     */
+    private static function sanitizeExternalTaskAuthor($author)
+    {
+        if (!is_array($author)) {
+            return [];
+        }
+
+        return array_filter([
+            'name'  => sanitize_text_field($author['name'] ?? ''),
+            'email' => sanitize_email($author['email'] ?? ''),
+            'photo' => esc_url_raw($author['photo'] ?? ''),
+        ]);
+    }
+
     public static function sanitizeTaskForWebHook($data)
     {
         $fieldMaps = [
@@ -596,6 +641,7 @@ class Helper
             'remind_at'      => 'sanitize_text_field',
             'scope'          => 'sanitize_text_field',
             'source'         => 'sanitize_text_field',
+            'source_id'      => 'sanitize_text_field',
             'description'    => 'wp_kses_post',
             'due_date'       => 'sanitize_text_field',
             'start_at'       => 'sanitize_text_field',
@@ -611,7 +657,17 @@ class Helper
 
         ];
 
-        return self::sanitizeData($data, $fieldMaps);
+        $data = self::sanitizeData($data, $fieldMaps);
+
+        if (isset($data['settings']) && is_array($data['settings']) && isset($data['settings']['author'])) {
+            $data['settings'] = [
+                'author' => self::sanitizeExternalTaskAuthor($data['settings']['author']),
+            ];
+        } else {
+            unset($data['settings']);
+        }
+
+        return $data;
     }
 
 
@@ -672,6 +728,9 @@ class Helper
         ];
 
         foreach ($activities as $activity) {
+            $activity->action_key = $activity->action;
+            $activity->column_key = $activity->column;
+
             if (isset($actionTranslations[$activity->action])) {
                 $activity->action = $actionTranslations[$activity->action];
             }

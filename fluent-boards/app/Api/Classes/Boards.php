@@ -28,14 +28,6 @@ class Boards
 {
     private $instance = null;
 
-    private $allowedInstanceMethods = [
-        'all',
-        'get',
-        'find',
-        'first',
-        'paginate'
-    ];
-
     public function __construct(Board $instance)
     {
         $this->instance = $instance;
@@ -82,12 +74,26 @@ class Boards
             return [];
         }
 
+        if (!$this->canReadBoard($board_id)) {
+            return false;
+        }
+
         return Board::with('stages')->where('id', $board_id)->get();
     }
 
+    /**
+     * Create a board only when the current user can create boards.
+     *
+     * @param array $data
+     * @return Board|false
+     */
     public function create($data)
     {
         if (empty($data['title'])) {
+            return false;
+        }
+
+        if (!PermissionManager::userHasBoardCreationPermission()) {
             return false;
         }
 
@@ -115,10 +121,20 @@ class Boards
         return $board;
     }
 
+    /**
+     * Get non-archived stages for a board the current user can read.
+     *
+     * @param int|string $board_id
+     * @return array|false
+     */
     public function getStages($board_id)
     {
         if (empty($board_id)) {
             return [];
+        }
+
+        if (!$this->canReadBoard($board_id)) {
+            return false;
         }
 
         return Stage::where('board_id', $board_id)->where('archived_at', null)->orderBy('position', 'asc')->get();
@@ -131,17 +147,15 @@ class Boards
         return Helper::sanitizeBoard($data);
     }
 
-    public function getInstance()
-    {
-        return $this->instance;
-    }
-
+    /**
+     * Block raw model proxy calls so board access cannot be bypassed.
+     *
+     * @param string $method
+     * @param array $params
+     * @throws \Exception
+     */
     public function __call($method, $params)
     {
-        if (in_array($method, $this->allowedInstanceMethods)) {
-            return call_user_func_array([$this->instance, $method], $params);
-        }
-
         throw new \Exception(sprintf('Method %s does not exist.', esc_html($method)));
     }
 
@@ -153,7 +167,7 @@ class Boards
             return false;
         }
 
-        if (!$this->userHasAccessToBoard($boardId)) {
+        if (!$this->canReadBoard($boardId)) {
             return false;
         }
 
@@ -172,7 +186,7 @@ class Boards
             $data['color'] = '#1B2533';
         }
 
-        if (!$this->userHasAccessToBoard($boardId)) {
+        if (!$this->canWriteBoard($boardId)) {
             return false;
         }
 
@@ -188,14 +202,25 @@ class Boards
     }
 
     /**
-     * Check if the current user has access to a board
+     * Check if the current user can read a board.
      *
      * @param int $boardId The board ID to check access for
      * @return bool True if user has access, false otherwise
      */
-    private function userHasAccessToBoard($boardId)
+    private function canReadBoard($boardId)
     {
-        return PermissionManager::userHasPermission($boardId);
+        return PermissionManager::userHasBoardPermission($boardId, 'GET');
+    }
+
+    /**
+     * Check if the current user can write to a board.
+     *
+     * @param int $boardId The board ID to check access for
+     * @return bool True if user can write, false otherwise
+     */
+    private function canWriteBoard($boardId)
+    {
+        return PermissionManager::userHasBoardPermission($boardId, 'POST');
     }
 
 

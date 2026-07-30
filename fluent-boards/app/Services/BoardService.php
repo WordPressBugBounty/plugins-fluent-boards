@@ -5,6 +5,7 @@ namespace FluentBoards\App\Services;
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Comment;
+use FluentBoards\App\Models\Folder;
 use FluentBoards\App\Models\Label;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Relation;
@@ -13,10 +14,12 @@ use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Libs\FileSystem;
-use FluentBoardsPro\App\Models\Folder;
+use FluentBoards\App\Services\DescriptionMarkdownConverter;
 
 class BoardService
 {
+    private const LEGACY_BOARD_ASSOCIATED_CRM_CONTACT = 'crm_contact';
+
     public function getBoardsByType($type)
     {
         return Board::where('type', sanitize_text_field($type))
@@ -147,7 +150,7 @@ class BoardService
         $boardData = [
             'title'       => $boardData['title'],
             'type'        => $boardData['type'] ? $boardData['type'] : 'to-do',
-            'description' => $boardData['description'],
+            'description' => DescriptionMarkdownConverter::normalize($boardData['description']),
             'currency'    => isset($boardData['currency']) ? $boardData['currency'] : 'USD',
             'background'  => isset($boardData['background']) ? $boardData['background'] : '',
             'created_by'  => isset($boardData['created_by']) ? $boardData['created_by'] : get_current_user_id()
@@ -215,7 +218,16 @@ class BoardService
         if ($recentlyOpened) {
             $recentBoardIds = $recentlyOpened->value;
 
+            // Recently opened meta can be empty or legacy-shaped; only splice a usable board ID list.
+            if (!is_array($recentBoardIds)) {
+                return;
+            }
+
             $index = array_search($boardId, $recentBoardIds);
+            if ($index === false) {
+                return;
+            }
+
             array_splice($recentBoardIds, $index, 1);
 
             $recentlyOpened->value = $recentBoardIds;
@@ -232,7 +244,7 @@ class BoardService
             throw new \Exception(esc_html__('Title cannot be empty', 'fluent-boards'));
         }
         if (isset($data['description'])) {
-            $data['description'] = $data['description'];
+            $data['description'] = DescriptionMarkdownConverter::normalize($data['description']);
         }
         $board->fill($data);
         $board->save();
@@ -291,10 +303,17 @@ class BoardService
         return $processedStages;
     }
 
+    /**
+     * Archive a stage and persist the user who archived it for future archive-list metadata.
+     */
     public function archiveStage($boardId, $stage)
     {
+        $settings = $stage->settings ?: [];
+        $settings['archived_by_id'] = absint(get_current_user_id()) ?: null;
+
         $stage->archived_at = current_time('mysql');
         $stage->position = 0;
+        $stage->settings = $settings;
         $stage->save();
 
         do_action('fluent_boards/stage_archived', $boardId, $stage); // Old hook
@@ -302,12 +321,19 @@ class BoardService
         return $stage;
     }
 
+    /**
+     * Restore an archived stage and clear stale archived-by metadata.
+     */
     public function restoreStage($boardId, $stage)
     {
         $stageService = new StageService();
         $lastStagePosition = $stageService->getLastPositionOfStagesOfBoard($stage->board_id);
+        $settings = $stage->settings ?: [];
+        $settings['archived_by_id'] = null;
+
         $stage->archived_at = null;
         $stage->position = $lastStagePosition ? $lastStagePosition->position + 1 : 1;
+        $stage->settings = $settings;
         $stage->save();
         do_action('fluent_boards/board_stage_restored', $boardId, $stage->title); // Old hook
         do_action('fluent_boards/stage_restored_with_tasks', $boardId, $stage); // New hook
@@ -407,6 +433,73 @@ class BoardService
         return $user;
     }
 
+    /**
+     * Create or update a board access relation with the selected member role.
+     */
+    public function syncBoardUserRole($boardId, $userId, $role)
+    {
+        $boardId = absint($boardId);
+        $userId = absint($userId);
+        $role = sanitize_text_field($role);
+
+        if (!$boardId || !$userId || !in_array($role, ['admin', 'member', 'viewer'], true)) {
+            return false;
+        }
+
+        $board = Board::find($boardId);
+        $user = User::find($userId);
+
+        if (!$board || !$user) {
+            return false;
+        }
+
+        $boardUser = Relation::where('object_id', $boardId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->where('foreign_id', $userId)
+            ->first();
+
+        $previousSettings = $boardUser ? (array)$boardUser->settings : [];
+
+        // Board roles live as flags on the board_user relation; member access means both flags stay false.
+        $settings = [
+            'is_admin'       => 'admin' === $role,
+            'is_viewer_only' => 'viewer' === $role,
+        ];
+
+        if ($boardUser) {
+            $boardUser->settings = $settings;
+            $boardUser->save();
+        } else {
+            // New access should get the same default notification preferences as the normal add-member flow.
+            $board->users()->attach(
+                $userId,
+                [
+                    'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
+                    'settings'    => maybe_serialize($settings),
+                    'preferences' => maybe_serialize(Constant::BOARD_NOTIFICATION_TYPES)
+                ]
+            );
+        }
+
+        // Only emit admin transition hooks when the role actually changes.
+        if ('admin' === $role && empty($previousSettings['is_admin'])) {
+            do_action('fluent_boards/board_admin_added', $boardId, $userId);
+        } elseif (!empty($previousSettings['is_admin'])) {
+            do_action('fluent_boards/board_admin_removed', $boardId, $userId);
+        }
+
+        if ('viewer' === $role) {
+            do_action('fluent_boards/board_viewer_added', $boardId, $user);
+        } elseif ('member' === $role) {
+            do_action('fluent_boards/board_member_added', $boardId, $user);
+        }
+
+        $user['is_admin'] = 'admin' === $role;
+        $user['is_board_admin'] = 'admin' === $role;
+
+        return $user;
+    }
+
     public function getUsersOfBoards()
     {
         $userBoards = Relation::whereNotNull('board_id')
@@ -417,16 +510,28 @@ class BoardService
     }
 
     /**
-     * change board background
+     * Change or clear the board background.
+     *
      * @param mixed $backgroundData
-     * @return string
+     * @return array|string
      */
-
     public function setBoardBackground($backgroundData, $board_id)
     {
         $board = Board::find($board_id);
         $oldBackground = $board->background;
+
+        if (!empty($backgroundData['reset'])) {
+            $board->background = '';
+            $board->save();
+            do_action('fluent_boards/board_background_updated', $board_id, $oldBackground);
+
+            return $board->background;
+        }
+
         $background = $board->background;
+        if (!is_array($background)) {
+            $background = [];
+        }
 
         // if board background has color
         if (isset($backgroundData['color'])) {
@@ -660,7 +765,7 @@ class BoardService
             $this->updateRecentBoardCheckMeta();
         }
 
-        return Board::whereIn('id', $recentBoardIds)->withCount('completedTasks')->with(['stages', 'users'])->get();
+        return Board::whereIn('id', $recentBoardIds)->excludeTemplates()->withCount('completedTasks')->with(['stages', 'users'])->get();
     }
 
     public function getRecentBoardCheckMeta($userId = null){
@@ -760,8 +865,13 @@ class BoardService
         $contactOfBoard->delete();
     }
 
-    public function sendInvitationToBoard($boardId, $email)
+    public function sendInvitationToBoard($boardId, $email, $role = 'member')
     {
+        $role = sanitize_text_field($role);
+        if (!in_array($role, ['manager', 'member', 'viewer'], true)) {
+            $role = 'member';
+        }
+
         $user = User::query()->where('user_email', $email)->first();
 
         if ($user) {
@@ -770,7 +880,7 @@ class BoardService
 
         $current_user_id = get_current_user_id();
 
-        do_action('fluent_boards/send_invitation', $boardId, $email, $current_user_id);
+        do_action('fluent_boards/send_invitation', $boardId, $email, $current_user_id, $role);
 
         return;
 
@@ -956,6 +1066,13 @@ class BoardService
         return (string) $timestamp;
     }
 
+    /**
+     * Get CRM-associated boards that the current user can access.
+     *
+     * @param int $associatedId CRM contact/subscriber id.
+     * @param int|null $userId WordPress user id used for board access checks.
+     * @return \FluentBoards\Framework\Database\Orm\Collection|array
+     */
     public function getAssociatedBoards($associatedId, $userId = null)
     {
         $associatedId = absint($associatedId);
@@ -967,14 +1084,26 @@ class BoardService
 
         $boardIds = Meta::query()->where('value', $associatedId)
             ->where('object_type', Constant::OBJECT_TYPE_BOARD)
-            ->where('key', Constant::BOARD_ASSOCIATED_CRM_CONTACT)
+            ->whereIn('key', [
+                Constant::BOARD_ASSOCIATED_CRM_CONTACT,
+                self::LEGACY_BOARD_ASSOCIATED_CRM_CONTACT,
+            ])
             ->pluck('object_id');
 
-        return Board::query()
-            ->whereIn('id', $boardIds)
+        $boards = Board::query()
+            ->whereIn('id', array_values(array_unique(array_map('intval', $boardIds->toArray()))))
+            ->whereNull('archived_at')
             ->byAccessUser($userId)
-            ->with('stages', 'users')
+            ->withCount('completedTasks')
+            ->with(['stages', 'users'])
+            ->orderBy('created_at', 'DESC')
             ->get();
+
+        foreach ($boards as $board) {
+            $board->users = Helper::sanitizeUserCollections($board->users);
+        }
+
+        return $boards;
     }
 
     private function deleteBoardMeta($boardId)
@@ -988,6 +1117,9 @@ class BoardService
     {
         $sourceBoard = Board::findOrFail($boardData['source_board_id']);
         $boardData['background'] = $sourceBoard->background;
+        if (isset($boardData['description'])) {
+            $boardData['description'] = DescriptionMarkdownConverter::normalize($boardData['description']);
+        }
         $boardData = apply_filters('fluent_boards/before_create_board', $boardData);
 
         $board = Board::create($boardData);
@@ -995,160 +1127,6 @@ class BoardService
         $this->setCurrentUserPreferencesOnBoardCreate($board);
 
         return $board;
-    }
-
-    public function getBoardReports($board_id)
-    {
-        $board = Board::findOrFail($board_id);
-        $taskQuery = Task::where('board_id', $board_id)
-            ->whereNull('parent_id')
-            ->whereNull('archived_at');
-
-        if($board->type == 'roadmap') {
-            $pendingStage = $this->getNewIdeaStage($board->id);
-            return $this->getIdeaReports($taskQuery, $pendingStage);
-        } else {
-            return $this->getTaskReports($taskQuery);
-        }
-    }
-
-    private function getNewIdeaStage($boardId)
-    {
-        return Stage::where('board_id', $boardId)
-            ->where('type', 'stage')
-            ->where('archived_at', null)
-            ->orderBy('position', 'ASC')
-            ->first();
-    }
-
-    public function getAllBoardReports(){
-        $userId = get_current_user_id();
-
-        $taskQuery = Task::whereNull('parent_id')
-            ->whereNull('archived_at')
-            ->whereHas('board', function ($query) {
-                $query->where('type', 'to-do');
-            });
-
-        if (!PermissionManager::isAdmin($userId))
-        {
-            $currentUser = User::find($userId);
-            $relatedBoardIds = $currentUser->whichBoards->where('type', 'to-do')->pluck('id');
-            $taskQuery->whereIn('board_id', $relatedBoardIds);
-        }
-
-        return $this->getTaskReports($taskQuery);
-    }
-
-    private function getTaskReports($taskQuery)
-    {
-        $totalTasksQuery = clone $taskQuery;
-        $completedTaskQuery = clone $taskQuery;
-        $openTaskQuery = clone $taskQuery;
-        $overDueTaskQuery = clone $taskQuery;
-
-        $completedTaskCount = $completedTaskQuery->where('status', 'closed')->count();
-        $openTaskCount = $openTaskQuery->where('status', 'open')->count();
-        $overDueTasks = $overDueTaskQuery->overdue(true)->count();
-        $totalTasks = $totalTasksQuery->count();
-
-        $taskQuery->where('status', 'open');
-
-        $highQuery = clone $taskQuery;
-        $mediumQuery = clone $taskQuery;
-        $lowQuery = clone $taskQuery;
-
-        $high = $highQuery->where('priority', 'high')->count();
-        $low = $mediumQuery->where('priority', 'low')->count();
-        $medium = $lowQuery->where('priority', 'medium')->count();
-
-        $reportData = [
-            'completion' => [
-                'completed'  => $completedTaskCount,
-                'incomplete' => $openTaskCount,
-                'overdue'    => $overDueTasks,
-                'total'      => $totalTasks
-            ],
-            'priority'   => [
-                'high'   => $high,
-                'medium' => $medium,
-                'low'    => $low
-            ]
-
-        ];
-        return $reportData;
-    }
-
-    private function getIdeaReports($taskQuery, $pendingStage)
-    {
-        $pendingIdeaQuery = clone $taskQuery;
-        $completedIdeaQuery = clone $taskQuery;
-        $openIdeaQueryPage = clone $taskQuery;
-        $openIdeaQueryWeb = clone $taskQuery;
-
-        $pendingIdeaCount = $pendingIdeaQuery->where('status', 'open')->where('stage_id', $pendingStage->id)->count();
-        $completedIdeaCount = $completedIdeaQuery->where('status', 'closed')->count();
-        $openIdeaCountPage = $openIdeaQueryPage->where('status', 'open')->where('source', 'page')->count();
-        $openIdeaCountWeb = $openIdeaQueryWeb->where('status', 'open')->where('source', 'web')->count();
-        $totalIdeas = $openIdeaCountPage + $openIdeaCountWeb;
-
-        $taskQuery->where('status', 'open');
-
-        $highQuery = clone $taskQuery;
-        $mediumQuery = clone $taskQuery;
-        $lowQuery = clone $taskQuery;
-
-        $high = $highQuery->where('priority', 'high')->count();
-        $low = $mediumQuery->where('priority', 'low')->count();
-        $medium = $lowQuery->where('priority', 'medium')->count();
-
-        $reportData = [
-            'completion' => [
-                'pending' => $pendingIdeaCount,
-                'completed'  => $completedIdeaCount,
-                'ideaFromPage' => $openIdeaCountPage,
-                'total'      => $totalIdeas
-            ],
-            'priority'   => [
-                'high'   => $high,
-                'medium' => $medium,
-                'low'    => $low
-            ]
-        ];
-        return $reportData;
-    }
-
-    public function getStageWiseBoardReports($board_id)
-    {
-        $stages = Stage::where('board_id', $board_id)
-            ->where('type', 'stage')
-            ->whereNull('archived_at')
-            ->get();
-
-        foreach ($stages as $stage) {
-            $completedTaskCount = Task::where('stage_id', $stage->id)
-                ->where('status', 'closed')
-                ->count();
-
-            $openTaskCount = Task::where('stage_id', $stage->id)
-                ->whereNull('due_at')
-                ->where('status', 'open')
-                ->count();
-
-            $overDue = Task::where('stage_id', $stage->id)
-                ->whereNotNull('due_at')
-                ->where('status', 'open')
-                ->overdue(true)
-                ->count();
-
-            $stage->report = [
-                'completed'  => $completedTaskCount,
-                'incomplete' => $openTaskCount,
-                'overdue'    => $overDue
-            ];
-        }
-
-        return $stages;
     }
 
     public function archiveBoard($boardId)
@@ -1219,6 +1197,54 @@ class BoardService
             ->first();
 
         return $pinnedBoardMeta;
+    }
+
+    /**
+     * Sidebar counts cover every board the user can access, so they are counted
+     * with their own queries rather than derived from the filtered/paginated list.
+     *
+     * byAccessUser() re-reads the user's accessible board ids from the database on
+     * every call, so the access scope is resolved once and cloned per count.
+     *
+     * @return array{all: int, pinned: int, archived: int}
+     */
+    public function getBoardCounts($userId)
+    {
+        $baseQuery = Board::byAccessUser($userId)->excludeTemplates();
+
+        if (!defined('FLUENT_ROADMAP')) {
+            $baseQuery = $baseQuery->where('type', 'to-do');
+        }
+
+        $counts = [
+            'all'      => (clone $baseQuery)->whereNull('archived_at')->count(),
+            'pinned'   => 0,
+            'archived' => (clone $baseQuery)->whereNotNull('archived_at')->count()
+        ];
+
+        $pinnedIds = $this->getPinnedBoardIds();
+
+        if ($pinnedIds) {
+            $counts['pinned'] = (clone $baseQuery)->whereNull('archived_at')
+                                                  ->whereIn('id', $pinnedIds)
+                                                  ->count();
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @return array board ids the current user has pinned
+     */
+    public function getPinnedBoardIds()
+    {
+        $pinnedBoardMeta = $this->getUserWisePinnedBoards();
+
+        if (!$pinnedBoardMeta) {
+            return [];
+        }
+
+        return array_map('intval', (array) $pinnedBoardMeta->value);
     }
 
     public function getPinnedBoards()
@@ -1320,7 +1346,7 @@ class BoardService
             return null;
         }
 
-        return Folder::findOrFail($relation->object_id);
+        return Folder::find($relation->object_id);
     }
 
     public function deleteWebhookData($boardId)

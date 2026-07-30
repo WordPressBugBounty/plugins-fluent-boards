@@ -12,6 +12,7 @@ use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\BoardService;
 use FluentBoards\App\Services\Helper;
 
 class BoardHandler
@@ -41,6 +42,13 @@ class BoardHandler
         return [
             'boards' => $boards,
         ];
+    }
+
+    public function attachFolderToBoard($board)
+    {
+        $board->folder = (new BoardService())->getBoardFolder($board->id);
+
+        return $board;
     }
 
     public function boardCreated($board)

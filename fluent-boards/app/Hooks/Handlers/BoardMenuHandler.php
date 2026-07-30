@@ -22,7 +22,7 @@ class BoardMenuHandler
          * [
          *     'key' => 'my_item',
          *     'label' => 'My Item',
-         *     'type' => 'default',
+         *     'type' => 'default', // or 'custom'
          *     'position' => 1,
          *     'width' => '500px',
          *     'html' => '<div>Content</div>'
@@ -58,110 +58,125 @@ class BoardMenuHandler
     {
         return [
             [
-                'key' => 'about_this_board',
-                'label' => __('About this Board', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 1,
-                'role' => ''
+                'key'       => 'about_this_board',
+                'icon_name' => 'info',
+                'label'     => __('About this Board', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 1,
+                'role'      => ''
             ],
             [
-                'key' => 'board_activity',
-                'label' => __('Board Activity', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 2,
-                'role' => ''
+                'key'       => 'board_activity',
+                'icon_name' => 'activity',
+                'label'     => __('Board Activity', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 2,
+                'role'      => ''
             ],
             [
-                'key' => 'change_background',
-                'label' => __('Change Background', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 3,
-                'role' => 'manager'
+                'key'       => 'change_background',
+                'icon_name' => 'image',
+                'label'     => __('Change Background', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 3,
+                'role'      => 'manager'
             ],
             [
-                'key' => 'notification_settings',
-                'label' => __('Notification Settings', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 4,
-                'role' => ''
+                'key'       => 'notification_settings',
+                'icon_name' => 'notification',
+                'label'     => __('Notification Settings', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 4,
+                'role'      => ''
             ],
             [
-                'key' => 'board_labels',
-                'label' => __('Board Labels', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 5,
-                'role' => ''
+                'key'       => 'board_labels',
+                'icon_name' => 'label',
+                'label'     => __('Board Labels', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 5,
+                'role'      => ''
             ],
             [
-                'key' => 'custom_fields',
-                'label' => __('Custom Fields', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 6,
-                'role' => ''
+                'key'       => 'custom_fields',
+                'icon_name' => 'custom_fields',
+                'label'     => __('Custom Fields', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 6,
+                'role'      => ''
             ],
             [
-                'key' => 'board_members',
-                'label' => __('Board Members', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 7,
-                'role' => ''
+                'key'       => 'board_members',
+                'icon_name' => 'members',
+                'label'     => __('Board Members', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 7,
+                'role'      => ''
             ],
             [
-                'key' => 'archived_items',
-                'label' => __('Archived Items', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 8,
-                'role' => ''
+                'key'       => 'archived_items',
+                'icon_name' => 'archived_items',
+                'label'     => __('Archived Items', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 8,
+                'role'      => ''
             ],
             [
-                'key' => 'webhooks',
-                'label' => __('Webhooks', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 9,
-                'role' => ''
+                'key'       => 'webhooks',
+                'icon_name' => 'webhooks',
+                'label'     => __('Webhooks', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 9,
+                'role'      => ''
             ],
             [
-                'key' => 'associated_crm_contacts',
-                'label' => __('Associated CRM Contacts', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 9,
-                'role' => ''
+                'key'       => 'associated_crm_contacts',
+                'icon_name' => 'contacts-book',
+                'label'     => __('Associated CRM Contacts', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 9,
+                'role'      => ''
             ],
             [
-                'key' => 'duplicate_board',
-                'label' => __('Duplicate Board', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 10,
-                'role' => 'manager'
+                'key'       => 'duplicate_board',
+                'icon_name' => 'copy',
+                'label'     => __('Duplicate Board', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 10,
+                'role'      => 'manager'
             ],
             [
-                'key' => 'restore_board',
-                'label' => __('Restore Board', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 10,
-                'role' => 'admin'
+                'key'       => 'restore_board',
+                'icon_name' => 'refresh',
+                'label'     => __('Restore Board', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 10,
+                'role'      => 'admin'
             ],
             [
-                'key' => 'export',
-                'label' => __('Export', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 10.5,
-                'role' => 'manager',
-                'pro' => true
+                'key'       => 'export',
+                'icon_name' => 'export',
+                'label'     => __('Export', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 10.5,
+                'role'      => 'manager',
+                'pro'       => true
             ],
             [
-                'key' => 'archive_board',
-                'label' => __('Archive Board', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 11,
-                'role' => 'admin'
+                'key'       => 'archive_board',
+                'icon_name' => 'archive',
+                'label'     => __('Archive Board', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 11,
+                'role'      => 'admin'
             ],
             [
-                'key' => 'delete_board',
-                'label' => __('Delete Board', 'fluent-boards'),
-                'type' => 'default',
-                'position' => 11,
-                'role' => 'admin'
+                'key'       => 'delete_board',
+                'icon_name' => 'delete',
+                'label'     => __('Delete Board', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 11,
+                'role'      => 'admin'
             ]
         ];
     }
@@ -220,4 +235,4 @@ class BoardMenuHandler
 
         return $validatedItems;
     }
-} 
+}

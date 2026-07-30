@@ -24,6 +24,19 @@ class SingleBoardPolicy extends BasePolicy
         return PermissionManager::isAdmin();
     }
 
+    /**
+     * Task AI actions. `summarize` only reads content the member can already see,
+     * so it is treated as a read for permission purposes — otherwise viewer-only
+     * members would be denied an action the UI intentionally offers them. Every
+     * other action writes to the task and keeps the normal write restrictions.
+     */
+    public function taskAssist(Request $request)
+    {
+        $method = $request->get('action') === 'summarize' ? 'GET' : $request->getMethod();
+
+        return PermissionManager::userHasBoardPermission($request->board_id, $method);
+    }
+
     public function makeManager(Request $request)
     {
         return PermissionManager::isBoardManager($request->board_id);

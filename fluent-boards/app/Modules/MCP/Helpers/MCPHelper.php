@@ -6,6 +6,7 @@ use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\DescriptionMarkdownConverter;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\PermissionManager;
 
@@ -15,6 +16,7 @@ use FluentBoards\App\Services\PermissionManager;
 class MCPHelper
 {
     const TASK_HISTORY_LIMIT = 20;
+    const MAX_MARKDOWN_DESCRIPTION_LENGTH = 65535;
 
     public static function error($code, $message, $data = [])
     {
@@ -30,6 +32,23 @@ class MCPHelper
             'page'     => max(1, $page),
             'per_page' => max(1, min($maxPerPage, $perPage)),
         ];
+    }
+
+    public static function sanitizeMarkdown($value)
+    {
+        $value = wp_check_invalid_utf8((string) $value);
+        $value = str_replace(["\r\n", "\r", "\0"], ["\n", "\n", ""], $value);
+        $value = self::descriptionToMarkdown($value);
+
+        if (strlen($value) <= self::MAX_MARKDOWN_DESCRIPTION_LENGTH) {
+            return $value;
+        }
+
+        if (function_exists('mb_strcut')) {
+            return mb_strcut($value, 0, self::MAX_MARKDOWN_DESCRIPTION_LENGTH);
+        }
+
+        return substr($value, 0, self::MAX_MARKDOWN_DESCRIPTION_LENGTH);
     }
 
     public static function resolveBoard($params)
@@ -123,7 +142,7 @@ class MCPHelper
         return [
             'id'              => (int) $board->id,
             'title'           => $board->title,
-            'description'     => $board->description,
+            'description'     => self::descriptionToMarkdown($board->description),
             'type'            => $board->type,
             'currency'        => $board->currency,
             'created_by'      => (int) $board->created_by,
@@ -188,7 +207,7 @@ class MCPHelper
     public static function formatTask($task)
     {
         $data = self::formatTaskSummary($task);
-        $data['description'] = $task->description;
+        $data['description'] = self::descriptionToMarkdown($task->description);
         $data['settings'] = $task->settings;
         $data['board'] = $task->board ? self::formatBoardSummary($task->board) : null;
         $data['watchers'] = self::formatUserList($task->watchers ?? []);
@@ -198,6 +217,11 @@ class MCPHelper
         $data['activities_limited_to'] = self::TASK_HISTORY_LIMIT;
 
         return $data;
+    }
+
+    public static function descriptionToMarkdown($description)
+    {
+        return DescriptionMarkdownConverter::normalize($description);
     }
 
     public static function formatTaskList($tasks)

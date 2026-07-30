@@ -38,8 +38,23 @@ class TaskController extends Controller
     {
         $userId = get_current_user_id();
         $task_ids = PermissionManager::getTaskIdsWatchByUser($userId);
-        $tasksArray = $this->taskService->getTasksForBoards(['assigned', 'overdue', 'upcoming', 'completed', 'others'], 6, $task_ids);
-        $taskCounts = $this->taskService->getTaskCountsForBoards(['assigned', 'overdue', 'upcoming', 'completed', 'others'], $task_ids);
+        $boardIds = PermissionManager::getBoardIdsForUser($userId);
+        $taskCategories = ['due_today', 'assigned', 'overdue', 'upcoming', 'mentioned', 'completed', 'others'];
+        $tasksArray = $this->taskService->getTasksForBoards($taskCategories, 6, $task_ids);
+        $taskCounts = $this->taskService->getTaskCountsForBoards($taskCategories, $task_ids);
+        $taskCounts['all_boards'] = empty($boardIds)
+            ? 0
+            : (int) Board::whereIn('id', $boardIds)
+                ->whereNull('archived_at')
+                ->excludeTemplates()
+                ->count();
+        $taskCounts['all_tasks'] = empty($task_ids)
+            ? 0
+            : (int) Task::whereIn('id', $task_ids)
+                ->whereNull('archived_at')
+                ->whereNull('parent_id')
+                ->excludeTemplateBoards()
+                ->count();
 
         return [
             'data' => $tasksArray,
@@ -73,9 +88,7 @@ class TaskController extends Controller
         $this->processTasks($tasks, $board);
 
         if ($board->type === 'roadmap') {
-            foreach ($tasks as $task) {
-                $task->vote_statistics = $this->taskService->getIdeaVoteStatistics($task->id);
-            }
+            $this->taskService->loadIdeaVoteStatistics($tasks);
         }
 
         return [
@@ -441,15 +454,26 @@ class TaskController extends Controller
         ]);
 
         try {
+            if (isset($taskData['assignees'])) {
+                $taskData['assignees'] = array_filter(array_map('intval', (array) $taskData['assignees']));
+            }
+
+            if (isset($taskData['labels'])) {
+                $taskData['labels'] = array_filter(array_map('intval', (array) $taskData['labels']));
+            }
+
             if ($taskData['board_id'] != $board_id) {
                 throw new \Exception(esc_html__('Board id is not valid', 'fluent-boards'));
             }
 
             $task = $this->taskService->createTask($taskData, $board_id);
+            $message = $task->type === 'roadmap'
+                ? __('Idea has been successfully created', 'fluent-boards')
+                : __('Task has been successfully created', 'fluent-boards');
 
             return $this->sendSuccess([
                 'task'         => $task,
-                'message'      => __('Task has been successfully created', 'fluent-boards'),
+                'message'      => $message,
                 'updatedTasks' => $this->taskService->getLastOneMinuteUpdatedTasks($task->board_id)
             ], 201);
         } catch (\Exception $e) {
@@ -482,6 +506,7 @@ class TaskController extends Controller
             $task->load(['board', 'stage', 'labels', 'assignees','watchers']);
 
             $task->assignees = Helper::sanitizeUserCollections($task->assignees);
+            $task->watchers = Helper::sanitizeUserCollections($task->watchers);
 
             $task->isOverdue = $task->isOverdue();
             $task->contact = Task::lead_contact($task->crm_contact_id);
@@ -719,6 +744,17 @@ class TaskController extends Controller
                     $value['cover']['backgroundColor'] = sanitize_text_field($value['cover']['backgroundColor']);
                 }
             }
+        } elseif ($col === 'is_watching') {
+            $value = $request->get('value');
+            if (is_array($value)) {
+                $action = isset($value['action']) ? sanitize_text_field($value['action']) : 'start';
+                $value = [
+                    'userId' => isset($value['userId']) ? absint($value['userId']) : 0,
+                    'action' => in_array($action, ['start', 'stop'], true) ? $action : 'start',
+                ];
+            } else {
+                $value = sanitize_text_field($value);
+            }
         } else {
             $value = $request->getSafe('value', 'sanitize_text_field');
         }
@@ -739,6 +775,10 @@ class TaskController extends Controller
             $this->taskService->findTaskOnBoard($validatedData[$col], $board_id, false);
         }
 
+        if ($task->parent_id && $col === 'started_at') {
+            $validatedData[$col] = null;
+        }
+
         $oldDateValue = null;
         if (in_array($col, ['due_at', 'started_at'])) {
             $oldDateValue = $task->{$col};
@@ -755,6 +795,11 @@ class TaskController extends Controller
         $task->contact = Helper::crm_contact($task->crm_contact_id);
         $task->is_watching = $task->isWatching();
         $task->assignees = Helper::sanitizeUserCollections($task->assignees);
+
+        if ($col === 'is_watching') {
+            $task->load('watchers');
+            $task->watchers = Helper::sanitizeUserCollections($task->watchers);
+        }
 
         if ($task->parent_id) {
            $task->subtask_group_id  = TaskMeta::where('task_id', $task->id)->where('key', Constant::SUBTASK_GROUP_CHILD)->value('value');
@@ -782,6 +827,26 @@ class TaskController extends Controller
         ];
     }
 
+    /**
+     * Remove a Fluent Support association from a task without deleting the ticket.
+     *
+     * @param int $board_id
+     * @param int $task_id
+     * @return mixed
+     */
+    public function removeSupportTicketLink($board_id, $task_id)
+    {
+        $boardId = absint($board_id);
+        $taskId = absint($task_id);
+        $task = $this->taskService->removeSupportTicketLink($taskId, $boardId);
+
+        return $this->sendSuccess([
+            'message'      => __('Support ticket link has been removed', 'fluent-boards'),
+            'task'         => $task,
+            'updatedTasks' => [$task],
+        ]);
+    }
+
     public function updateTaskDates(Request $request, $board_id, $task_id)
     {
         $board_id = absint($board_id);
@@ -804,8 +869,14 @@ class TaskController extends Controller
 
         $startAt = $hasStartAt ? $request->getSafe('started_at', 'sanitize_text_field', NULL) : $task->started_at;
         $dueAt = $hasDueAt ? $request->getSafe('due_at', 'sanitize_text_field', NULL) : $task->due_at;
+        $isSubtask = (bool) $task->parent_id;
 
-        if ($hasStartAt && $hasDueAt && $startAt && $dueAt) {
+        if ($isSubtask) {
+            $startAt = null;
+            $hasStartAt = $hasStartAt || (bool) $task->started_at;
+        }
+
+        if (!$isSubtask && $hasStartAt && $hasDueAt && $startAt && $dueAt) {
             if (strtotime($startAt) > strtotime($dueAt)) {
                 $startAt = substr($dueAt, 0, 10) . ' 00:00:00';
             }
@@ -1032,6 +1103,9 @@ class TaskController extends Controller
 
                 return [$col => $sanitizedAndValidatedValue];
             }
+            if ('is_watching' == $col && is_array($value)) {
+                return [$col => $value];
+            }
             $data = Helper::sanitizeTask([$col => $value]);
 
             return $this->validate($data, [
@@ -1218,7 +1292,8 @@ class TaskController extends Controller
             $page = $request->getSafe('page', 'intval', 1);
             $perPage = $request->getSafe('per_page', 'intval', 10);
             $filter = $request->getSafe('filter', 'sanitize_text_field', 'newest'); // Filter for comments and activities
-            $commentsAndActivities = $this->taskService->getCommentsAndActivities($task_id, $perPage, $page, $filter, $board_id);
+            $feedType = $request->getSafe('feed_type', 'sanitize_text_field', 'all');
+            $commentsAndActivities = $this->taskService->getCommentsAndActivities($task_id, $perPage, $page, $filter, $board_id, $feedType);
             // Return the response with the task, paginated comments and activities, total count, current page, and items per page
             return $this->sendSuccess([
                 'comments_and_activities' => $commentsAndActivities,
@@ -1318,10 +1393,14 @@ class TaskController extends Controller
 
         $uploadInfo = UploadService::handleFileUpload( $request->files(), $board_id);
         $task = $this->taskService->createTaskFromImage($board_id, $stageId, $uploadInfo, $file);
+        $message = $task->type === 'roadmap'
+            ? __('Idea has been created', 'fluent-boards')
+            : __('Task has been created', 'fluent-boards');
+
         return $this->sendSuccess([
             'task' => $task,
             'updatedTasks' => $this->taskService->getLastOneMinuteUpdatedTasks($board_id),
-            'message' => __('Task has been created', 'fluent-boards'),
+            'message' => $message,
         ], 200);
 
     }
@@ -1396,40 +1475,46 @@ class TaskController extends Controller
     {
         $default_config = [
             [
+                'name'    => 'due_today',
+                'label'   => __('Today', 'fluent-boards'),
+                'visible' => 'true',
+                'order'   => 1
+            ],
+            [
                 'name'    => 'assigned',
                 'label'   => __('Assigned', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 1
+                'order'   => 2
             ],
             [
                 'name'    => 'upcoming',
                 'label'   => __('Upcoming', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 2
+                'order'   => 3
             ],
             [
                 'name'    => 'overdue',
                 'label'   => __('Overdue', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 3
+                'order'   => 4
             ],
             [
                 'name'    => 'mentioned',
                 'label'   => __('Mentioned', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 4
+                'order'   => 5
             ],
             [
                 'name'    => 'completed',
                 'label'   => __('Completed', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 5
+                'order'   => 6
             ],
             [
                 'name'    => 'others',
                 'label'   => __('Others', 'fluent-boards'),
                 'visible' => 'true',
-                'order'   => 6
+                'order'   => 7
             ]
         ];
         $availableTabNames = array_column($default_config, 'name');
@@ -1460,8 +1545,19 @@ class TaskController extends Controller
             if (!empty($missingTabs)) {
                 $newConfig = [];
                 $order = 1;
+                $addedDueToday = false;
                 $addedAssigned = false;
                 foreach ($config as $tab) {
+                    if (!$addedDueToday) {
+                        $dueTodayTab = array_filter($missingTabs, fn($t) => $t['name'] === 'due_today');
+                        if (!empty($dueTodayTab)) {
+                            $dueTodayTab = reset($dueTodayTab);
+                            $dueTodayTab['order'] = $order++;
+                            $newConfig[] = $dueTodayTab;
+                            $addedDueToday = true;
+                        }
+                    }
+
                     if ($tab['name'] === 'upcoming' && !$addedAssigned) {
                         $assignedTab = array_filter($missingTabs, fn($t) => $t['name'] === 'assigned');
                         if (!empty($assignedTab)) {
@@ -1475,7 +1571,7 @@ class TaskController extends Controller
                     $newConfig[] = $tab;
                 }
                 foreach ($missingTabs as $missingTab) {
-                    if ($missingTab['name'] !== 'assigned') {
+                    if (!in_array($missingTab['name'], ['assigned', 'due_today'], true)) {
                         $missingTab['order'] = $order++;
                         $newConfig[] = $missingTab;
                     }
@@ -1492,6 +1588,7 @@ class TaskController extends Controller
 
         // Always apply fresh translations based on tab name
         $labelMap = [
+            'due_today' => __('Today', 'fluent-boards'),
             'assigned'  => __('Assigned', 'fluent-boards'),
             'upcoming'  => __('Upcoming', 'fluent-boards'),
             'overdue'   => __('Overdue', 'fluent-boards'),

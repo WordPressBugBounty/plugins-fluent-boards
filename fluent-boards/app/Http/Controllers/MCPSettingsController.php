@@ -82,7 +82,7 @@ class MCPSettingsController extends Controller
         $canAutoInstall = $this->canAutoInstallFluentKit();
         if (!$canAutoInstall) {
             return $this->sendError([
-                'message'              => __('Please install FluentKit from GitHub, then reload this page to connect Fluent Boards with AI agents.', 'fluent-boards'),
+                'message'              => __('Please install FluentHub from GitHub, then reload this page to connect Fluent Boards with AI agents.', 'fluent-boards'),
                 'toolkit_download_url' => 'https://github.com/WPManageNinja/fluent-toolkit',
             ]);
         }
@@ -103,13 +103,13 @@ class MCPSettingsController extends Controller
         $isActive = (is_plugin_active(self::ADAPTER_PLUGIN_FILE) && $adapterRuntimeAvailable) || $toolkitAdapterAvailable;
 
         if ($isInstalled && $isActive) {
-            $message = __('FluentKit installed and activated. Reload the page to register Fluent Boards MCP tools.', 'fluent-boards');
+            $message = __('FluentHub installed and activated. Reload the page to register Fluent Boards MCP tools.', 'fluent-boards');
         } elseif ($toolkitInstalled && $toolkitActive) {
-            $message = __('FluentKit is installed and active, but this version does not include the bundled MCP adapter yet. Please update FluentKit when the MCP-ready build is available, then reload this page.', 'fluent-boards');
+            $message = __('FluentHub is installed and active, but this version does not include the bundled MCP adapter yet. Please update FluentHub when the MCP-ready build is available, then reload this page.', 'fluent-boards');
         } elseif ($toolkitInstalled) {
-            $message = __('FluentKit is installed but could not be activated automatically. Please activate FluentKit from the Plugins page, then reload this page.', 'fluent-boards');
+            $message = __('FluentHub is installed but could not be activated automatically. Please activate FluentHub from the Plugins page, then reload this page.', 'fluent-boards');
         } else {
-            $message = __('Could not install FluentKit automatically. Please install FluentKit manually, then reload this page.', 'fluent-boards');
+            $message = __('Could not install FluentHub automatically. Please install FluentHub manually, then reload this page.', 'fluent-boards');
         }
 
         return $this->sendSuccess([

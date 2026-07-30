@@ -10,6 +10,8 @@ use FluentBoards\App\Services\Constant;
 
 class FluentCrmIntegration
 {
+    private const LEGACY_BOARD_ASSOCIATED_CRM_CONTACT = 'crm_contact';
+
     public function registerCustomSection()
     {
         $key = 'fluent_boards_in_fluent_crm';
@@ -25,11 +27,17 @@ class FluentCrmIntegration
     public function prepareHtml($subscriber)
     {
         $temp = Meta::query()->where('value', $subscriber->id)
-                             ->where('key', Constant::BOARD_ASSOCIATED_CRM_CONTACT)
+                             ->whereIn('key', [
+                                 Constant::BOARD_ASSOCIATED_CRM_CONTACT,
+                                 self::LEGACY_BOARD_ASSOCIATED_CRM_CONTACT,
+                             ])
                              ->where('object_type', Constant::OBJECT_TYPE_BOARD)
                              ->pluck('object_id');
 
-        $boards = Board::query()->whereIn('id', $temp)->get();
+        $boards = Board::query()
+            ->whereIn('id', array_values(array_unique(array_map('intval', $temp->toArray()))))
+            ->whereNull('archived_at')
+            ->get();
 
         $taskGroups = Task::where('crm_contact_id', $subscriber->id)->with('board')->get()->groupBy((function ($data) {
             return $data->board->title;

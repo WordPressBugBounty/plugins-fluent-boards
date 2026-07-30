@@ -5,6 +5,7 @@ namespace FluentBoards\App\Http\Controllers;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
+use FluentBoards\App\Services\DescriptionMarkdownConverter;
 use FluentBoards\App\Services\PublicAccessService;
 use FluentBoards\Framework\Http\Request\Request;
 
@@ -16,7 +17,7 @@ class PublicBoardController extends Controller
         $board = Board::findOrFail($board_id);
 
         $board->background = maybe_unserialize($board->background);
-        $board->description = wp_kses_post($board->description ?? '');
+        $board->description = DescriptionMarkdownConverter::normalize($board->description);
         $board->createdOn = $board->created_at ? $board->created_at->format('Y-m-d') : null;
         $board->load(['stages', 'labels', 'users']);
 

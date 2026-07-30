@@ -9,6 +9,7 @@ use FluentBoards\App\Models\User;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Services\BoardService;
+use FluentBoards\App\Services\DescriptionMarkdownConverter;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\OptionService;
 use FluentBoards\App\Services\Constant;
@@ -56,6 +57,23 @@ class OptionsController extends Controller
                 }
 
                 $options = $this->addUserDataAsSelectorOption($users);
+
+            } elseif ('board_create_users' === $optionKey) {
+                if (!PermissionManager::userHasBoardCreationPermission()) {
+                    throw new \Exception(esc_html__('You do not have permission to access this route', 'fluent-boards'));
+                }
+
+                if (!defined('FLUENT_BOARDS_PRO')) {
+                    // Bound the lookup: this popover searches on focus (empty query too).
+                    $users = PermissionManager::getAll_WP_Admins($search, 20);
+                } else {
+                    $users = Helper::searchWordPressUsers($search);
+                }
+
+                $options = $this->addUserDataAsSelectorOption($users);
+                // Board creation can be delegated to members without `list_users`;
+                // don't leak full account emails to them.
+                $options = $this->maskSelectorEmailsForViewer($options);
 
             } elseif ('boards' === $optionKey) {
                 $boards = Board::query()
@@ -126,6 +144,40 @@ class OptionsController extends Controller
                 'photo'            => get_avatar_url($user->user_email),
             ];
         }
+        return $options;
+    }
+
+    /**
+     * Obfuscate emails in selector options for viewers who lack the `list_users`
+     * capability, keeping the current user's own email visible.
+     */
+    private function maskSelectorEmailsForViewer($options)
+    {
+        if (current_user_can('list_users')) {
+            return $options;
+        }
+
+        $currentUser = wp_get_current_user();
+        $currentUserEmail = ($currentUser && isset($currentUser->user_email)) ? $currentUser->user_email : '';
+
+        foreach ($options as $index => $option) {
+            $email = $option['email'] ?? '';
+
+            if ($email === '' || $email === $currentUserEmail) {
+                continue;
+            }
+
+            $maskedEmail = Helper::obfuscateEmail($email);
+
+            // When there's no display name the raw email doubles as the name.
+            if (($option['name'] ?? '') === $email) {
+                $options[$index]['name'] = $maskedEmail;
+            }
+
+            $options[$index]['email'] = $maskedEmail;
+            $options[$index]['title'] = ($options[$index]['name'] ?? $maskedEmail) . ' (' . $maskedEmail . ')';
+        }
+
         return $options;
     }
 
@@ -477,7 +529,7 @@ class OptionsController extends Controller
         ];
     }
 
-    public function quickSearch()
+    public function globalSearch()
     {
         $currentUserId = get_current_user_id();
 
@@ -493,6 +545,7 @@ class OptionsController extends Controller
         $boardPage = isset($_REQUEST['board_page']) ? max(1, (int)$_REQUEST['board_page']) : 0;
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
         $perPage = isset($_REQUEST['per_page']) ? (int)$_REQUEST['per_page'] : 20;
+        $perPage = max(1, min(100, $perPage));
 
         // Build base queries
         $firstThreeChars = substr($query, 0, 3);
@@ -559,7 +612,7 @@ class OptionsController extends Controller
                 'type'        => 'board',
                 'id'          => $board->id,
                 'title'       => $board->title,
-                'description' => $board->description,
+                'description' => DescriptionMarkdownConverter::normalize($board->description),
             ];
         }
         foreach ($tasks as $task) {
@@ -572,7 +625,7 @@ class OptionsController extends Controller
                 'type'        => 'task',
                 'id'          => $task->id,
                 'title'       => $task->title,
-                'description' => $task->description,
+                'description' => DescriptionMarkdownConverter::normalize($task->description),
                 'board_id'    => $task->board_id,
                 'board'       => [
                     'id'    => $board->id,
@@ -670,10 +723,10 @@ class OptionsController extends Controller
         $kitPluginFile = 'fluent-toolkit/fluent-toolkit.php';
         $kitLoaded = defined('FLUENT_TOOLKIT_VERSION');
         $kitPluginExists = $this->isPluginInstalled($kitPluginFile);
-        $kitActionText = __('Get FluentKit from GitHub', 'fluent-boards');
+        $kitActionText = __('Get FluentHub from GitHub', 'fluent-boards');
 
         if ($canAutoInstallKit) {
-            $kitActionText = $kitPluginExists ? __('Activate FluentKit', 'fluent-boards') : __('Install FluentKit', 'fluent-boards');
+            $kitActionText = $kitPluginExists ? __('Activate FluentHub', 'fluent-boards') : __('Install FluentHub', 'fluent-boards');
         }
 
         $addOns = [
@@ -719,7 +772,7 @@ class OptionsController extends Controller
                 'short_desc'    => __('Reliable email delivery with SMTP', 'fluent-boards')
             ],
             'fluent-toolkit' => [
-                'title'          => __('FluentKit', 'fluent-boards'),
+                'title'          => __('FluentHub', 'fluent-boards'),
                 'logo'           => fluent_boards_mix('images/addons/fluent-toolkit.svg'),
                 'is_installed'   => $kitLoaded,
                 'learn_more_url' => 'https://github.com/WPManageNinja/fluent-toolkit',
@@ -728,7 +781,7 @@ class OptionsController extends Controller
                 'action_text'    => $kitActionText,
                 'install_route'  => $canAutoInstallKit ? 'admin/mcp/install-adapter' : '',
                 'install_url'    => $canAutoInstallKit ? '' : 'https://github.com/WPManageNinja/fluent-toolkit',
-                'description'    => __('Fluent Boards MCP tools become available after FluentKit is installed and active.', 'fluent-boards'),
+                'description'    => __('Fluent Boards MCP tools become available after FluentHub is installed and active.', 'fluent-boards'),
                 'short_desc'     => __('AI agent tools for Fluent Boards', 'fluent-boards')
             ],
         ];
@@ -1005,7 +1058,8 @@ class OptionsController extends Controller
         foreach ($allPages as $page) {
             $pages[] = [
                 'id'    => $page->ID,
-                'title' => $page->post_title ? $page->post_title : __('(no title)', 'fluent-boards')
+                'title' => $page->post_title ? $page->post_title : __('(no title)', 'fluent-boards'),
+                'url'   => esc_url_raw(get_permalink($page->ID))
             ];
         }
 

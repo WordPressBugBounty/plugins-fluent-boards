@@ -10,12 +10,14 @@ use FluentBoards\App\Models\User;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Services\CommentService;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\DescriptionMarkdownConverter;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Services\InstallService;
 use FluentBoards\App\Services\StageService;
 use FluentBoards\App\Services\TaskService;
 use FluentBoards\App\Services\BoardService;
+use FluentBoards\App\Services\FolderService;
 use FluentBoards\App\Services\UploadService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\App\Services\PermissionManager;
@@ -27,12 +29,12 @@ use FluentBoards\Framework\Support\Arr;
 use FluentBoards\Framework\Support\Collection;
 use FluentBoardsPro\App\Services\AttachmentService;
 use FluentBoardsPro\App\Services\CustomFieldService;
-use FluentBoardsPro\App\Services\ProHelper;
 use FluentBoardsPro\App\Services\RemoteUrlParser;
-use FluentCrm\App\Models\Subscriber;
 
 class BoardController extends Controller
 {
+    private const LEGACY_BOARD_ASSOCIATED_CRM_CONTACT = 'crm_contact';
+
     private $boardService;
     private $taskService;
     private $stageService;
@@ -55,6 +57,7 @@ class BoardController extends Controller
     public function getBoards(Request $request)
     {
         $per_page = $request->getSafe('per_page', 'intval', 100);
+        $per_page = max(1, min(100, $per_page));
         $userId = get_current_user_id();
         $type = $request->getSafe('type', 'sanitize_text_field', 'to-do');
 
@@ -80,20 +83,26 @@ class BoardController extends Controller
             }
         }
 
-        // If folder ID is provided, filter boards by folder
-        if ($folderId && defined('FLUENT_BOARDS_PRO')) {
-            $boardIds = ProHelper::getBoardIdsByFolder($folderId);
-            $relatedBoardsQuery = $relatedBoardsQuery->whereIn('id', $boardIds);
+        // Scope pinned before pagination, from the same id source as getBoardCounts(),
+        // so the pinned page and board_counts.pinned always agree. Filtering pinned
+        // after pagination would drop pinned boards that fall on a later active page.
+        if ($option == 'pinned') {
+            $pinnedIds = $this->boardService->getPinnedBoardIds();
+
+            $relatedBoardsQuery = $pinnedIds
+                ? $relatedBoardsQuery->whereIn('id', $pinnedIds)
+                : $relatedBoardsQuery->where('id', 0);
+        }
+
+        if ($folderId) {
+            $boardIds = (new FolderService())->getBoardIdsByFolder($folderId);
+            $relatedBoardsQuery = $boardIds
+                ? $relatedBoardsQuery->whereIn('id', $boardIds)
+                : $relatedBoardsQuery->where('id', 0);
         }
 
         // Filter out boards that are templates (exclude boards where settings->is_template is true)
-        $relatedBoardsQuery = $relatedBoardsQuery->where(function ($query) {
-            $query->whereNull('settings')
-                  ->orWhere(function ($subQuery) {
-                      $subQuery->where('settings', 'NOT LIKE', '%"is_template";b:1%')
-                               ->where('settings', 'NOT LIKE', '%"is_template":true%');
-                  });
-        });
+        $relatedBoardsQuery = $relatedBoardsQuery->excludeTemplates();
 
         // Add search functionality
         if (!empty($searchInput)) {
@@ -106,23 +115,22 @@ class BoardController extends Controller
                                             ->paginate($per_page);
 
         foreach ($relatedBoards as $relatedBoard) {
+            $relatedBoard->description = DescriptionMarkdownConverter::normalize($relatedBoard->description);
             $relatedBoard->users = Helper::sanitizeUserCollections($relatedBoard->users);
             $relatedBoard->is_pinned = $this->boardService->isPinned($relatedBoard->id);
         }
 
         $response = [
-            'boards' => $relatedBoards
+            'boards'       => $relatedBoards,
+            'board_counts' => $this->boardService->getBoardCounts($userId)
         ];
 
-        // Include folder mapping if pro version is available - ALWAYS include for consistency
-        if (defined('FLUENT_BOARDS_PRO')) {
-            $response['folder_mapping'] = $this->getBoardFolderMapping($userId);
-            if ($folderId) {
-                $response['current_folder'] = $this->getCurrentFolderInfo($folderId);
-            }
-        } else {
-            // Include empty folder mapping for consistency
-            $response['folder_mapping'] = [];
+        $folderMapping = $this->getBoardFolderMapping($userId);
+        $response['folder_mapping'] = $folderMapping;
+        if ($folderId) {
+            $response['current_folder'] = isset($folderMapping[$folderId])
+                ? $this->getCurrentFolderInfoFromMapping($folderMapping[$folderId])
+                : null;
         }
 
         return $this->sendSuccess($response);
@@ -133,11 +141,7 @@ class BoardController extends Controller
      */
     private function getBoardFolderMapping($userId)
     {
-        if (!defined('FLUENT_BOARDS_PRO')) {
-            return [];
-        }
-
-        $folderService = new \FluentBoardsPro\App\Services\FolderService();
+        $folderService = new FolderService();
         $folders = $folderService->getFolders($userId);
 
         $mapping = [];
@@ -152,26 +156,12 @@ class BoardController extends Controller
         return $mapping;
     }
 
-    /**
-     * Get current folder information
-     */
-    private function getCurrentFolderInfo($folderId)
+    private function getCurrentFolderInfoFromMapping(array $folder)
     {
-        if (!defined('FLUENT_BOARDS_PRO')) {
-            return null;
-        }
-
-        $folderService = new \FluentBoardsPro\App\Services\FolderService();
-        $folder = $folderService->getFolderById($folderId);
-
-        if (!$folder) {
-            return null;
-        }
-
         return [
-            'id' => $folder->id,
-            'title' => $folder->title,
-            'board_count' => $folder->boards ? $folder->boards->count() : 0
+            'id'          => $folder['id'],
+            'title'       => $folder['title'],
+            'board_count' => count($folder['board_ids'])
         ];
     }
 
@@ -188,9 +178,9 @@ class BoardController extends Controller
         // Query to fetch boards that are not archived and accessible by the user
         // Check if the FLUENT_ROADMAP constant is defined
         if (!defined('FLUENT_ROADMAP')) {
-            $relatedBoardsQuery = Board::whereNull('archived_at')->where('type', 'to-do')->byAccessUser($userId);
+            $relatedBoardsQuery = Board::whereNull('archived_at')->where('type', 'to-do')->excludeTemplates()->byAccessUser($userId);
         } else {
-            $relatedBoardsQuery = Board::whereNull('archived_at')->byAccessUser($userId);
+            $relatedBoardsQuery = Board::whereNull('archived_at')->excludeTemplates()->byAccessUser($userId);
         }
 
         $relatedBoards = $relatedBoardsQuery->with('stages')->get();
@@ -213,9 +203,9 @@ class BoardController extends Controller
 
             if(!defined('FLUENT_ROADMAP'))
             {
-                $relatedBoardsQuery = Board::whereNull('archived_at')->where('type', 'to-do')->byAccessUser($userId);
+                $relatedBoardsQuery = Board::whereNull('archived_at')->where('type', 'to-do')->excludeTemplates()->byAccessUser($userId);
             } else {
-                $relatedBoardsQuery = Board::whereNull('archived_at')->byAccessUser($userId);
+                $relatedBoardsQuery = Board::whereNull('archived_at')->excludeTemplates()->byAccessUser($userId);
             }
 
             if (!empty($searchInput)) {
@@ -239,7 +229,7 @@ class BoardController extends Controller
         $boards = $this->boardService->getRecentBoards();
 
         if (!$boards || $boards->isEmpty()) {
-            $boards = Board::where('type', 'to-do')->byAccessUser(get_current_user_id())
+            $boards = Board::where('type', 'to-do')->excludeTemplates()->byAccessUser(get_current_user_id())
                 ->limit(4)
                 ->withCount('completedTasks')
                 ->with(['stages', 'users'])
@@ -347,23 +337,38 @@ class BoardController extends Controller
         ]);
 
         try {
+            $folderId = $request->getSafe('folder_id', 'intval');
+            $folderService = new FolderService();
+            if ($folderId) {
+                $folderService->assertCanModifyFolder($folderId);
+            }
+
+            $backgroundData = $this->sanitizeCreateBoardBackground($request->get('background'));
+            if (!empty($backgroundData)) {
+                $boardData['background'] = $backgroundData;
+            }
+
             $board = $this->boardService->createBoard($boardData);
-            $this->labelService->createDefaultLabel($board->id);
+            $this->createBoardLabelsFromRequest($request, $board->id);
+            $this->addBoardMembersFromRequest($request, $board->id);
             $type = ucfirst($boardData['type']);
+            $stages = $request->get('stages');
+            $sanitizedStages = [];
+
+            if (is_array($stages) && !empty($stages)) {
+                foreach ($stages as $stage) {
+                    $sanitizedStages[] = $this->stageSanitizeAndValidate($stage, [
+                        'title' => 'required|string',
+                        'slug' => 'nullable|string',
+                        'position' => 'nullable|numeric'
+                    ]);
+                }
+            }
 
             if (isset($boardData['type']) && $boardData['type'] == 'roadmap') {
-                $stages = $request->get('stages');
-                $sanitizedStages = [];
-                if (is_array($stages) && !empty($stages)) {
-                    foreach ($stages as $stage) {
-                        $sanitizedStages[] = $this->stageSanitizeAndValidate($stage, [
-                            'title' => 'required|string',
-                            'slug' => 'nullable|string',
-                            'position' => 'nullable|numeric'
-                        ]);
-                    }
-                }
                 $this->stageService->createRoadmapStages($board, $sanitizedStages);
+            } elseif (!empty($sanitizedStages)) {
+                $this->stageService->createStages($board, $sanitizedStages);
             } else {
                 $this->stageService->createDefaultStages($board);
             }
@@ -376,11 +381,8 @@ class BoardController extends Controller
             do_action('fluent_boards/board_created', $board);
 
 
-            if(defined('FLUENT_BOARDS_PRO')) {
-                $folderId = $request->getSafe('folder_id', 'intval');
-                if ($folderId) {
-                    (new \FluentBoardsPro\App\Services\FolderService())->addBoardToFolder($folderId, [$board->id]);
-                }
+            if ($folderId) {
+                $folderService->addBoardToFolder($folderId, [$board->id]);
             }
 
             $message = __('Board has been created successfully', 'fluent-boards');
@@ -396,24 +398,97 @@ class BoardController extends Controller
         }
     }
 
+    private function sanitizeCreateBoardBackground($background)
+    {
+        if (!is_array($background) || empty($background['id'])) {
+            return '';
+        }
+
+        $backgroundId = sanitize_text_field($background['id']);
+
+        // Only accept ids from the curated solid/gradient palettes and always
+        // persist the canonical value from the constant (never the client-supplied
+        // color) so arbitrary CSS can't be stored and later rendered into a style.
+        $allowedBackgrounds = [];
+        foreach (array_merge(
+            Constant::BOARD_BACKGROUND_DEFAULT_SOLID_COLORS,
+            Constant::BOARD_BACKGROUND_DEFAULT_GRADIENT_COLORS
+        ) as $option) {
+            if (isset($option['id'], $option['value'])) {
+                $allowedBackgrounds[$option['id']] = $option['value'];
+            }
+        }
+
+        if (!isset($allowedBackgrounds[$backgroundId])) {
+            return '';
+        }
+
+        return [
+            'id'        => $backgroundId,
+            'color'     => $allowedBackgrounds[$backgroundId],
+            'is_image'  => false,
+            'image_url' => null,
+        ];
+    }
+
+    private function createBoardLabelsFromRequest(Request $request, $boardId)
+    {
+        $labels = $request->get('labels');
+
+        if (!is_array($labels)) {
+            $this->labelService->createDefaultLabel($boardId);
+            return;
+        }
+
+        foreach ($labels as $label) {
+            $labelData = Helper::sanitizeLabel((array) $label);
+
+            if (empty($labelData['label']) && empty($labelData['bg_color'])) {
+                continue;
+            }
+
+            $this->labelService->createLabel([
+                'label'    => $labelData['label'] ?? '',
+                'bg_color' => $labelData['bg_color'] ?? '#f3f4f6',
+                'color'    => $labelData['color'] ?? '#1B2533',
+            ], $boardId);
+        }
+    }
+
+    private function addBoardMembersFromRequest(Request $request, $boardId)
+    {
+        $memberIds = $request->get('member_ids');
+
+        if (!is_array($memberIds)) {
+            return;
+        }
+
+        $memberIds = array_filter(array_unique(array_map('intval', $memberIds)));
+        $currentUserId = get_current_user_id();
+
+        foreach ($memberIds as $memberId) {
+            if ($memberId === $currentUserId) {
+                continue;
+            }
+
+            $this->boardService->addMembersInBoard($boardId, $memberId);
+        }
+    }
+
+    /**
+     * Get archived stages for a board with optional pagination and archive actor metadata.
+     */
     public function getArchivedStage(Request $request, $board_id)
     {
         try {
-            $pagination = $request->getSafe('noPagination', 'boolval', false);
-            $per_page = $request->getSafe('per_page', 'intval', 30);
-            $page = $request->getSafe('page', 'intval', 1);
+            $board_id = absint($board_id);
+            $sanitizedParams = [
+                'noPagination' => $request->getSafe('noPagination', 'boolval', false),
+                'per_page'     => $request->getSafe('per_page', 'intval', 30),
+                'page'         => $request->getSafe('page', 'intval', 1),
+            ];
 
-            if ($pagination) {
-                $stages = Stage::where('board_id', $board_id)
-                    ->whereNotNull('archived_at')
-                    ->orderBy('created_at', 'DESC')
-                    ->get();
-            } else {
-                $stages = Stage::where('board_id', $board_id)
-                    ->whereNotNull('archived_at')
-                    ->orderBy('created_at', 'DESC')
-                    ->paginate($per_page, ['*'], 'page', $page);
-            }
+            $stages = $this->stageService->getArchivedStages($sanitizedParams, $board_id);
 
             return $this->sendSuccess([
                 'stages' => $stages,
@@ -426,6 +501,7 @@ class BoardController extends Controller
     public function find(Request $request, $board_id)
     {
         $board = Board::findOrFail($board_id);
+        $board->description = DescriptionMarkdownConverter::normalize($board->description);
         $includeArchived = filter_var($request->get('include_archived', false), FILTER_VALIDATE_BOOLEAN);
         $board->background = maybe_unserialize($board->background);
         $board->createdOn = $board->created_at->format('Y-m-d');
@@ -476,6 +552,7 @@ class BoardController extends Controller
         ]);
 
         $board = Board::findOrFail($board_id);
+        $boardData['description'] = DescriptionMarkdownConverter::normalize($boardData['description']);
 
         $oldBoard = clone $board;
         $board->fill($boardData);
@@ -657,13 +734,21 @@ class BoardController extends Controller
         }
 
         /*
-         * These are the rest of the admin users who are not in the board
+         * These are the rest of the Fluent Boards and WordPress admins who are not in the board.
          */
-        $adminUserIds = Meta::query()->where('object_type', Constant::FLUENT_BOARD_ADMIN)
+        $fluentBoardAdminIds = Meta::query()->where('object_type', Constant::FLUENT_BOARD_ADMIN)
             ->whereNotIn('object_id', $userIds)
             ->get()
             ->pluck('object_id')
             ->toArray();
+
+        $wordPressAdminIds = get_users([
+            'capability' => 'manage_options',
+            'exclude'    => $userIds,
+            'fields'     => 'ID',
+        ]);
+
+        $adminUserIds = array_values(array_unique(array_map('intval', array_merge($fluentBoardAdminIds, $wordPressAdminIds))));
 
         if ($adminUserIds) {
             $adminUsers = get_users([
@@ -812,7 +897,7 @@ class BoardController extends Controller
             if (isset($settings['is_public'])) {
                 if ($settings['is_public']) {
                     $settings['is_public'] = false;
-                    $message = __('The stage is made admin only!', 'fluent-boards');
+                    $message = __('The stage is made private!', 'fluent-boards');
                 } else {
                     $settings['is_public'] = true;
                 }
@@ -833,22 +918,25 @@ class BoardController extends Controller
 
 
     /**
-     * Set board background image or color
+     * Set or reset board background image/color.
      * @param \FluentBoards\Framework\Http\Request\Request $request
      * @return
      */
     public function setBoardBackground(Request $request, $board_id)
     {
-        // sanitize and validate image_url
-        if ($request->image_url) {
+        $backgroundData = [];
+        $isResetRequest = $request->getSafe('reset', 'rest_sanitize_boolean');
+
+        if ($isResetRequest) {
+            $backgroundData = [
+                'reset' => true,
+            ];
+        } elseif ($request->image_url) {
             $backgroundData = $this->boardSanitizeAndValidate($request->all(), [
                 "id"        => 'required',
                 'image_url' => 'required|string|url',
             ]);
-        }
-
-        // sanitize and validate color
-        if ($request->color) {
+        } elseif ($request->color) {
             $backgroundData = $this->boardSanitizeAndValidate($request->all(), [
                 "id"    => 'required',
                 'color' => 'required',
@@ -858,6 +946,11 @@ class BoardController extends Controller
         try {
             if (!$board_id) {
                 $errorMessage = __('Board id is required', 'fluent-boards');
+                throw new \Exception(esc_html($errorMessage), 400);
+            }
+
+            if (empty($backgroundData)) {
+                $errorMessage = __('Background data is required', 'fluent-boards');
                 throw new \Exception(esc_html($errorMessage), 400);
             }
 
@@ -912,22 +1005,45 @@ class BoardController extends Controller
                 ->whereNotNull('crm_contact_id')
                 ->get();
 
-            $formattedContacts = Collection::make($contactAssociatedTasks)
-                ->groupBy('crm_contact_id')
-                ->map(function ($tasks, $contactId) {
-                    $subscriber = Subscriber::find($contactId);
-                    if (!$subscriber) {
+            $tasksByContact = [];
+            foreach ($contactAssociatedTasks as $task) {
+                $tasksByContact[absint($task->crm_contact_id)][] = $task;
+            }
+
+            $boardContactIds = Meta::query()
+                ->where('object_id', absint($board_id))
+                ->where('object_type', Constant::OBJECT_TYPE_BOARD)
+                ->whereIn('key', [
+                    Constant::BOARD_ASSOCIATED_CRM_CONTACT,
+                    self::LEGACY_BOARD_ASSOCIATED_CRM_CONTACT,
+                ])
+                ->pluck('value')
+                ->toArray();
+            $boardContactIds = array_values(array_unique(array_filter(array_map('absint', $boardContactIds))));
+
+            $contactIds = array_values(array_unique(array_filter(array_map('absint', array_merge(
+                array_keys($tasksByContact),
+                $boardContactIds
+            )))));
+
+            usort($contactIds, function ($firstContactId, $secondContactId) use ($boardContactIds) {
+                return (int) in_array($secondContactId, $boardContactIds, true) - (int) in_array($firstContactId, $boardContactIds, true);
+            });
+
+            $formattedContacts = Collection::make($contactIds)
+                ->map(function ($contactId) use ($tasksByContact, $boardContactIds) {
+                    $contact = Helper::crm_contact($contactId);
+                    if (!$contact) {
                         return null; // Skip if subscriber not found
                     }
 
-                    return [
-                        'name'           => $subscriber->first_name . ' ' . $subscriber->last_name,
-                        'photo'          => $subscriber->photo,
-                        'email'          => $subscriber->email,
-                        'crm_contact_id' => $contactId,
-                        'id'             => $contactId,
-                        'tasks'          => $tasks,
-                    ];
+                    $tasks = $tasksByContact[$contactId] ?? [];
+                    $contact['name'] = trim(($contact['first_name'] ?? '') . ' ' . ($contact['last_name'] ?? '')) ?: ($contact['full_name'] ?? $contact['email'] ?? '');
+                    $contact['crm_contact_id'] = $contactId;
+                    $contact['is_board_contact'] = in_array($contactId, $boardContactIds, true);
+                    $contact['tasks'] = $tasks;
+
+                    return $contact;
                 })
                 ->filter()->toArray();
 
@@ -1027,7 +1143,14 @@ class BoardController extends Controller
             return $this->sendError(esc_html__('You do not have permission to view CRM contact boards', 'fluent-boards'), 403);
         }
 
-        $associatedBoards = $this->boardService->getAssociatedBoards($associated_id, get_current_user_id());
+        $associatedId = absint($associated_id);
+
+        if (!$associatedId) {
+            return $this->sendError(__('Invalid CRM contact', 'fluent-boards'), 400);
+        }
+
+        $associatedBoards = $this->boardService->getAssociatedBoards($associatedId, get_current_user_id());
+
         return [
             'boards' => $associatedBoards,
         ];

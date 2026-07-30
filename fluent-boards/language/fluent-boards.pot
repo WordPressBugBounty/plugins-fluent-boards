@@ -179,7 +179,7 @@ msgid "Activate FluentCRM"
 msgstr ""
 
 #: app/Http/Controllers/OptionsController.php:668
-msgid "Activate FluentKit"
+msgid "Activate FluentHub"
 msgstr ""
 
 #: app/Services/TransStrings.php:546
@@ -1154,7 +1154,7 @@ msgstr ""
 
 #: app/Http/Controllers/MCPSettingsController.php:112
 msgid ""
-"Could not install FluentKit automatically. Please install FluentKit manually,"
+"Could not install FluentHub automatically. Please install FluentHub manually,"
 " then reload this page."
 msgstr ""
 
@@ -1872,7 +1872,7 @@ msgstr ""
 
 #: app/Http/Controllers/OptionsController.php:723
 msgid ""
-"Fluent Boards MCP tools become available after FluentKit is installed and "
+"Fluent Boards MCP tools become available after FluentHub is installed and "
 "active."
 msgstr ""
 
@@ -1934,26 +1934,26 @@ msgid "FluentCRM Profile"
 msgstr ""
 
 #: app/Http/Controllers/OptionsController.php:714
-msgid "FluentKit"
+msgid "FluentHub"
 msgstr ""
 
 #: app/Http/Controllers/MCPSettingsController.php:106
 msgid ""
-"FluentKit installed and activated. Reload the page to register Fluent Boards "
+"FluentHub installed and activated. Reload the page to register Fluent Boards "
 "MCP tools."
 msgstr ""
 
 #: app/Http/Controllers/MCPSettingsController.php:108
 msgid ""
-"FluentKit is installed and active, but this version does not include the "
-"bundled MCP adapter yet. Please update FluentKit when the MCP-ready build is "
+"FluentHub is installed and active, but this version does not include the "
+"bundled MCP adapter yet. Please update FluentHub when the MCP-ready build is "
 "available, then reload this page."
 msgstr ""
 
 #: app/Http/Controllers/MCPSettingsController.php:110
 msgid ""
-"FluentKit is installed but could not be activated automatically. Please "
-"activate FluentKit from the Plugins page, then reload this page."
+"FluentHub is installed but could not be activated automatically. Please "
+"activate FluentHub from the Plugins page, then reload this page."
 msgstr ""
 
 #: app/Services/TransStrings.php:827
@@ -2028,7 +2028,7 @@ msgid "Get FluentBoards Context"
 msgstr ""
 
 #: app/Http/Controllers/OptionsController.php:665
-msgid "Get FluentKit from GitHub"
+msgid "Get FluentHub from GitHub"
 msgstr ""
 
 #: app/Services/TransStrings.php:994
@@ -2315,7 +2315,7 @@ msgid "Install FluentCRM"
 msgstr ""
 
 #: app/Http/Controllers/OptionsController.php:668
-msgid "Install FluentKit"
+msgid "Install FluentHub"
 msgstr ""
 
 #: app/Services/TransStrings.php:685
@@ -3237,10 +3237,6 @@ msgstr ""
 msgid "One or both stages do not exist or do not belong to this board"
 msgstr ""
 
-#: app/Services/TransStrings.php:253
-msgid "Only template stages can be imported"
-msgstr ""
-
 #: app/Services/TransStrings.php:254
 msgid "Open"
 msgstr ""
@@ -3404,7 +3400,7 @@ msgstr ""
 
 #: app/Http/Controllers/MCPSettingsController.php:85
 msgid ""
-"Please install FluentKit from GitHub, then reload this page to connect "
+"Please install FluentHub from GitHub, then reload this page to connect "
 "Fluent Boards with AI agents."
 msgstr ""
 

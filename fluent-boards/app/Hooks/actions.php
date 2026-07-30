@@ -19,6 +19,22 @@ use FluentBoards\App\Services\Helper;
 
 (new \FluentBoards\App\Hooks\Handlers\AdminMenuHandler())->register();
 
+/*
+ * Add custom CSS for fbs_notice.
+ */
+add_action('admin_head', function () {
+    echo '<style>
+        .fbs_notice {
+            background: var(--fbs-primary-bg, #ffffff);
+            border: 1px solid var(--fbs-primary-border, #E1E4EA);
+            border-left: 3px solid #FB3748;
+            padding: 10px 12px !important;
+            border-radius: 8px;
+            margin-bottom: 5px;
+        }
+    </style>';
+});
+
 //$app->addCustomAction('task_prop_changed', 'ActivityHandler@logActivity', 10, 3);
 $app->addCustomAction('task_board_changed', 'ActivityHandler@logMoveTaskToAnotherBoardActivity', 10, 2); //will call from service after board change code merged
 $app->addCustomAction('task_due_date_changed', 'ActivityHandler@logDueDateActivity', 10, 2);

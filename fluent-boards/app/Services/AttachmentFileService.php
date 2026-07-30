@@ -270,7 +270,7 @@ class AttachmentFileService
         }
 
         $sourcePath = $this->resolveLocalPath($source, $sourceBoardId);
-        if (!$sourcePath || !file_exists($sourcePath)) {
+        if (!$sourcePath || !is_file($sourcePath) || !is_readable($sourcePath)) {
             return $result;
         }
 
@@ -352,21 +352,21 @@ class AttachmentFileService
 
     protected function resolveLocalPath(Attachment $attachment, $boardId)
     {
-        if (!empty($attachment->file_path) && file_exists($attachment->file_path)) {
+        if (!empty($attachment->file_path) && is_file($attachment->file_path)) {
             return $attachment->file_path;
         }
 
         if (!empty($attachment->full_url)) {
             $uploadDir = wp_upload_dir();
             $pathFromUrl = rawurldecode(str_replace($uploadDir['baseurl'], $uploadDir['basedir'], $attachment->full_url));
-            if (file_exists($pathFromUrl)) {
+            if (is_file($pathFromUrl)) {
                 return $pathFromUrl;
             }
 
             if ($boardId) {
                 $urlPath = wp_parse_url($attachment->full_url, PHP_URL_PATH);
                 $pathFromBoardUrl = $urlPath ? $this->getBoardDir($boardId) . DIRECTORY_SEPARATOR . basename(rawurldecode($urlPath)) : null;
-                if ($pathFromBoardUrl && file_exists($pathFromBoardUrl)) {
+                if ($pathFromBoardUrl && is_file($pathFromBoardUrl)) {
                     return $pathFromBoardUrl;
                 }
             }
@@ -374,7 +374,7 @@ class AttachmentFileService
 
         if ($boardId && !empty($attachment->file_path)) {
             $pathFromBoard = $this->getBoardDir($boardId) . DIRECTORY_SEPARATOR . basename(rawurldecode($attachment->file_path));
-            if (file_exists($pathFromBoard)) {
+            if (is_file($pathFromBoard)) {
                 return $pathFromBoard;
             }
         }
@@ -426,7 +426,7 @@ class AttachmentFileService
 
     protected function shouldStoreAbsolutePath(Attachment $attachment)
     {
-        return !empty($attachment->file_path) && file_exists($attachment->file_path);
+        return !empty($attachment->file_path) && is_file($attachment->file_path);
     }
 
     protected function getCoverImageId(Task $task)

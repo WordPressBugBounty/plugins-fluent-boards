@@ -2,12 +2,104 @@
 
 namespace FluentBoards\App\Http\Controllers;
 
-use FluentBoards\App\Services\BoardService;
 use FluentBoards\App\Services\PermissionManager;
+use FluentBoards\App\Services\ReportService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack;
+
 class ReportController extends Controller
 {
+    /**
+     * Reports → Overview aggregates for the selected board and date range.
+     */
+    public function getOverviewReport(Request $request)
+    {
+        return $this->sendReport($request, 'getOverviewReport');
+    }
+
+    /**
+     * Reports → Tasks aggregates for the selected board and date range.
+     */
+    public function getTasksReport(Request $request)
+    {
+        return $this->sendReport($request, 'getTasksReport');
+    }
+
+    /**
+     * Reports → Activity aggregates for the selected board and date range.
+     */
+    public function getActivityReport(Request $request)
+    {
+        return $this->sendReport($request, 'getActivityReport');
+    }
+
+    /**
+     * Reports → Roadmap aggregates for accessible roadmap boards.
+     */
+    public function getRoadmapReport(Request $request)
+    {
+        if (!defined('FLUENT_BOARDS_PRO_VERSION')) {
+            return $this->sendError(
+                esc_html__('This is a pro feature', 'fluent-boards'),
+                403
+            );
+        }
+
+        try {
+            $reportService = new ReportService();
+            $scope = $reportService->resolveRoadmapScope([
+                'board_id'   => $this->getRequestedBoardId($request),
+                'start_date' => $request->getSafe('start_date', 'sanitize_text_field'),
+                'end_date'   => $request->getSafe('end_date', 'sanitize_text_field'),
+            ]);
+
+            return $this->sendSuccess([
+                'report' => $reportService->getRoadmapReport($scope),
+            ], 200);
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 400);
+        }
+    }
+
+    /**
+     * The three report screens share their parameters and their envelope; only
+     * the aggregate they ask for differs.
+     */
+    private function sendReport(Request $request, $method)
+    {
+        try {
+            $reportService = new ReportService();
+
+            $scope = $reportService->resolveScope([
+                'board_id'   => $this->getRequestedBoardId($request),
+                'start_date' => $request->getSafe('start_date', 'sanitize_text_field'),
+                'end_date'   => $request->getSafe('end_date', 'sanitize_text_field'),
+            ]);
+
+            return $this->sendSuccess([
+                'report' => $reportService->{$method}($scope),
+            ], 200);
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 400);
+        }
+    }
+
+    /**
+     * Preserves a non-empty invalid board filter as an impossible ID so it
+     * cannot silently widen a report to every accessible board.
+     */
+    private function getRequestedBoardId(Request $request)
+    {
+        $rawBoardId = $request->get('board_id');
+        $boardId = $request->getSafe('board_id', 'intval');
+
+        if ($rawBoardId !== null && $rawBoardId !== '' && !$boardId) {
+            return -1;
+        }
+
+        return $boardId;
+    }
+
     public function getTimeSheetReport(Request $request)
     {
         // Sanitize date inputs - validate they are valid date strings
@@ -96,39 +188,5 @@ class ReportController extends Controller
             'timings' => $sortTasks
         ], 200);
     }
-
-    public function getBoardReports(Request $request)
-    {
-        try {
-            $boardService = new BoardService();
-            $boardId = $request->getSafe('board_id', 'intval');
-            if (!empty($boardId))
-            {
-                $boardReport = $boardService->getBoardReports($boardId);
-            } else {
-                $boardReport = $boardService->getAllBoardReports();
-            }
-            return $this->sendSuccess([
-                'report' => $boardReport,
-            ], 200);
-        } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 400);
-        }
-    }
-
-    public function getStageWiseBoardReports($board_id)
-    {
-        $board_id = absint($board_id);
-        try {
-            $boardService = new BoardService();
-            $stages = $boardService->getStageWiseBoardReports($board_id);
-            return $this->sendSuccess([
-                'stages' => $stages,
-            ], 200);
-        } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 400);
-        }
-    }
-
 
 }

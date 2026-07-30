@@ -31,12 +31,15 @@ class CommentService
         return $comment;
     }
 
+    /**
+     * Get paginated parent comments with users, images, and replies preloaded.
+     */
     public function getComments($id, $per_page, $filter, $boardId = null)
     {
         $task = $boardId ? (new TaskService())->findTaskOnBoard($id, $boardId) : Task::findOrFail($id);
 
         $commentsQuery = $task->comments()->whereNull('parent_id')
-            ->with(['user']);
+            ->with(['user', 'images', 'replies.user', 'replies.images']);
 
         if ($filter == 'oldest') {
             $commentsQuery = $commentsQuery->oldest();
@@ -46,9 +49,7 @@ class CommentService
         $comments = $commentsQuery->paginate($per_page);
 
         foreach ($comments as $comment) {
-            $comment->replies = $this->getReplies($comment);
             $comment->replies_count = count($comment->replies);
-            $comment->load('images');
         }
 
         return $comments;

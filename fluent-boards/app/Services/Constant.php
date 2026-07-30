@@ -19,6 +19,7 @@ class Constant{
     const ACTIVITY_BOARD =  'board_activity';
 
     const TASK_ASSIGNEE =  'task_assignee';
+    const TASK_SOURCE_FLUENT_SUPPORT = 'FluentSupport';
 
     const OBJECT_TYPE_BOARD_USER_EMAIL_NOTIFICATION = 'board_user_email';
     const OBJECT_TYPE_BOARD_USER_NOTIFICATION = 'board_user_notification';
@@ -78,6 +79,7 @@ class Constant{
     const OBJECT_TYPE_BOARD = 'board';
 
     const OBJECT_TYPE_FOLDER = 'folder';
+    const OBJECT_TYPE_FOLDER_BOARD = 'FluentBoardsPro\App\Models\Folder';
     const OBJECT_TYPE_TASK = 'TASK';
     const CRM_CONTACT = 'crm_subscriber';
     const CRM_CONTACT_ASSOCIATED_BOARD = 'contact_associated_board';
@@ -119,6 +121,8 @@ class Constant{
         'table_view_assignees' => true,
         'table_view_labels' => true,
         'table_view_created_at' => true,
+        'table_view_subtasks' => false,
+        'table_view_activity' => false,
     ];
 
     const TRELLO_COLOR_MAP = [
@@ -193,122 +197,146 @@ class Constant{
     const BOARD_BACKGROUND_DEFAULT_SOLID_COLORS = [
         [
             'id' => 'solid_1',
-            'value' => '#d1d8e0'
+            'value' => '#6A88A7',
+            'dark_value' => '#314253'
         ],
         [
             'id' => 'solid_2',
-            'value' => '#ff9ff3'
+            'value' => '#9E7D61',
+            'dark_value' => '#574435'
         ],
         [
             'id' => 'solid_3',
-            'value' => '#a55eea'
+            'value' => '#D24F7D',
+            'dark_value' => '#6A223C'
         ],
         [
             'id' => 'solid_4',
-            'value' => '#5f27cd'
+            'value' => '#D7543D',
+            'dark_value' => '#772E21'
         ],
         [
             'id' => 'solid_5',
-            'value' => '#706fd3'
+            'value' => '#B17720',
+            'dark_value' => '#614113'
         ],
         [
             'id' => 'solid_6',
-            'value' => '#4b7bec'
+            'value' => '#8C8920',
+            'dark_value' => '#44420F'
         ],
         [
             'id' => 'solid_7',
-            'value' => '#4640FB'
+            'value' => '#429B3A',
+            'dark_value' => '#1B4C17'
         ],
         [
             'id' => 'solid_8',
-            'value' => '#474787'
+            'value' => '#259A77',
+            'dark_value' => '#114B39'
         ],
         [
             'id' => 'solid_9',
-            'value' => '#3F1770'
+            'value' => '#259697',
+            'dark_value' => '#114949'
         ],
         [
             'id' => 'solid_10',
-            'value' => '#182C61'
+            'value' => '#2491B6',
+            'dark_value' => '#114659'
         ],
         [
             'id' => 'solid_11',
-            'value' => '#1B1464'
+            'value' => '#2682F1',
+            'dark_value' => '#0F3F79'
         ],
         [
             'id' => 'solid_12',
-            'value' => '#2f3640'
+            'value' => '#7F6DEE',
+            'dark_value' => '#3D3379'
         ],
         [
             'id' => 'solid_13',
-            'value' => '#043D4A'
+            'value' => '#A85ED1',
+            'dark_value' => '#532B6A'
         ],
         [
             'id' => 'solid_14',
-            'value' => '#009432'
+            'value' => '#C156AB',
+            'dark_value' => '#612655'
         ],
         [
             'id' => 'solid_15',
-            'value' => '#10ac84'
+            'value' => '#FB98EE',
+            'dark_value' => '#673361'
         ],
         [
             'id' => 'solid_16',
-            'value' => '#ffc048'
+            'value' => '#522BC1',
+            'dark_value' => '#352678'
         ],
         [
             'id' => 'solid_17',
-            'value' => '#ffb142'
+            'value' => '#3C40F3',
+            'dark_value' => '#222A8C'
         ],
         [
             'id' => 'solid_18',
-            'value' => '#F48D45'
+            'value' => '#FCB84E',
+            'dark_value' => '#6D4C14'
         ],
         [
             'id' => 'solid_19',
-            'value' => '#EF6A64'
+            'value' => '#FCA848',
+            'dark_value' => '#714714'
         ],
         [
             'id' => 'solid_20',
-            'value' => '#ff5252'
+            'value' => '#EF8346',
+            'dark_value' => '#763B19'
         ],
         [
             'id' => 'solid_21',
-            'value' => '#c23616'
+            'value' => '#B63220',
+            'dark_value' => '#681D22'
         ],
         [
             'id' => 'solid_22',
-            'value' => 'hsla(238, 100%, 71%, 1)'
-        ],
-        [
-            'id' => 'solid_23',
-            'value' => 'hsla(171, 87%, 67%, 1)'
+            'value' => '#63F1D9',
+            'dark_value' => '#15584E'
         ]
     ];
 
     const BOARD_BACKGROUND_DEFAULT_GRADIENT_COLORS = [
         [
             'id' => 'gradient_1',
-            'value' => 'linear-gradient(111.53deg, #4A9B7F 2%, #0A3431 100%)',
+            'value' => 'linear-gradient(145deg, #479176 0%, #0F2C2B 100%)',
+            'dark_value' => 'linear-gradient(145deg, #156A4F 0%, #0D302F 100%)',
         ],
         [
             'id' => 'gradient_2',
-            'value' => 'linear-gradient(135deg, #B57BEE -2.09%, #392D69 100%)',
+            'value' => 'linear-gradient(145deg, #A470E1 0%, #2E2758 100%)',
+            'dark_value' => 'linear-gradient(145deg, #7637B7 0%, #2A2650 100%)',
         ],
         [
             'id' => 'gradient_3',
-            'value' => 'linear-gradient(111.53deg, #FD792F 0%, #F83D5C 98%)',
+            'value' => 'linear-gradient(145deg, #F86E35 0%, #F13855 98%)',
+            'dark_value' => 'linear-gradient(145deg, #9F3A13 0%, #580A18 98%)',
         ],
         [
             'id' => 'gradient_4',
-            'value' => 'linear-gradient(140.25deg, #0968E5 0.02%, #020344 100%)',
+            'value' => 'linear-gradient(145deg, #145CD7 0%, #050634 100%)',
+            'dark_value' => 'linear-gradient(145deg, #1858B4 0%, #242155 100%)',
         ],
         [
             'id' => 'gradient_5',
-            'value' => 'linear-gradient(90deg, hsla(238, 100%, 71%, 1) 0%, hsla(295, 100%, 84%, 1) 100%)',
+            'value' => 'linear-gradient(145deg, #5E69F9 0%, #F3A6FB 100%)',
+            'dark_value' => 'linear-gradient(145deg, #423EA7 0%, #4B1D50 100%)',
         ],
         [
             'id' => 'gradient_6',
-            'value' => 'linear-gradient(90deg, hsla(171, 87%, 67%, 1) 0%, hsla(236, 100%, 72%, 1) 100%)',
+            'value' => 'linear-gradient(145deg, #62EED9 0%, #646FF9 100%)',
+            'dark_value' => 'linear-gradient(145deg, #187767 0%, #2A2660 100%)',
         ]
     ];
 

@@ -130,6 +130,79 @@ class NotificationService
         return $settings;
     }
 
+    /**
+     * Return board notification preferences with defaults and global watch fallbacks applied.
+     */
+    public function getBoardNotificationSettingsWithDefaults($boardId, $userId)
+    {
+        $settings = array_merge(
+            Constant::BOARD_NOTIFICATION_TYPES,
+            $this->getGlobalWatchNotificationSettings($userId)
+        );
+
+        $boardSettings = $this->getBoardNotificationSettingsOfUser($boardId, $userId);
+        if ($boardSettings && $boardSettings->preferences) {
+            $preferences = maybe_unserialize($boardSettings->preferences);
+            if (is_array($preferences)) {
+                $settings = array_merge($settings, $preferences);
+            }
+        }
+
+        foreach ($settings as $key => $value) {
+            $settings[$key] = $this->normalizePreferenceValue($value);
+        }
+
+        return $settings;
+    }
+
+    /**
+     * Check if a board-scoped auto-watch preference is enabled for a user.
+     */
+    public function isBoardAutoWatchEnabled($boardId, $userId, $preferenceKey)
+    {
+        $settings = $this->getBoardNotificationSettingsWithDefaults($boardId, $userId);
+
+        return array_key_exists($preferenceKey, $settings) && $this->normalizePreferenceValue($settings[$preferenceKey]);
+    }
+
+    /**
+     * Get global watch preferences for fallback when a board has no saved watch keys.
+     */
+    private function getGlobalWatchNotificationSettings($userId)
+    {
+        $watchSettings = [
+            Constant::GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENTING    => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_ASSIGNING     => true,
+        ];
+
+        $globalSettings = $this->getGlobalNotificationSettingsOfUser($userId);
+        if (!$globalSettings || !$globalSettings->value) {
+            return $watchSettings;
+        }
+
+        $preferences = maybe_unserialize($globalSettings->value);
+        if (!is_array($preferences)) {
+            return $watchSettings;
+        }
+
+        foreach (array_keys($watchSettings) as $key) {
+            if (array_key_exists($key, $preferences)) {
+                $watchSettings[$key] = $this->normalizePreferenceValue($preferences[$key]);
+            }
+        }
+
+        return $watchSettings;
+    }
+
+    /**
+     * Convert stored preference values into strict booleans.
+     */
+    private function normalizePreferenceValue($value)
+    {
+        return true === $value || 1 === $value || '1' === $value || 'true' === $value;
+    }
+
     public function updateBoardNotificationSettings($newSettings, $id)
     {
         $userId = get_current_user_id();

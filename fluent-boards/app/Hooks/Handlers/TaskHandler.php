@@ -10,7 +10,7 @@ use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Constant;
-use FluentBoards\App\Services\OptionService;
+use FluentBoards\App\Services\NotificationService;
 use FluentCrm\App\Models\Subscriber;
 use FluentBoards\App\Models\Relation;
 use FluentCrm\App\Services\ContactsQuery;
@@ -181,42 +181,43 @@ class TaskHandler
         }
     }
 
+    /**
+     * Auto-watch newly created tasks when the board preference allows it.
+     */
     public function onTaskCreated($task)
     {
-        $currentSettings = $this->getGlobalNotificationSettings();
-        $shouldWatch = isset($currentSettings['watch_on_creating_task']) && $currentSettings['watch_on_creating_task'];
-
-        if ($shouldWatch) {
+        if ($this->shouldAutoWatchForBoard($task->board_id, Constant::GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK)) {
             $task->watchers()->syncWithoutDetaching([get_current_user_id() => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
         }
     }
 
+    /**
+     * Auto-watch commented tasks when the board preference allows it.
+     */
     public function onCommentCreated($comment)
     {
         $task = $comment->task;
-        $currentSettings = $this->getGlobalNotificationSettings();
-        $shouldWatch = isset($currentSettings['watch_on_commenting']) && $currentSettings['watch_on_commenting'];
-
-        if ($shouldWatch) {
+        if ($this->shouldAutoWatchForBoard($task->board_id, Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENTING)) {
             $task->watchers()->syncWithoutDetaching([get_current_user_id() => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
         }
     }
 
+    /**
+     * Auto-watch assigned tasks when the board preference allows it.
+     */
     public function onAssignAnotherUser($task, $assigneeId)
     {
-        $currentSettings = $this->getGlobalNotificationSettings();
-        $shouldWatch = isset($currentSettings['watch_on_assigning']) && $currentSettings['watch_on_assigning'];
-
-        if ($shouldWatch) {
+        if ($this->shouldAutoWatchForBoard($task->board_id, Constant::GLOBAL_EMAIL_NOTIFICATION_ASSIGNING)) {
             $task->watchers()->syncWithoutDetaching([$assigneeId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
         }
     }
 
-    private function getGlobalNotificationSettings()
+    /**
+     * Determine auto-watch behavior from the current user's board preference.
+     */
+    private function shouldAutoWatchForBoard($boardId, $preferenceKey)
     {
-        $globalSettings = (new OptionService())->getGlobalNotificationSettings();
-
-        return maybe_unserialize($globalSettings->value);
+        return (new NotificationService())->isBoardAutoWatchEnabled($boardId, get_current_user_id(), $preferenceKey);
     }
 
     public function taskCloned($originalTask, $clonedTask)

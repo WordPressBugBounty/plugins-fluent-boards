@@ -32,7 +32,7 @@ class TaskMigrator
                 `stage_id` INT UNSIGNED NULL,
                 `source` VARCHAR(50) NULL DEFAULT 'web' COMMENT 'web, funnel, contact-section etc.',
                 `source_id` VARCHAR(255) NULL,
-                `priority` VARCHAR(50) NULL DEFAULT 'low' COMMENT 'low, medium, high', 
+                `priority` VARCHAR(50) NULL DEFAULT NULL COMMENT 'urgent, high, medium, low',
                 `description` LONGTEXT NULL,
                 `lead_value` DECIMAL(10,2) DEFAULT 0.00,
                 `created_by` BIGINT UNSIGNED NULL,

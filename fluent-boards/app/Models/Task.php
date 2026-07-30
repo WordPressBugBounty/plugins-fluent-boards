@@ -223,6 +223,16 @@ class Task extends Model
         return $this->belongsTo(Board::class, 'board_id', 'id');
     }
 
+    /**
+     * Exclude tasks that belong to template boards.
+     */
+    public function scopeExcludeTemplateBoards($query)
+    {
+        return $query->whereHas('board', function ($boardQuery) {
+            $boardQuery->excludeTemplates();
+        });
+    }
+
     public function assignees()
     {
         return $this->belongsToMany(
@@ -370,6 +380,12 @@ class Task extends Model
     public function createTask($data)
     {
         $data = apply_filters('fluent_boards/before_task_create', $data);
+
+        // Keep newly-created tasks unprioritized unless a priority is explicitly selected.
+        if (!array_key_exists('priority', $data)) {
+            $data['priority'] = '';
+        }
+
         $createdTask = Task::create($data);
     
         if ( ! empty($data['assignees'])) {
@@ -845,7 +861,7 @@ class Task extends Model
                 'field' => __('Priority', 'fluent-boards'),
                 'type'  => 'text',
                 'rules' => 'optional',
-                'description' => __('Priority of the task (low | medium | high). Example: "medium" ', 'fluent-boards'),
+                'description' => __('Priority of the task (urgent | high | medium | low). Leave empty for no priority. Example: "medium" ', 'fluent-boards'),
             ],
             'due_at' => [
                 'field' => __('Due Date', 'fluent-boards'),

@@ -17,14 +17,31 @@ class  LabelService
 
     public function getLabelsByBoardUsedInTasks($boardId)
     {
-        $boardLabel = Label::where('board_id', $boardId)->where('type', 'label')->orderBy('created_at', 'ASC')->get();
+        $boardLabels = Label::where('board_id', $boardId)
+            ->where('type', 'label')
+            ->orderBy('created_at', 'ASC')
+            ->get();
+
+        if ($boardLabels->isEmpty()) {
+            return [];
+        }
+
+        // One relation query for the whole board rather than an exists() per label.
+        $usedIds = Relation::where('object_type', Constant::OBJECT_TYPE_TASK_LABEL)
+            ->whereIn('foreign_id', $boardLabels->pluck('id')->all())
+            ->distinct()
+            ->pluck('foreign_id')
+            ->all();
+
+        $usedIds = array_map('intval', $usedIds);
+
         $usedLabel = [];
-        foreach ($boardLabel as $label) {
-            $exist = Relation::where('foreign_id', $label->id)->where('object_type', 'task_label')->exists();
-            if ($exist) {
+        foreach ($boardLabels as $label) {
+            if (in_array((int) $label->id, $usedIds, true)) {
                 $usedLabel[] = $label;
             }
         }
+
         return $usedLabel;
     }
 
@@ -56,6 +73,9 @@ class  LabelService
         {
             $data[] = [
                 'board_id' => $boardId,
+                // Titles match the create-board modal defaults, otherwise boards created
+                // outside that modal end up with colour chips carrying no text.
+                'title' => ucfirst($index),
                 'slug' => $index,
                 'type' => 'label',
                 'bg_color' => $bg_color,
@@ -114,10 +134,17 @@ class  LabelService
     {
         $label = $boardId ? $this->findLabelOnBoard($id, $boardId) : Label::findOrFail($id);
         $label->title = $labelData['label'];
-        if ($label->bg_color != $labelData['bg_color']) {
+
+        // Background and text colour move independently: coupling them dropped a
+        // text-colour-only change on the floor while still reporting success.
+        if (isset($labelData['bg_color']) && $labelData['bg_color'] !== '') {
             $label->bg_color = $labelData['bg_color'];
+        }
+
+        if (isset($labelData['color']) && $labelData['color'] !== '') {
             $label->color = $labelData['color'];
         }
+
         $label->save();
         return $label;
     }

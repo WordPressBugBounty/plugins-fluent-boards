@@ -282,3 +282,26 @@ function fluent_boards_string_to_bool($value)
     // Fallback: return original value if not recognized
     return $value;
 }
+
+/**
+ * Builds the canonical Fluent Boards Upgrade-to-Pro URL.
+ *
+ * @param string $utmContent Exact in-plugin CTA placement.
+ * @return string
+ */
+function fluent_boards_get_upgrade_url($utmContent = '')
+{
+    $queryArgs = [
+        'utm_source'   => 'fluent-boards',
+        'utm_medium'   => 'free_plugin',
+        'utm_campaign' => 'upgrade_pro',
+        'utm_term'     => FLUENT_BOARDS_PLUGIN_VERSION,
+    ];
+
+    $utmContent = sanitize_key($utmContent);
+    if ($utmContent) {
+        $queryArgs['utm_content'] = $utmContent;
+    }
+
+    return add_query_arg($queryArgs, 'https://fluentboards.com/pricing/');
+}

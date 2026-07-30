@@ -79,15 +79,16 @@ class ActivityHandler
 
     public function logTaskContentUpdatedActivity($task, $col, $oldTask = null)
     {
+        // Description autosaves are intentionally excluded to avoid flooding the activity feed.
+        if ($col === 'description') {
+            return;
+        }
+
         $action = 'updated';
-        if($col == 'description'){
-            $this->createLogActivity( $task->id, $action, $col, $oldTask->description, $task->description );
+        if($task->parent_id){
+            $this->createLogActivity( $task->parent_id, $action, 'subtask', $oldTask->title, $task->title );
         }else{
-            if($task->parent_id){
-                $this->createLogActivity( $task->parent_id, $action, 'subtask', $oldTask->title, $task->title );
-            }else{
-                $this->createLogActivity( $task->id, $action, $col, $oldTask->title, $task->title );
-            }
+            $this->createLogActivity( $task->id, $action, $col, $oldTask->title, $task->title );
         }
     }
 

@@ -308,13 +308,19 @@ class PermissionManager
         return !!is_user_logged_in();
     }
 
-    public static function getAll_WP_Admins($searchquery = '')
+    public static function getAll_WP_Admins($searchquery = '', $number = null)
     {
         $args = array(
             'role'       => '',
             'capability' => 'manage_options',
             'search'     => '*' . $searchquery . '*',
         );
+
+        // Optionally bound the result set (e.g. for selector popovers) so an
+        // empty search can't serialize every admin-capable user on large sites.
+        if ($number !== null) {
+            $args['number'] = (int) $number;
+        }
 
         return get_users($args);
     }

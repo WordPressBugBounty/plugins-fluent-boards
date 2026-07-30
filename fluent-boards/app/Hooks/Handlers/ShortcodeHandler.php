@@ -4,6 +4,7 @@ namespace FluentBoards\App\Hooks\Handlers;
 
 use FluentBoards\App\App;
 use FluentBoards\App\Models\Board;
+use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Services\PublicAccessService;
@@ -174,6 +175,9 @@ class ShortcodeHandler
             'fluent_crm_exists'      => false,
             'fluent_roadmap_exists'  => false,
             'has_pro'                => false,
+            'upgrade_url'             => fluent_boards_get_upgrade_url(),
+            'board_solid_colors'     => Constant::BOARD_BACKGROUND_DEFAULT_SOLID_COLORS,
+            'board_gradient_colors'  => Constant::BOARD_BACKGROUND_DEFAULT_GRADIENT_COLORS,
             'is_rtl'           => $isRtl,
             'public_mode'      => true,
             'public_token'     => $boardToken,

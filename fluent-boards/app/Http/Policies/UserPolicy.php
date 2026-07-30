@@ -19,7 +19,7 @@ class UserPolicy extends BasePolicy
         return PermissionManager::hasAppAccess();
     }
 
-    public function quickSearch(Request $request)
+    public function globalSearch(Request $request)
     {
         return true;
     }

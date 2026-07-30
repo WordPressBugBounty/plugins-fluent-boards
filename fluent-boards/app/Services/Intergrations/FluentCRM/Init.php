@@ -70,6 +70,7 @@ class Init
                 'asset_url'        => $assets,
                 'trans'            => TransStrings::getStrings(),
                 'base_url'         => fluent_boards_page_url(),
+                'admin_app_url'    => admin_url('admin.php?page=fluent-boards#/'),
                 'admin_url'        => admin_url('admin.php'),
                 'render_in'        => is_admin() ? 'admin' : 'front',
                 'has_pro'          => defined('FLUENT_BOARDS_PRO_VERSION'),

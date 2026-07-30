@@ -81,6 +81,8 @@ class UserController extends Controller
         if (is_array($rawBoardIds)) {
             $boardIds = array_filter(array_map('intval', $rawBoardIds));
         }
+
+        $perPage = max(1, min(absint($request->getSafe('per_page', 'intval', 15)), 50));
         
         $requestData = [
             'page' => $request->getSafe('page', 'intval', 1),
@@ -88,11 +90,32 @@ class UserController extends Controller
             'boardIds' => $boardIds,
             'orderBy' => $request->getSafe('orderBy', 'sanitize_text_field'),
             'order' => $request->getSafe('order', 'sanitize_text_field'),
+            'per_page' => $perPage
         ];
         try {
             return $this->sendSuccess(
                 $this->userService->getMemberAssociatedTasks($user_id, $requestData)
                 , 200);
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 404);
+        }
+    }
+
+    /**
+     * Return profile task counts using the same categories shown on the dashboard.
+     */
+    public function getMemberTaskCounts(Request $request, $user_id)
+    {
+        $user_id = absint($user_id);
+        $rawBoardIds = $request->getSafe('boardIds');
+        $boardIds = is_array($rawBoardIds)
+            ? array_filter(array_map('intval', $rawBoardIds))
+            : [];
+
+        try {
+            return $this->sendSuccess([
+                'counts' => $this->userService->getMemberTaskCounts($user_id, $boardIds),
+            ], 200);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 404);
         }
@@ -154,6 +177,16 @@ class UserController extends Controller
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 404);
         }
+    }
+
+    public function getMemberStats($user_id)
+    {
+        $user_id = absint($user_id);
+
+        return $this->sendSuccess(
+            $this->userService->getMemberStats($user_id),
+            200
+        );
     }
 
     public function updateDisplayName(Request $request, $user_id)

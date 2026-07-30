@@ -2,8 +2,10 @@
 //if accessed directly exit
 if (!defined('ABSPATH')) exit;
 
+use FluentBoards\App\Http\Controllers\AiController;
 use FluentBoards\App\Http\Controllers\BoardController;
 use FluentBoards\App\Http\Controllers\CommentController;
+use FluentBoards\App\Http\Controllers\FolderController;
 use FluentBoards\App\Http\Controllers\LabelController;
 use FluentBoards\App\Http\Controllers\MCPSettingsController;
 use FluentBoards\App\Http\Controllers\NotificationController;
@@ -34,7 +36,7 @@ $router->prefix('tasks')->withPolicy('AuthPolicy')->group(function ($router) {
 
 $router->withPolicy('BoardUserPolicy')->group(function ($router) {
 
-    $router->get('/quick-search', [OptionsController::class, 'quickSearch']);
+    $router->get('/global-search', [OptionsController::class, 'globalSearch']);
 
     $router->get('/member-associated-users/{id}', [UserController::class, 'memberAssociatedTaskUsers']);
     $router->get('ajax-options', [OptionsController::class, 'selectorOptions']);
@@ -42,8 +44,11 @@ $router->withPolicy('BoardUserPolicy')->group(function ($router) {
     $router->get('get-global-notification-settings', [OptionsController::class, 'getGlobalNotificationSettings']);
     $router->put('update-dashboard-view-settings', [OptionsController::class, 'updateDashboardViewSettings']);
     $router->get('get-dashboard-view-settings', [OptionsController::class, 'getDashboardViewSettings']);
-    $router->get('projects/reports', [ReportController::class, 'getBoardReports']);
     $router->get('reports/timesheet', [ReportController::class, 'getTimeSheetReport']);
+    $router->get('reports/overview', [ReportController::class, 'getOverviewReport']);
+    $router->get('reports/tasks', [ReportController::class, 'getTasksReport']);
+    $router->get('reports/activity', [ReportController::class, 'getActivityReport']);
+    $router->get('reports/roadmap', [ReportController::class, 'getRoadmapReport']);
 
 });
 
@@ -51,9 +56,10 @@ $router->prefix('projects')->withPolicy('AuthPolicy')->group(function ($router) 
     $router->get('/', [BoardController::class, 'getBoards']);
     $router->post('/', [BoardController::class, 'create']);
     $router->get('/get-default-board-colors', [BoardController::class, 'getBoardDefaultBackgroundColors']);
+    // NOTE: The global "Add" (board/stage/task) drawer was removed from the v2 UI. This endpoint is NOT dedicated to that feature — it remains in active use by other components, so it must stay.
     $router->get('/list-of-boards', [BoardController::class, 'getBoardsList']); // it is using for to get all boards by user
     $router->get('/user-accessible-boards', [BoardController::class, 'getOnlyBoardsByUser']);
-    $router->get('/crm-associated-boards/{id}', [BoardController::class, 'getAssociatedBoards'])->int('associated_id');
+    $router->get('/crm-associated-boards/{associated_id}', [BoardController::class, 'getAssociatedBoards'])->int('associated_id');
     $router->get('/currencies', [BoardController::class, 'getCurrencies']);
     $router->get('/user-admin-in-boards', [BoardController::class, 'getUsersOfBoards']);
     $router->get('/recent-boards', [BoardController::class, 'getRecentBoards']);
@@ -90,6 +96,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->get('/activities', [BoardController::class, 'getActivities'])->int('board_id');
 
     $router->put('/stage-move-all-task', [BoardController::class, 'moveAllTasks'])->int('board_id');
+    // NOTE: The global "Add" drawer was removed from the v2 UI. This stage-create endpoint is shared (in-board stage creation still uses it), so it must stay.
     $router->post('/stage-create', [BoardController::class, 'createStage'])->int('board_id');
     $router->put('/stage/{stage_id}/sort-task', [StageController::class, 'sortStageTasks'])->int('board_id')->int('stage_id');
     $router->put('/stage/{stage_id}/archive-all-task', [BoardController::class, 'archiveAllTasksInStage'])->int('board_id')->int('stage_id');
@@ -121,8 +128,6 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->put('/archive-board', [BoardController::class, 'archiveBoard'])->int('board_id');
     $router->put('/restore-board', [BoardController::class, 'restoreBoard'])->int('board_id');
     $router->get('/board-menu-items', [BoardController::class, 'getBoardMenuItems'])->int('board_id');
-    $router->get('/stage-wise-reports', [ReportController::class, 'getStageWiseBoardReports'])->int('board_id');
-
     $router->get('/public-access-settings', [BoardController::class, 'getPublicAccessSettings'])->int('board_id');
     $router->put('/toggle-public-access', [BoardController::class, 'togglePublicAccess'])->int('board_id');
 
@@ -135,11 +140,15 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->get('/table', [TaskController::class, 'getTableTasks'])->int('board_id');
         $router->get('/by-stage', [TaskController::class, 'getTasksByBoardStage'])->int('board_id');
         $router->get('/stage-page', [TaskController::class, 'getStageTasksPage'])->int('board_id');
+        // NOTE: The global "Add" drawer was removed from the v2 UI. This is the primary task-create endpoint used throughout the app, so it must stay.
         $router->post('/', [TaskController::class, 'create']);
         $router->post('/create-task-from-image', [TaskController::class, 'createTaskFromImage'])->int('board_id');
         $router->get('/archived', [TaskController::class, 'getArchivedTasks'])->int('board_id');
         $router->get('/{task_id}', [TaskController::class, 'find'])->int('board_id')->int('task_id')->int('task_id');
         $router->put('/{task_id}', [TaskController::class, 'updateTaskProperties'])->int('board_id')->int('task_id');
+        $router->delete('/{task_id}/support-ticket', [TaskController::class, 'removeSupportTicketLink'])
+            ->int('board_id')
+            ->int('task_id');
         $router->post('/{task_id}/dates', [TaskController::class, 'updateTaskDates'])->int('board_id')->int('task_id');
         $router->put('/{task_id}/move-task', [TaskController::class, 'moveTask'])->int('board_id')->int('task_id');
         $router->post('/bulk-actions', [TaskController::class, 'bulkActions'])->int('board_id');
@@ -148,6 +157,12 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->delete('/{task_id}', [TaskController::class, 'deleteTask'])->int('board_id')->int('task_id');
         $router->put('/{task_id}/move-to-next-stage', [TaskController::class, 'moveTaskToNextStage'])->int('board_id')->int('task_id');
         $router->put('/{task_id}/pin', [TaskController::class, 'toggleTaskPinned'])->int('board_id')->int('task_id');
+
+        // AI task intelligence (summarize / subtasks / suggestions) — board-scoped.
+        $router->post('/{task_id}/ai-assist', [AiController::class, 'taskAssist'])->int('board_id')->int('task_id');
+        // Transactional batch apply for AI label/priority suggestions (all-or-nothing).
+        // Bulk subtask creation lives with the other subtask APIs in Fluent Boards Pro.
+        $router->post('/{task_id}/ai-apply-suggestions', [AiController::class, 'applySuggestions'])->int('board_id')->int('task_id');
 
         // Comments Routes Area
         $router->get('/{task_id}/comments', [CommentController::class, 'getComments'])->int('board_id')->int('task_id');
@@ -189,6 +204,28 @@ $router->prefix('admin')->withPolicy('AdminPolicy')->group(function ($router) {
 
     $router->get('pages', [OptionsController::class, 'getPages']);
 
+    $router->prefix('folders')->group(function ($router) {
+        $router->get('/', [FolderController::class, 'getFolders']);
+        $router->post('/', [FolderController::class, 'createFolder']);
+        $router->prefix('/{folder_id}')->group(function ($router) {
+            $router->get('/', [FolderController::class, 'getFolderById'])->int('folder_id');
+            $router->post('/add-board', [FolderController::class, 'addBoardToFolder'])->int('folder_id');
+            $router->post('/remove-board', [FolderController::class, 'removeBoardFromFolder'])->int('folder_id');
+            $router->put('/', [FolderController::class, 'updateFolder'])->int('folder_id');
+            $router->delete('/', [FolderController::class, 'deleteFolder'])->int('folder_id');
+        });
+    });
+
+});
+
+// AI writing assistant. Settings routes are admin-only; `generate` is open to
+// any authenticated user (enforced per-method inside AiPolicy).
+$router->prefix('ai')->withPolicy('AiPolicy')->group(function ($router) {
+    $router->get('/settings', [AiController::class, 'getSettings']);
+    $router->post('/settings', [AiController::class, 'saveSettings']);
+    $router->post('/models', [AiController::class, 'getModels']);
+    $router->post('/test', [AiController::class, 'testConnection']);
+    $router->post('/generate', [AiController::class, 'generate']);
 });
 
 $router->prefix('webhooks')->withPolicy('WebhookPolicy')->group(function ($router) {
@@ -211,7 +248,9 @@ $router->prefix('member/{id}')->withPolicy('UserPolicy')->group(function ($route
     $router->get('/', [UserController::class, 'getMemberInfo']);
     $router->get('/projects', [UserController::class, 'getMemberBoards']);
     $router->get('/tasks', [UserController::class, 'getMemberAssociatedTasks']);
+    $router->get('/task-counts', [UserController::class, 'getMemberTaskCounts']);
     $router->get('/activities', [UserController::class, 'getMemberRelatedAcitivies']);
+    $router->get('/stats', [UserController::class, 'getMemberStats']);
 });
 
 /*
@@ -239,7 +278,7 @@ $router->prefix('public/boards/{board_id}')->withPolicy('PublicBoardPolicy')->gr
 
 // User utility routes
 $router->withPolicy('UserPolicy')->group(function ($router) {
-    $router->get('/quick-search', [OptionsController::class, 'quickSearch']);
+    $router->get('/global-search', [OptionsController::class, 'globalSearch']);
 });
 
 

@@ -130,7 +130,7 @@ class AdminMenuHandler
             __('Settings', 'fluent-boards'),
             __('Settings', 'fluent-boards'),
             'manage_options',
-            'fluent-boards#/settings/members-role',
+            'fluent-boards#/settings/general-settings',
             [$this, 'render']
         );
     }
@@ -204,23 +204,6 @@ class AdminMenuHandler
         ];
 
         $isAdmin = PermissionManager::isAdmin();
-
-        if ($isAdmin) {
-            $menuItems['settings'] = [
-                'key'       => 'settings',
-                'label'     => __('Settings', 'fluent-boards'),
-                'permalink' => $baseUrl . 'settings/members-role'
-            ];
-        }
-
-        if (!defined('FLUENT_BOARDS_PRO')) {
-            $menuItems['get_pro'] = [
-                'key'       => 'get_pro',
-                'label'     => __('Get Pro', 'fluent-boards'),
-                'permalink' => 'https://fluentboards.com?utm_source=plugin&utm_medium=menu&utm_campaign=pro&utm_id=wp',
-                'class'     => 'pro_link'
-            ];
-        }
 
         if ($isAdmin) {
             $menuItems['help'] = [
@@ -376,6 +359,7 @@ class AdminMenuHandler
         $assets = $app['url.assets'];
         $roleAndPermissions = $this->getRoleAndPermissions($currentUser->ID);
         $onboardingValue = $this->getOnboardingValue();
+        $generalSettings = fluent_boards_get_option('general_settings', []);
 
         return apply_filters('fluent_boards/app_vars', [
             'slug'                            => $slug = $app->config->get('app.slug'),
@@ -385,17 +369,27 @@ class AdminMenuHandler
             'ajaxurl'                         => admin_url('admin-ajax.php'),
             'file_upload_limit'               => $this->fileUploadLimit(),
             'brand_logo'                      => $this->getMenuIcon(),
+            'business_name'                   => sanitize_text_field(Arr::get($generalSettings, 'business_name', '')),
             'asset_url'                       => $assets,
             'admin_url'                       => admin_url('admin.php'),
             'fluent_crm_exists'               => !defined('FLUENTCRM') ? false : true,
+            'fluent_support_exists'           => !!defined('FLUENT_SUPPORT_VERSION'),
+            'can_manage_crm_contacts'         => $this->canManageCrmContacts(),
             'fluent_roadmap_exists'           => !defined('FLUENT_ROADMAP') ? false : true,
             'has_pro'                         => !!defined('FLUENT_BOARDS_PRO_VERSION'),
+            'upgrade_url'                     => fluent_boards_get_upgrade_url(),
+            'board_solid_colors'              => Constant::BOARD_BACKGROUND_DEFAULT_SOLID_COLORS,
+            'board_gradient_colors'           => Constant::BOARD_BACKGROUND_DEFAULT_GRADIENT_COLORS,
+            'ai_features'                     => [
+                'enabled' => (new \FluentBoards\App\Services\AiService())->isReady(),
+            ],
             'me'                              => [
                 'id'                         => $currentUser->ID,
                 'full_name'                  => trim($currentUser->first_name . ' ' . $currentUser->last_name),
                 'display_name'               => $currentUser->display_name,
                 'email'                      => $currentUser->user_email,
                 'photo'                      => fluent_boards_user_avatar($currentUser->user_email, $currentUser->display_name),
+                'logout_url'                 => wp_logout_url(),
                 'fluent_boards_role'         => $roleAndPermissions['role'],
                 'fluent_boards_capabilities' => $roleAndPermissions['permissions'],
                 'is_wp_admin'                => user_can($currentUser->ID, 'manage_options') ? 'yes' : 'no',
@@ -427,10 +421,14 @@ class AdminMenuHandler
                 site_url('/wp-includes/css/dashicons.css')
             ),
             'is_rtl' => is_rtl(),
-            'task_tabs' => apply_filters('fluent_boards/task_tabs', $this->getDefaultTaskTabs()),
             'board_menu_items' => BoardMenuHandler::getMenuItems(),
             'reminder_types' => defined('FLUENT_BOARDS_PRO') ? Helper::taskReminderTypes() : [],
         ]);
+    }
+
+    protected function canManageCrmContacts()
+    {
+        return defined('FLUENTCRM') && \FluentCrm\App\Services\PermissionManager::currentUserCan('fcrm_manage_contacts');
     }
 
     private function getOnboardingValue()
@@ -446,32 +444,14 @@ class AdminMenuHandler
 //        return 'no';
     }
 
-    private function getDefaultTaskTabs()
-    {
-        return [
-            'all' => [
-                'key' => 'all',
-                'label' => __('All', 'fluent-boards'),
-                'component' => 'task-all-comments-and-activities'
-            ],
-            'comment' => [
-                'key' => 'comment',
-                'label' => __('Comments', 'fluent-boards'),
-                'component' => 'task-comments'
-            ],
-            'activity' => [
-                'key' => 'activity',
-                'label' => __('Activities', 'fluent-boards'),
-                'component' => 'task-activities'
-            ]
-        ];
-    }
     public function getDefaultPriorities()
     {
         return [
-            'low'    => __('Low', 'fluent-boards'),
+            ''       => __('No priority', 'fluent-boards'),
+            'urgent' => __('Urgent', 'fluent-boards'),
+            'high'   => __('High', 'fluent-boards'),
             'medium' => __('Medium', 'fluent-boards'),
-            'high'   => __('High', 'fluent-boards')
+            'low'    => __('Low', 'fluent-boards')
         ];
     }
 
@@ -553,23 +533,13 @@ class AdminMenuHandler
     }
 
     /**
-     * Retrieves the maximum upload limit based on PHP and WordPress configurations.
+     * Retrieves the Fluent Boards upload limit exposed to the admin app.
      *
-     * This method calculates and returns the minimum value among the following:
-     * 1. The PHP 'upload_max_filesize' configuration.
-     * 2. The PHP 'post_max_size' configuration.
-     * 3. The WordPress maximum upload size limit using the 'wp_max_upload_size' function.
-     *
-     * @return int The minimum of the mentioned upload size limits in bytes.
+     * @return int Upload limit in bytes.
      */
     public function fileUploadLimit()
     {
-        // Calculate the minimum of 'upload_max_filesize', 'post_max_size', and WordPress maximum upload size.
-        return min(
-            wp_convert_hr_to_bytes(ini_get('upload_max_filesize')),
-            wp_convert_hr_to_bytes(ini_get('post_max_size')),
-            wp_max_upload_size()
-        );
+        return (new \FluentBoards\App\Services\UploadService())->getFileUploadLimit();
     }
 
     public function getInlineScript()

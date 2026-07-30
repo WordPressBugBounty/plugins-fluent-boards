@@ -2,15 +2,17 @@
 
 namespace FluentBoards\App\Services\Intergrations\FluentCRM;
 
-
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\PermissionManager;
+use FluentBoards\Framework\Database\Orm\Builder;
 
 class DeepIntegration
 {
+    private const USER_TEMPLATE_OPTION_LIMIT = 50;
+
     public function init()
     {
         add_filter('fluentcrm_ajax_options_boards', [$this, 'getBoards'], 10, 3);
@@ -85,64 +87,100 @@ class DeepIntegration
 
     public function getDefaultBoardTemplates($records, $search, $includeIds)
     {
-        if (!defined('FLUENT_BOARDS_PRO')) {
-            return [];
-        }
-
-        $templateService = new \FluentBoardsPro\App\Services\TemplateService();
-        $templates = $templateService->getDefaultTemplates();
-
-        $formattedTemplates = [];
-        foreach ($templates as $template) {
-            // Filter by search if provided
-            if (!empty($search)) {
-                $title = strtolower($template['title'] ?? '');
-                $description = strtolower($template['description'] ?? '');
-                $searchLower = strtolower($search);
-                
-                if (strpos($title, $searchLower) === false && strpos($description, $searchLower) === false) {
-                    continue;
-                }
-            }
-
-            $formattedTemplates[] = [
-                'id'    => $template['id'],
-                'title' => $template['title']
-            ];
-        }
-
-        return $formattedTemplates;
+        // Built-in board templates are coming soon. Keep this selector empty so
+        // FluentCRM option lookups do not request the external default-template API.
+        return [];
     }
 
+    /**
+     * Return bounded user-template options for the FluentCRM selector.
+     *
+     * @param array  $records
+     * @param string $search
+     * @param array  $includeIds
+     * @return array
+     */
     public function getUserBoardTemplates($records, $search, $includeIds)
     {
         if (!defined('FLUENT_BOARDS_PRO')) {
             return [];
         }
 
-        $templateService = new \FluentBoardsPro\App\Services\TemplateService();
-        $templates = $templateService->getUserTemplates();
+        global $wpdb;
 
-        $formattedTemplates = [];
+        $search = is_scalar($search) ? sanitize_text_field((string) $search) : '';
+        $includeIds = array_slice(array_values(array_unique(array_filter(
+            array_map('absint', (array) $includeIds)
+        ))), 0, self::USER_TEMPLATE_OPTION_LIMIT);
+
+        $query = $this->newUserTemplateOptionsQuery();
+
+        if ($search !== '') {
+            $query->where('title', 'like', '%' . $wpdb->esc_like($search) . '%');
+        }
+
+        $templates = $query->orderBy('title', 'ASC')
+            ->limit(self::USER_TEMPLATE_OPTION_LIMIT)
+            ->get();
+        $options = $this->formatUserTemplateOptions($templates);
+
+        // Preserve saved selections even when they fall outside the current result page.
+        $missingIds = array_diff($includeIds, array_keys($options));
+        if ($missingIds) {
+            $selectedTemplates = $this->newUserTemplateOptionsQuery()
+                ->whereIn('id', $missingIds)
+                ->get();
+            $options += $this->formatUserTemplateOptions($selectedTemplates);
+        }
+
+        $selectedOptions = array_intersect_key($options, array_flip($includeIds));
+        $regularOptions = array_diff_key($options, $selectedOptions);
+        $options = array_merge(
+            array_values($selectedOptions),
+            array_slice(
+                array_values($regularOptions),
+                0,
+                max(0, self::USER_TEMPLATE_OPTION_LIMIT - count($selectedOptions))
+            )
+        );
+
+        usort($options, function ($first, $second) {
+            return strcasecmp($first['title'], $second['title']);
+        });
+
+        return $options;
+    }
+
+    /**
+     * Create a fresh query for lightweight user-template selector options.
+     *
+     * @return Builder
+     */
+    private function newUserTemplateOptionsQuery()
+    {
+        return Board::select(['id', 'title'])
+            ->whereIn('type', ['to-do', 'roadmap'])
+            ->onlyTemplates();
+    }
+
+    /**
+     * Format template models as selector options keyed by integer ID.
+     *
+     * @param iterable $templates
+     * @return array
+     */
+    private function formatUserTemplateOptions($templates)
+    {
+        $options = [];
+
         foreach ($templates as $template) {
-            // Filter by search if provided
-            if (!empty($search)) {
-                $title = strtolower($template['title'] ?? '');
-                $description = strtolower($template['description'] ?? '');
-                $searchLower = strtolower($search);
-                
-                if (strpos($title, $searchLower) === false && strpos($description, $searchLower) === false) {
-                    continue;
-                }
-            }
-
-            $formattedTemplates[] = [
-                'id'    => strval($template['id']),
-                'title' => $template['title']
+            $options[(int) $template->id] = [
+                'id'    => (int) $template->id,
+                'title' => $template->title,
             ];
         }
 
-        return $formattedTemplates;
+        return $options;
     }
 
     public function getBoardMembers($records, $search, $includeIds)

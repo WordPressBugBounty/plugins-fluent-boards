@@ -85,7 +85,12 @@ class FileSystem
 
         $this->overrideUploadDir();
 
-        $uploadOverrides = ['test_form' => false];
+        $uploadOverrides = [
+            'test_form' => false,
+            // Accept the same allow-list FluentBoards validates against, so wp_handle_upload
+            // doesn't reject broader types (e.g. .json, .md) by extension.
+            'mimes'     => \FluentBoards\App\Services\UploadService::getAllowedMimeMap(),
+        ];
         $uploadedFiles = []; // Initialize the array
 
         if(is_object($files)) {

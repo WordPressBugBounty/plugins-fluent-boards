@@ -129,7 +129,7 @@ class TaskCreateAction extends BaseAction
                     'type'        => 'select',
                     'label'       => __('Select Priority', 'fluent-boards'),
                     'options'     => Helper::getPriorityOptions(),
-                    'inline_help' =>  __('Keeping it blank will select priority to low', 'fluent-boards'),
+                    'inline_help' =>  __('Keeping it blank will create the task with no priority', 'fluent-boards'),
                     'dependency'    => [
                         'depends_on' => 'create_task_type',
                         'operator'   => '=',
@@ -228,7 +228,7 @@ class TaskCreateAction extends BaseAction
                 'stage_id'       => $stageId,
                 'source'         => 'funnel',
                 'description'    => $description,
-                'priority'       => $priority ?? 'low',
+                'priority'       => $priority ?? '',
                 'due_at'         => $due_date ?? null,
                 'position'       => (new TaskService())->getLastPositionOfTasks($stageId),
             ]);

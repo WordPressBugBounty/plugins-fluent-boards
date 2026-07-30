@@ -33,12 +33,15 @@ class Board extends Model
 
     protected $appends = ['meta', 'isUserOnlyViewer'];
 
+    /**
+     * Boot board defaults while preserving empty backgrounds for newly created boards.
+     */
     public static function boot()
     {
         static::creating(function ($model) {
             $model->created_by = $model->created_by ?: get_current_user_id();
             $model->type = $model->type ?: 'to-do'; // default board type is to-do
-            $model->background = $model->background ?: $model->randomBackground();
+            $model->background = $model->background ?: '';
         });
         /* global scope for board type which means only type = to-do will be fetched from everywhere   */
         parent::boot();
@@ -217,17 +220,33 @@ class Board extends Model
 
         return $query->whereIn('id', $boardIds);
     }
-    private function randomBackground()
-    {
-        $solids = Constant::BOARD_BACKGROUND_DEFAULT_SOLID_COLORS;
-        $solid = $solids[wp_rand(0, count($solids) - 1)];
 
-        return [
-            'id' => $solid['id'],
-            'is_image' => false,
-            'image_url' => null,
-            'color' => $solid['value']
-        ];
+    /**
+     * Exclude template boards (settings['is_template'] === true).
+     * The settings column is serialized text, so both the PHP-serialized
+     * and JSON representations of the flag are matched.
+     */
+    public function scopeExcludeTemplates($query)
+    {
+        return $query->where(function ($query) {
+            $query->whereNull('settings')
+                ->orWhere(function ($subQuery) {
+                    $subQuery->where('settings', 'NOT LIKE', '%"is_template";b:1%')
+                        ->where('settings', 'NOT LIKE', '%"is_template":true%');
+                });
+        });
+    }
+
+    /**
+     * Only template boards (inverse of scopeExcludeTemplates).
+     */
+    public function scopeOnlyTemplates($query)
+    {
+        return $query->whereNotNull('settings')
+            ->where(function ($subQuery) {
+                $subQuery->where('settings', 'LIKE', '%"is_template";b:1%')
+                    ->orWhere('settings', 'LIKE', '%"is_template":true%');
+            });
     }
 
     public function getUsers()
@@ -315,7 +334,7 @@ class Board extends Model
 
     public function removeBoardFromFolder()
     {
-        $relation = Relation::where('object_type', 'FluentBoardsPro\App\Models\Folder')
+        $relation = Relation::where('object_type', Constant::OBJECT_TYPE_FOLDER_BOARD)
             ->where('foreign_id', $this->id)
             ->first();
 
