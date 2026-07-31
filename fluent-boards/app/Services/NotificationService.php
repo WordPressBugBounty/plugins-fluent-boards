@@ -135,16 +135,13 @@ class NotificationService
      */
     public function getBoardNotificationSettingsWithDefaults($boardId, $userId)
     {
-        $settings = array_merge(
-            Constant::BOARD_NOTIFICATION_TYPES,
-            $this->getGlobalWatchNotificationSettings($userId)
-        );
+        $settings = $this->getDefaultBoardNotificationSettings($userId);
 
         $boardSettings = $this->getBoardNotificationSettingsOfUser($boardId, $userId);
         if ($boardSettings && $boardSettings->preferences) {
             $preferences = maybe_unserialize($boardSettings->preferences);
             if (is_array($preferences)) {
-                $settings = array_merge($settings, $preferences);
+                $settings = array_merge($settings, array_intersect_key($preferences, $settings));
             }
         }
 
@@ -170,11 +167,7 @@ class NotificationService
      */
     private function getGlobalWatchNotificationSettings($userId)
     {
-        $watchSettings = [
-            Constant::GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENTING    => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_ASSIGNING     => true,
-        ];
+        $watchSettings = $this->getWatchNotificationDefaults();
 
         $globalSettings = $this->getGlobalNotificationSettingsOfUser($userId);
         if (!$globalSettings || !$globalSettings->value) {
@@ -195,6 +188,23 @@ class NotificationService
         return $watchSettings;
     }
 
+    private function getDefaultBoardNotificationSettings($userId)
+    {
+        return array_merge(
+            Constant::BOARD_NOTIFICATION_TYPES,
+            $this->getGlobalWatchNotificationSettings($userId)
+        );
+    }
+
+    private function getWatchNotificationDefaults()
+    {
+        return [
+            Constant::GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENTING    => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_ASSIGNING     => true,
+        ];
+    }
+
     /**
      * Convert stored preference values into strict booleans.
      */
@@ -210,11 +220,21 @@ class NotificationService
         if(empty($boardSettings)){
             return;
         }
-        foreach ($newSettings as $index => $setting)
-        {
-            $newSettings[$index] = $setting == 'true' ? true : false;
+
+        $allowedSettings = array_merge(
+            Constant::BOARD_NOTIFICATION_TYPES,
+            $this->getWatchNotificationDefaults()
+        );
+        $filteredSettings = [];
+        foreach ($newSettings as $index => $setting) {
+            if (!array_key_exists($index, $allowedSettings)) {
+                continue;
+            }
+
+            $filteredSettings[$index] = $this->normalizePreferenceValue($setting);
         }
-        $boardSettings->preferences = $newSettings;
+
+        $boardSettings->preferences = $filteredSettings;
         $boardSettings->save();
 
     }

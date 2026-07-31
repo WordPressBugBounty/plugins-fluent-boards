@@ -165,10 +165,21 @@ class BoardService
         return $board;
     }
 
+    /**
+     * Attach a user-owned board to its creator with Board Admin preferences.
+     *
+     * @param Board $board
+     * @return void
+     */
     public function setCurrentUserPreferencesOnBoardCreate($board)
     {
+        $creatorId = absint($board->created_by);
+        if (!$creatorId) {
+            return;
+        }
+
         $board->users()->attach(
-            $board->created_by,
+            $creatorId,
             [
                 'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
                 'settings'    => maybe_serialize([

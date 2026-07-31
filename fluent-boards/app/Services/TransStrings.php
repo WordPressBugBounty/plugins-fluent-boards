@@ -441,6 +441,8 @@ class TransStrings
             'Set Estimated Time'                                                                  => __('Set Estimated Time', 'fluent-boards'),
             'Set Estimation'                                                                      => __('Set Estimation', 'fluent-boards'),
             'Settings'                                                                            => __('Settings', 'fluent-boards'),
+            'System'                                                                              => __('System', 'fluent-boards'),
+            'created board from FluentCRM automation'                                             => __('created board from FluentCRM automation', 'fluent-boards'),
             'Show Board Info'                                                                     => __('Show Board Info', 'fluent-boards'),
             'Show more options'                                                                   => __('Show more options', 'fluent-boards'),
             'Skip This Step'                                                                      => __('Skip This Step', 'fluent-boards'),

@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,14 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v2.0.1 (Date: July 31, 2026) =
+- Improvement: Improved Change Stage performance
+- Improvement: Improved Settings, Reports and Dark Mode UI
+- Fixed: Removed unnecessary notifications for Task description changes
+- Fixed: Subtask layout and Task Modal breadcrumb issues
+- Fixed: Other UI issues
+- Other improvements & bug fixes
 
 = v2.0.0 (Date: July 30, 2026) =
 - New: Completely New UI/UX synced with Fluent System

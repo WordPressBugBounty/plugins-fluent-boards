@@ -32,7 +32,6 @@ class Constant{
     const TASK_WATCH_NOTIFICATION_TYPES = [
         'comment_add'               => true,
         'comment_update'            => true,
-        'description_update'        => true,
         'title_change'              => true,
         'move_to_another_board'     => true,
         'Label'                     => true,

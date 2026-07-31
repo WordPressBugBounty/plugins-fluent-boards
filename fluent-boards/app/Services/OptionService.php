@@ -36,6 +36,26 @@ class OptionService
             ->first();
     }
 
+    private function getDefaultGlobalNotificationSettings()
+    {
+        return [
+            Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENT => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_STAGE_CHANGE => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_TASK_ASSIGN => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_DUE_DATE => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_REMOVE_FROM_TASK => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_TASK_ARCHIVE => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENTING => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_ASSIGNING => true
+        ];
+    }
+
+    private function normalizeNotificationPreferenceValue($value)
+    {
+        return true === $value || 1 === $value || '1' === $value || 'true' === $value;
+    }
+
     public function updateGlobalNotificationSettings($newSettings)
     {
         $userId = get_current_user_id();
@@ -45,10 +65,14 @@ class OptionService
             ->where('key', Constant::USER_GLOBAL_NOTIFICATIONS)
             ->first();
 
-        foreach ($newSettings as $index => $setting)
-        {
-            $newSettings[$index] = $setting == 'true' ? true : false;
+        $allowedSettings = $this->getDefaultGlobalNotificationSettings();
+        $newSettings = array_intersect_key($newSettings, $allowedSettings);
+        $filteredSettings = [];
+        foreach ($newSettings as $index => $setting) {
+            $filteredSettings[$index] = $this->normalizeNotificationPreferenceValue($setting);
         }
+
+        $newSettings = array_merge($allowedSettings, $filteredSettings);
 
         $globalNotification->value = $newSettings;
         $globalNotification->save();
@@ -71,17 +95,7 @@ class OptionService
             ->first();
 
         //default notification settings
-        $newSettingsArray = [
-            Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENT => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_STAGE_CHANGE => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_TASK_ASSIGN => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_DUE_DATE => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_REMOVE_FROM_TASK => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_TASK_ARCHIVE => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENTING => true,
-            Constant::GLOBAL_EMAIL_NOTIFICATION_ASSIGNING => true
-        ];
+        $newSettingsArray = $this->getDefaultGlobalNotificationSettings();
 
         //if no settings found of this user then store default
         if(!$globalNotification) {
@@ -93,6 +107,21 @@ class OptionService
             $meta->save();
 
             return $meta;
+        }
+
+        $storedSettings = maybe_unserialize($globalNotification->value);
+        if (is_array($storedSettings)) {
+            $filteredSettings = array_merge($newSettingsArray, array_intersect_key($storedSettings, $newSettingsArray));
+            foreach ($filteredSettings as $index => $setting) {
+                $filteredSettings[$index] = $this->normalizeNotificationPreferenceValue($setting);
+            }
+
+            if ($filteredSettings !== $storedSettings) {
+                $globalNotification->value = $filteredSettings;
+                $globalNotification->save();
+            } else {
+                $globalNotification->value = $filteredSettings;
+            }
         }
 
         return $globalNotification;

@@ -58,6 +58,38 @@ class BoardHandler
         $this->updateOnboarding();
     }
 
+    /**
+     * Log a system activity without allowing a non-critical log failure to fail the automation.
+     *
+     * @param Board $board
+     * @return void
+     */
+    public function boardCreatedFromAutomation($board)
+    {
+        $previousUserId = get_current_user_id();
+
+        try {
+            wp_set_current_user(0);
+
+            $this->createLogActivity(
+                $board->id,
+                'created',
+                'board',
+                null,
+                null,
+                null,
+                ['source' => 'fluentcrm_automation']
+            );
+        } catch (\Throwable $exception) {
+            error_log(sprintf(
+                'FluentBoards: Failed to log FluentCRM automation board activity: %s',
+                sanitize_text_field($exception->getMessage())
+            ));
+        } finally {
+            wp_set_current_user($previousUserId);
+        }
+    }
+
     private function updateOnboarding()
     {
         $onboarding = Meta::where('key', Constant::FBS_ONBOARDING)->first();

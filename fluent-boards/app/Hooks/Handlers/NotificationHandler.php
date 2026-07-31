@@ -159,17 +159,16 @@ class NotificationHandler
         }
     }
 
-    public function changeTitleOrDescriptionNotification($task, $col, $oldTask)
+    public function changeTitleNotification($task, $col, $oldTask)
     {
+        if ($col !== 'title') {
+            return;
+        }
+
         $userIdsWhoGetNotification = $this->findUsersWhoWillGetNotification($task);
         if(count($userIdsWhoGetNotification) > 0){
-            if($col == 'title'){
-                $action = 'task_title_updated';
-                $message = $task->title;
-            }else{
-                $action = 'task_description_updated';
-                $message = $task->description;
-            }
+            $action = 'task_title_updated';
+            $message = $task->title;
             $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
             $notification->users()->attach($userIdsWhoGetNotification);
         }

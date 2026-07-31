@@ -66,6 +66,7 @@ $app->addCustomAction('task_archived', 'ActivityHandler@taskArchived', 10, 1);
 //$app->addCustomAction('task_custom_field_changed', 'ActivityHandler@logCustomFieldActivity', 10, 5); // commented for now, will implement later
 
 $app->addCustomAction('board_created', 'BoardHandler@boardCreated', 10, 1);
+$app->addCustomAction('board_created_from_automation', 'BoardHandler@boardCreatedFromAutomation', 10, 1);
 $app->addCustomAction('before_board_deleted', 'BoardHandler@beforeBoardDeleted', 10, 2);
 $app->addCustomAction('board_updated', 'BoardHandler@boardUpdated', 10, 2);
 $app->addCustomAction('stage_updated', 'BoardHandler@boardStageUpdated', 10, 3);
@@ -104,7 +105,7 @@ $app->addCustomAction('task_start_date_changed', 'NotificationHandler@changeStar
 $app->addCustomAction('task_stage_updated', 'NotificationHandler@changeStageNotification', 10, 2);
 $app->addCustomAction('task_priority_changed', 'NotificationHandler@changePriorityNotification', 10, 2);
 $app->addCustomAction('task_archived', 'NotificationHandler@taskArchiveNotification', 10, 1);
-$app->addCustomAction('task_content_updated', 'NotificationHandler@changeTitleOrDescriptionNotification', 10, 3);
+$app->addCustomAction('task_content_updated', 'NotificationHandler@changeTitleNotification', 10, 3);
 //$app->addCustomAction('description_changed_notification', 'NotificationHandler@changeDescriptionNotification', 10, 1);
 $app->addCustomAction('board_changed_notification', 'NotificationHandler@changeBoardNotification', 10, 2);
 $app->addCustomAction('task_assignee_added', 'NotificationHandler@assigneeAddedNotification', 10, 2);
