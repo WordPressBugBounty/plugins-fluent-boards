@@ -127,6 +127,15 @@ class AdminMenuHandler
 
         add_submenu_page(
             'fluent-boards',
+            __('Addons', 'fluent-boards'),
+            __('Addons', 'fluent-boards'),
+            'manage_options',
+            'fluent-boards#/add-ons',
+            [$this, 'render']
+        );
+
+        add_submenu_page(
+            'fluent-boards',
             __('Settings', 'fluent-boards'),
             __('Settings', 'fluent-boards'),
             'manage_options',

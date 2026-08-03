@@ -238,6 +238,18 @@ class Board extends Model
     }
 
     /**
+     * Limit boards to types supported by the currently loaded plugins.
+     */
+    public function scopeAvailableInCurrentInstall($query)
+    {
+        if (!defined('FLUENT_ROADMAP')) {
+            return $query->where('type', 'to-do');
+        }
+
+        return $query;
+    }
+
+    /**
      * Only template boards (inverse of scopeExcludeTemplates).
      */
     public function scopeOnlyTemplates($query)

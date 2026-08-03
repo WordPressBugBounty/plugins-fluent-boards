@@ -182,7 +182,7 @@ class AttachmentFileService
 
     protected function cloneTaskAttachmentsToBoard(Task $sourceTask, Task $targetTask, $targetBoardId)
     {
-        if (!class_exists('\FluentBoardsPro\App\Models\TaskAttachment')) {
+        if (!defined('FLUENT_BOARDS_PRO_VERSION')) {
             return;
         }
 
@@ -204,7 +204,7 @@ class AttachmentFileService
 
     protected function getTaskAttachmentsForMove(Task $task)
     {
-        if (!class_exists('\FluentBoardsPro\App\Models\TaskAttachment')) {
+        if (!defined('FLUENT_BOARDS_PRO_VERSION')) {
             return [];
         }
 
@@ -339,7 +339,7 @@ class AttachmentFileService
 
     protected function refreshTaskAttachmentCount(Task $task)
     {
-        if (!class_exists('\FluentBoardsPro\App\Models\TaskAttachment')) {
+        if (!defined('FLUENT_BOARDS_PRO_VERSION')) {
             return;
         }
 

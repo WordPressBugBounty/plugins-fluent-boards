@@ -233,6 +233,18 @@ class Task extends Model
         });
     }
 
+    /**
+     * Limit tasks to active, non-template boards available in this install.
+     */
+    public function scopeOnActiveAvailableBoards($query)
+    {
+        return $query->whereHas('board', function ($boardQuery) {
+            $boardQuery->whereNull('archived_at')
+                ->excludeTemplates()
+                ->availableInCurrentInstall();
+        });
+    }
+
     public function assignees()
     {
         return $this->belongsToMany(
@@ -261,6 +273,11 @@ class Task extends Model
 
     public function attachments() //may not need in future
     {
+        if (!defined('FLUENT_BOARDS_PRO_VERSION')) {
+            return $this->hasMany(Attachment::class, 'id', 'id')
+                ->where('id', 0);
+        }
+
         return $this->hasMany(TaskAttachment::class,
             'object_id', 'id')
                     ->where('object_type', Constant::OBJECT_TYPE_TASK);

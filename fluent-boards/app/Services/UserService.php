@@ -244,39 +244,52 @@ class UserService
         // Table view needs the labels column; list view ignores the extra relation.
         $taskRelations = ['stage', 'board', 'labels'];
 
-        if($taskType == 'assigned') {
-            $tasksQuery = $user->assignedTasks()->with($taskRelations)->whereNull('archived_at')->whereNull('parent_id')->whereIn('board_id', $allowedBoardIds);
-        } else if($taskType == 'mentioned') {
-            $tasksQuery = $user->mentionedTasks()->with($taskRelations)->whereNull('archived_at')->whereNull('parent_id')->whereIn('board_id', $allowedBoardIds);
+        if ($taskType == 'assigned') {
+            $tasksQuery = $user->assignedTasks()
+                ->with($taskRelations)
+                ->whereNull('archived_at')
+                ->whereNull('parent_id')
+                ->whereIn('board_id', $allowedBoardIds)
+                ->where('status', '!=', 'closed')
+                ->onActiveAvailableBoards();
+        } else if ($taskType == 'mentioned') {
+            $tasksQuery = $user->mentionedTasks()
+                ->with($taskRelations)
+                ->whereNull('archived_at')
+                ->whereNull('parent_id')
+                ->whereIn('board_id', $allowedBoardIds)
+                ->onActiveAvailableBoards();
         } else {
-            // Get the task assigned to the user
-        $tasksQuery = $user->tasks()->with($taskRelations)->whereNull('archived_at') ->whereIn('board_id', $allowedBoardIds);
+            // Watched tasks power the date-based and completed profile tabs.
+            $tasksQuery = $user->tasks()
+                ->with($taskRelations)
+                ->whereNull('archived_at')
+                ->whereIn('board_id', $allowedBoardIds)
+                ->onActiveAvailableBoards();
 
-        switch ($taskType) {
-            case 'upcoming':
-                $tasksQuery->upcoming()
-                ->whereIn('board_id', $allowedBoardIds);
-                break;
-            case 'due_today':
-                $tasksQuery->dueToday()
-                ->whereIn('board_id', $allowedBoardIds);
-                break;
-            case 'overdue':
-                $tasksQuery->overdue()
-                ->whereIn('board_id', $allowedBoardIds);
-                break;
-            case 'completed':
-                $tasksQuery->where('status', 'closed')
-                ->whereIn('board_id', $allowedBoardIds);
-                break;
-            default:
-                $tasksQuery->whereNull('due_at')
-                ->whereIn('board_id', $allowedBoardIds);
-                break;
+            switch ($taskType) {
+                case 'upcoming':
+                    $tasksQuery->upcoming()
+                        ->whereIn('board_id', $allowedBoardIds);
+                    break;
+                case 'due_today':
+                    $tasksQuery->dueToday()
+                        ->whereIn('board_id', $allowedBoardIds);
+                    break;
+                case 'overdue':
+                    $tasksQuery->overdue()
+                        ->whereIn('board_id', $allowedBoardIds);
+                    break;
+                case 'completed':
+                    $tasksQuery->where('status', 'closed')
+                        ->whereIn('board_id', $allowedBoardIds);
+                    break;
+                default:
+                    $tasksQuery->whereNull('due_at')
+                        ->whereIn('board_id', $allowedBoardIds);
+                    break;
+            }
         }
-        }
-
-        
 
         $currentUserId = get_current_user_id();
         if ($currentUserId != $user->ID && !PermissionManager::isAdmin()) {
@@ -353,7 +366,8 @@ class UserService
         $applyTaskScope = function ($query) use ($allowedBoardIds, $boardIds) {
             $query->whereNull('archived_at')
                 ->whereNull('parent_id')
-                ->whereIn('board_id', $allowedBoardIds);
+                ->whereIn('board_id', $allowedBoardIds)
+                ->onActiveAvailableBoards();
 
             if (!empty($boardIds)) {
                 $query->whereIn('board_id', $boardIds);
@@ -367,7 +381,9 @@ class UserService
 
         return [
             'due_today' => (int) $watchedTasks()->dueToday()->count(),
-            'assigned'  => (int) $applyTaskScope($user->assignedTasks())->count(),
+            'assigned'  => (int) $applyTaskScope($user->assignedTasks())
+                ->where('status', '!=', 'closed')
+                ->count(),
             'upcoming'  => (int) $watchedTasks()->upcoming()->count(),
             'overdue'   => (int) $watchedTasks()->overdue()->count(),
             'mentioned' => (int) $applyTaskScope($user->mentionedTasks())->count(),

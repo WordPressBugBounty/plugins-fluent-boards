@@ -218,7 +218,7 @@ class Bootstrap extends IntegrationManagerController
             ];
             array_splice($data['fields'], 7, 0, [$addToCrmField]);
         }
-        if (class_exists('FluentBoardsPro\App\Models\TaskAttachment')) {
+        if (defined('FLUENT_BOARDS_PRO_VERSION')) {
             $mapFilesField = [
                 'key'            => 'map_files',
                 'label'          => 'Files/Attachments',
@@ -413,7 +413,7 @@ class Bootstrap extends IntegrationManagerController
                     }
                 }
 
-                if ($mapFiles) {
+                if ($mapFiles && defined('FLUENT_BOARDS_PRO_VERSION')) {
                     $results = [];
 
                     // Loop through the array to find keys starting with 'image-upload' or 'file-upload'

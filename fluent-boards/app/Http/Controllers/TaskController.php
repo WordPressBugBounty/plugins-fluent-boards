@@ -53,7 +53,7 @@ class TaskController extends Controller
             : (int) Task::whereIn('id', $task_ids)
                 ->whereNull('archived_at')
                 ->whereNull('parent_id')
-                ->excludeTemplateBoards()
+                ->onActiveAvailableBoards()
                 ->count();
 
         return [

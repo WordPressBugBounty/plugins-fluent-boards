@@ -206,7 +206,7 @@ class TaskService
             ->with(['assignees', 'board', 'stage'])
             ->whereNull('archived_at')
             ->where('parent_id', null)
-            ->excludeTemplateBoards()
+            ->onActiveAvailableBoards()
             ->orderBy('due_at', 'DESC');
 
         switch ($category) {
@@ -235,7 +235,8 @@ class TaskService
                     ->whereIn('fbs_tasks.id', $taskIds)
                     ->whereNull('fbs_tasks.archived_at')
                     ->whereNull('fbs_tasks.parent_id')
-                    ->excludeTemplateBoards()
+                    ->where('fbs_tasks.status', '!=', 'closed')
+                    ->onActiveAvailableBoards()
                     ->join('fbs_relations as rel', function ($join) use ($currentUserId) {
                         $join->on('rel.object_id', '=', 'fbs_tasks.id')
                             ->where('rel.object_type', Constant::OBJECT_TYPE_TASK_ASSIGNEE)
@@ -258,7 +259,7 @@ class TaskService
                 })->pluck('notification.task_id')->unique();
                 $validTasks = Task::whereIn('id', $taskIds)
                     ->with(['assignees', 'board', 'stage'])
-                    ->excludeTemplateBoards()
+                    ->onActiveAvailableBoards()
                     ->get();
 
                 return $validTasks->toArray();
@@ -281,7 +282,7 @@ class TaskService
             ->whereIn('id', $taskIds)
             ->whereNull('archived_at')
             ->whereNull('parent_id')
-            ->excludeTemplateBoards();
+            ->onActiveAvailableBoards();
 
         switch ($category) {
             case 'overdue':
@@ -306,7 +307,8 @@ class TaskService
                     ->whereIn('fbs_tasks.id', $taskIds)
                     ->whereNull('fbs_tasks.archived_at')
                     ->whereNull('fbs_tasks.parent_id')
-                    ->excludeTemplateBoards()
+                    ->where('fbs_tasks.status', '!=', 'closed')
+                    ->onActiveAvailableBoards()
                     ->join('fbs_relations as rel', function ($join) use ($currentUserId) {
                         $join->on('rel.object_id', '=', 'fbs_tasks.id')
                             ->where('rel.object_type', Constant::OBJECT_TYPE_TASK_ASSIGNEE)
@@ -330,7 +332,7 @@ class TaskService
                     ->pluck('notification.task_id')
                     ->unique();
 
-                return Task::whereIn('id', $taskIds)->excludeTemplateBoards()->count();
+                return Task::whereIn('id', $taskIds)->onActiveAvailableBoards()->count();
             default:
                 return 0;
         }
@@ -1075,7 +1077,7 @@ class TaskService
         }
 
         // Remove all attachments for this task
-        if (class_exists('FluentBoardsPro\App\Models\TaskAttachment')) {
+        if (defined('FLUENT_BOARDS_PRO_VERSION')) {
             \FluentBoardsPro\App\Models\TaskAttachment::where('object_id', (int) $taskId)
                 ->where('object_type', 'task')
                 ->delete();
@@ -2384,6 +2386,10 @@ class TaskService
 
     private function deleteTaskAttachments($task)
     {
+        if (!defined('FLUENT_BOARDS_PRO_VERSION')) {
+            return;
+        }
+
         $attachments = TaskAttachment::where('object_id', $task->id)
             ->where('object_type', Constant::TASK_ATTACHMENT)
             ->get();

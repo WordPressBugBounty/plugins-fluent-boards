@@ -229,7 +229,10 @@ class BoardController extends Controller
         $boards = $this->boardService->getRecentBoards();
 
         if (!$boards || $boards->isEmpty()) {
-            $boards = Board::where('type', 'to-do')->excludeTemplates()->byAccessUser(get_current_user_id())
+            $boards = Board::whereNull('archived_at')
+                ->excludeTemplates()
+                ->availableInCurrentInstall()
+                ->byAccessUser(get_current_user_id())
                 ->limit(4)
                 ->withCount('completedTasks')
                 ->with(['stages', 'users'])

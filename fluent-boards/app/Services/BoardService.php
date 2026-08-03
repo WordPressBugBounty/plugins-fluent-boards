@@ -776,7 +776,13 @@ class BoardService
             $this->updateRecentBoardCheckMeta();
         }
 
-        return Board::whereIn('id', $recentBoardIds)->excludeTemplates()->withCount('completedTasks')->with(['stages', 'users'])->get();
+        return Board::whereIn('id', $recentBoardIds)
+            ->whereNull('archived_at')
+            ->excludeTemplates()
+            ->availableInCurrentInstall()
+            ->withCount('completedTasks')
+            ->with(['stages', 'users'])
+            ->get();
     }
 
     public function getRecentBoardCheckMeta($userId = null){
@@ -1221,11 +1227,9 @@ class BoardService
      */
     public function getBoardCounts($userId)
     {
-        $baseQuery = Board::byAccessUser($userId)->excludeTemplates();
-
-        if (!defined('FLUENT_ROADMAP')) {
-            $baseQuery = $baseQuery->where('type', 'to-do');
-        }
+        $baseQuery = Board::byAccessUser($userId)
+            ->excludeTemplates()
+            ->availableInCurrentInstall();
 
         $counts = [
             'all'      => (clone $baseQuery)->whereNull('archived_at')->count(),
