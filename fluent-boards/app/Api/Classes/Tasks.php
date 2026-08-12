@@ -506,7 +506,7 @@ class Tasks
 
         switch ($property) {
             case 'description':
-                $sanitizedValue = wp_kses_post((string) $value);
+                $sanitizedValue = fluent_boards_sanitize_description($value);
                 break;
 
             case 'due_at':

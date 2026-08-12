@@ -736,7 +736,7 @@ class TaskController extends Controller
         //Properties in col: settings, assignees,crm_contact_id, archived_at(AUTO_SET_TIMESTAMP) , status, title, description, priority, is_watching, is_template
         $col = $request->getSafe('property', 'sanitize_text_field');
         if ($col === 'description') {
-            $value = $request->getSafe('value', 'wp_kses_post');
+            $value = $request->getSafe('value', 'fluent_boards_sanitize_description');
         } elseif ($col === 'settings' || $col === 'assignees') {
             $value = $request->get('value');
             if (is_array($value) && isset($value['cover']) && is_array($value['cover'])) {
@@ -1476,7 +1476,7 @@ class TaskController extends Controller
         $default_config = [
             [
                 'name'    => 'due_today',
-                'label'   => __('Today', 'fluent-boards'),
+                'label'   => __('Due Today', 'fluent-boards'),
                 'visible' => 'true',
                 'order'   => 1
             ],
@@ -1588,7 +1588,7 @@ class TaskController extends Controller
 
         // Always apply fresh translations based on tab name
         $labelMap = [
-            'due_today' => __('Today', 'fluent-boards'),
+            'due_today' => __('Due Today', 'fluent-boards'),
             'assigned'  => __('Assigned', 'fluent-boards'),
             'upcoming'  => __('Upcoming', 'fluent-boards'),
             'overdue'   => __('Overdue', 'fluent-boards'),

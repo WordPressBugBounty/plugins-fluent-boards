@@ -623,6 +623,7 @@ class TransStrings
             'This task has assignees, please select one of them.'                              => __('This task has assignees, please select one of them.', 'fluent-boards'),
             'Keeping blank won\'t add any assignee'                                            => __('Keeping blank won\'t add any assignee', 'fluent-boards'),
             'WordPress Administrator'                                                          => __('WordPress Administrator', 'fluent-boards'),
+            'member_full_access_notice'                                                        => __('This user has the manage_options capability and full access to all boards and resources.', 'fluent-boards'),
             'FluentBoards Admin'                                                               => __('FluentBoards Admin', 'fluent-boards'),
             'FluentCRM Profile'                                                                => __('FluentCRM Profile', 'fluent-boards'),
             'CRM Profile'                                                           => __('CRM Profile', 'fluent-boards'),

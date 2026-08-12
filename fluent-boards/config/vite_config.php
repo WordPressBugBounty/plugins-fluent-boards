@@ -275,5 +275,10 @@
         'file' => 'admin/admin.css',
         'src' => 'resources/scss/admin.scss',
         'isEntry' => true
+    ],
+    'resources/scss/admin_rtl.scss' => [
+        'file' => 'admin/admin_rtl.css',
+        'src' => 'resources/scss/admin_rtl.scss',
+        'isEntry' => true
     ]
 ];

@@ -79,17 +79,8 @@ class ShortcodeHandler
         // Inject Vite HMR client in dev mode
         Vite::injectViteClient();
 
-        $isRtl = is_rtl();
+        $isRtl = fluent_boards_is_rtl();
         Vite::enqueueStyle($slug . '_public_board_app', 'scss/admin.scss');
-
-        if ($isRtl && !Vite::underDevelopment()) {
-            wp_enqueue_style(
-                $slug . '_public_board_app_rtl',
-                $assets . 'admin/admin-rtl.css',
-                [$slug . '_public_board_app'],
-                FLUENT_BOARDS_PLUGIN_VERSION
-            );
-        }
 
         // Enqueue merged chunk CSS in production
         if (!Vite::underDevelopment()) {
@@ -102,6 +93,21 @@ class ShortcodeHandler
                     FLUENT_BOARDS_PLUGIN_VERSION
                 );
             }
+        }
+
+        // RTL overrides must load after style.css so rules appended to the
+        // element-plus layer win by source order, not only by specificity.
+        if ($isRtl) {
+            $rtlDeps = [$slug . '_public_board_app'];
+            if (wp_style_is($slug . '_public_vite_style', 'enqueued')) {
+                $rtlDeps[] = $slug . '_public_vite_style';
+            }
+            Vite::enqueueStyle(
+                $slug . '_public_board_app_rtl',
+                'scss/admin_rtl.scss',
+                $rtlDeps,
+                FLUENT_BOARDS_PLUGIN_VERSION
+            );
         }
 
         Vite::enqueueStaticScript(

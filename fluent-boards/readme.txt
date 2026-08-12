@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 2.0.4
+Stable tag: 2.0.10
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,20 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v2.0.10 (Date: August 12, 2026) =
+
+- Improvement: Better RTL support across dashboards, boards, tasks, comments, subtasks, activities, settings, reports
+- Improvement: Responsive admin layouts
+- Improvement: Newly created tasks now open in the task modal
+- Improvement: Subtask Group UX updated
+- Improvement: Member Role Edit Experience Improved
+- Fixed: Conflicting theme assets loading in the frontend portal
+- Fixed: Subtask due date and assignee were not saving properly during creation
+- Fixed: Time tracking estimate popover issue
+- Fixed: Incorrect timezone in task reminder alerts
+- Fixed: Image and emoji issue in task description
+- Other improvements and bug fixes
 
 = v2.0.4 (Date: August 3, 2026) =
 - Fixed: Subtask Group Bug Fixed

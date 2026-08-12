@@ -110,6 +110,7 @@ return array(
     'FluentBoards\\App\\Services\\Libs\\Mailer' => $baseDir . '/app/Services/Libs/Mailer.php',
     'FluentBoards\\App\\Services\\NotificationService' => $baseDir . '/app/Services/NotificationService.php',
     'FluentBoards\\App\\Services\\OptionService' => $baseDir . '/app/Services/OptionService.php',
+    'FluentBoards\\App\\Services\\Parsedown' => $baseDir . '/app/Services/Parsedown.php',
     'FluentBoards\\App\\Services\\PermissionManager' => $baseDir . '/app/Services/PermissionManager.php',
     'FluentBoards\\App\\Services\\PublicAccessService' => $baseDir . '/app/Services/PublicAccessService.php',
     'FluentBoards\\App\\Services\\ReportService' => $baseDir . '/app/Services/ReportService.php',

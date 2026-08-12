@@ -138,6 +138,7 @@ class ComposerStaticInitef65e8ee7a4d8e83fa883b5cd8817103
         'FluentBoards\\App\\Services\\Libs\\Mailer' => __DIR__ . '/../..' . '/app/Services/Libs/Mailer.php',
         'FluentBoards\\App\\Services\\NotificationService' => __DIR__ . '/../..' . '/app/Services/NotificationService.php',
         'FluentBoards\\App\\Services\\OptionService' => __DIR__ . '/../..' . '/app/Services/OptionService.php',
+        'FluentBoards\\App\\Services\\Parsedown' => __DIR__ . '/../..' . '/app/Services/Parsedown.php',
         'FluentBoards\\App\\Services\\PermissionManager' => __DIR__ . '/../..' . '/app/Services/PermissionManager.php',
         'FluentBoards\\App\\Services\\PublicAccessService' => __DIR__ . '/../..' . '/app/Services/PublicAccessService.php',
         'FluentBoards\\App\\Services\\ReportService' => __DIR__ . '/../..' . '/app/Services/ReportService.php',

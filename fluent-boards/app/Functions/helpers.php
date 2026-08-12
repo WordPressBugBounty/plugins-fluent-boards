@@ -19,6 +19,19 @@ if (!function_exists('FluentBoardsApi')) {
     }
 }
 
+if (!function_exists('fluent_boards_sanitize_description')) {
+    function fluent_boards_sanitize_description($description): string
+    {
+        $description = preg_replace_callback('/<((?:https?:\/\/)[^<>\s]+)>/i', function ($matches) {
+            $url = esc_url_raw(html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+            return $url ? '[' . $url . '](' . str_replace(')', '%29', $url) . ')' : $matches[0];
+        }, (string) $description);
+
+        return wp_kses_post($description);
+    }
+}
+
 if (!function_exists('fluent_boards_user_avatar')) {
     function fluent_boards_user_avatar($email, $name = '')
     {
@@ -80,6 +93,18 @@ if (!function_exists('fluent_boards_page_url')) {
     function fluent_boards_page_url(): ?string
     {
         return apply_filters('fluent_boards/app_url', admin_url('admin.php?page=fluent-boards#/'));
+    }
+}
+
+if (!function_exists('fluent_boards_is_rtl')) {
+    /**
+     * Determine if Fluent Boards should render right-to-left UI.
+     *
+     * @return bool
+     */
+    function fluent_boards_is_rtl(): bool
+    {
+        return is_rtl();
     }
 }
 

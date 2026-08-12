@@ -305,20 +305,8 @@ class AdminMenuHandler
         // Inject Vite HMR client in dev mode
         Vite::injectViteClient();
 
-        $isRtl = is_rtl();
-        $adminAppCss = $isRtl ? 'scss/admin.scss' : 'scss/admin.scss';
-        Vite::enqueueStyle($slug . '_admin_app', $adminAppCss);
-
-        // In production, load the RTL version if needed
-        if ($isRtl && !Vite::underDevelopment()) {
-            $assets = $app['url.assets'];
-            wp_enqueue_style(
-                $slug . '_admin_app_rtl',
-                $assets . 'admin/admin-rtl.css',
-                [$slug . '_admin_app'],
-                FLUENT_BOARDS_PLUGIN_VERSION
-            );
-        }
+        $isRtl = fluent_boards_is_rtl();
+        Vite::enqueueStyle($slug . '_admin_app', 'scss/admin.scss');
 
         // Enqueue merged chunk CSS (Vue SFC styles) in production
         if (!Vite::underDevelopment()) {
@@ -332,6 +320,21 @@ class AdminMenuHandler
                     FLUENT_BOARDS_PLUGIN_VERSION
                 );
             }
+        }
+
+        // RTL overrides must load after style.css so rules appended to the
+        // element-plus layer win by source order, not only by specificity.
+        if ($isRtl) {
+            $rtlDeps = [$slug . '_admin_app'];
+            if (wp_style_is($slug . '_vite_style', 'enqueued')) {
+                $rtlDeps[] = $slug . '_vite_style';
+            }
+            Vite::enqueueStyle(
+                $slug . '_admin_app_rtl',
+                'scss/admin_rtl.scss',
+                $rtlDeps,
+                FLUENT_BOARDS_PLUGIN_VERSION
+            );
         }
 
         do_action('fluent-boards_loading_app');
@@ -429,7 +432,7 @@ class AdminMenuHandler
                 'ver', get_bloginfo('version'),
                 site_url('/wp-includes/css/dashicons.css')
             ),
-            'is_rtl' => is_rtl(),
+            'is_rtl' => fluent_boards_is_rtl(),
             'board_menu_items' => BoardMenuHandler::getMenuItems(),
             'reminder_types' => defined('FLUENT_BOARDS_PRO') ? Helper::taskReminderTypes() : [],
         ]);
