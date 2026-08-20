@@ -227,6 +227,32 @@ class BoardHandler
         }
     }
 
+    /**
+     * Log one board activity for a stage-level bulk task move.
+     *
+     * @param int   $boardId
+     * @param Stage $sourceStage
+     * @param Stage $targetStage
+     * @param int   $taskCount
+     * @return void
+     */
+    public function tasksMovedBetweenStages($boardId, $sourceStage, $targetStage, $taskCount)
+    {
+        $description = sprintf(
+            _n('%d task moved', '%d tasks moved', $taskCount, 'fluent-boards'),
+            $taskCount
+        );
+
+        $this->createLogActivity(
+            $boardId,
+            'moved',
+            'tasks',
+            $sourceStage->title,
+            $targetStage->title,
+            $description
+        );
+    }
+
     public function boardLabelCreatedActivity($label)
     {
         $column = 'label';

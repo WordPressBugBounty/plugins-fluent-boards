@@ -183,8 +183,7 @@ class FileSystem
      */
     public function _renameFileName($file)
     {
-        $currentTimeStamp = (new \DateTimeImmutable())->getTimestamp();
-        $prefix = $currentTimeStamp . '-';
+        $prefix = wp_generate_uuid4() . '-';
         $prefix = apply_filters('fluent_boards/uploaded_file_name_prefix', $prefix);
         $file['name'] = $prefix . $file['name'];
 

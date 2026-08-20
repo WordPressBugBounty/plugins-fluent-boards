@@ -7,6 +7,7 @@ use FluentBoards\App\Models\Label;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\DescriptionMarkdownConverter;
 use FluentBoards\App\Services\NotificationService;
 use FluentBoards\App\Services\TaskService;
 use FluentBoardsPro\App\Models\TaskAttachment;
@@ -307,7 +308,7 @@ class Bootstrap extends IntegrationManagerController
             $boardLabels = Arr::get($feedData, 'board_config.board_label_id');
             $assignees = Arr::get($feedData, 'board_config.member_ids');
             $priority = Arr::get($feedData, 'board_config.priority');
-            $description = Arr::get($feedData, 'description');
+            $description = DescriptionMarkdownConverter::normalize(Arr::get($feedData, 'description'));
             $position = Arr::get($feedData, 'position');
             $crmContactId = Arr::get($feedData, 'board_config.crm_contact_id');
             $submitterName = trim(Arr::get($feedData, 'submitter_name'));

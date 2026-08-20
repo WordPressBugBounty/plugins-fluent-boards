@@ -65,8 +65,10 @@ class DescriptionMarkdownConverter
         $root = $dom->getElementById('__fbs_root__');
         $markdown = $root ? self::renderChildren($root) : '';
 
-        // Normalise excessive blank lines and trailing spaces.
-        $markdown = preg_replace("/[ \t]+\n/", "\n", $markdown);
+        // Normalise trailing whitespace without removing Markdown hard breaks.
+        $markdown = preg_replace_callback('/[ \t]+\n/', function ($matches) {
+            return substr($matches[0], -3) === "  \n" ? "  \n" : "\n";
+        }, $markdown);
         $markdown = preg_replace("/\n{3,}/", "\n\n", $markdown);
 
         return trim($markdown);
@@ -83,7 +85,7 @@ class DescriptionMarkdownConverter
         }
 
         if (!self::looksLikeHtml($description)) {
-            return $description;
+            return self::restoreLegacyHardBreaks($description);
         }
 
         try {
@@ -106,6 +108,14 @@ class DescriptionMarkdownConverter
         $text = preg_replace("/\n{3,}/", "\n\n", $text);
 
         return trim($text);
+    }
+
+    /**
+     * Restore hard breaks lost by the converter shipped in versions 2.0.0-2.0.4.
+     */
+    private static function restoreLegacyHardBreaks($markdown): string
+    {
+        return preg_replace('/(?<!\n)(?<!\\\\)(?<! {2})\n(?!\n)/', "  \n", $markdown);
     }
 
     private static function renderChildren(\DOMNode $node): string

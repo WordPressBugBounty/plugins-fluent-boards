@@ -45,13 +45,13 @@ class UploadService
     {
         // Validate by extension against our allow-list. This is more reliable than the
         // browser-provided mime, which is empty/inconsistent for types like .json and .md.
-        $ext = strtolower(pathinfo(Arr::get($file, 'name', ''), PATHINFO_EXTENSION));
-        if (!$ext) {
+        $extension = strtolower(pathinfo(Arr::get($file, 'name', ''), PATHINFO_EXTENSION));
+        if (!$extension) {
             return false;
         }
 
-        foreach (array_keys(self::getAllowedMimeMap()) as $extPattern) {
-            if (in_array($ext, explode('|', $extPattern), true)) {
+        foreach (array_keys(self::getAllowedMimeMap()) as $extensionPattern) {
+            if (in_array($extension, explode('|', $extensionPattern), true)) {
                 return true;
             }
         }
@@ -88,8 +88,24 @@ class UploadService
         ];
 
         $map = array_merge(get_allowed_mime_types(), $extraMimes);
+        $map = apply_filters('fluent_boards/upload_allowed_mimes', $map);
 
-        return apply_filters('fluent_boards/upload_allowed_mimes', $map);
+        // Never allow executable or browser-active formats through plugin filters.
+        $blockedExtensions = [
+            'php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phtml', 'phar',
+            'html', 'htm', 'shtml', 'xhtml', 'xht',
+            'js', 'mjs', 'svg', 'svgz', 'xml', 'xsl', 'xslt', 'swf', 'htaccess',
+        ];
+        $safeMap = [];
+
+        foreach ($map as $extensionPattern => $mimeType) {
+            $extensions = array_diff(explode('|', strtolower($extensionPattern)), $blockedExtensions);
+            if ($extensions) {
+                $safeMap[implode('|', $extensions)] = $mimeType;
+            }
+        }
+
+        return $safeMap;
     }
 
 }

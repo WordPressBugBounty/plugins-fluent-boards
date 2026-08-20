@@ -186,8 +186,14 @@ class TaskHandler
      */
     public function onTaskCreated($task)
     {
+        $userId = get_current_user_id();
+
+        if (!$userId) {
+            return;
+        }
+
         if ($this->shouldAutoWatchForBoard($task->board_id, Constant::GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK)) {
-            $task->watchers()->syncWithoutDetaching([get_current_user_id() => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
+            $task->watchers()->syncWithoutDetaching([$userId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
         }
     }
 
@@ -197,8 +203,14 @@ class TaskHandler
     public function onCommentCreated($comment)
     {
         $task = $comment->task;
+        $userId = get_current_user_id();
+
+        if (!$userId) {
+            return;
+        }
+
         if ($this->shouldAutoWatchForBoard($task->board_id, Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENTING)) {
-            $task->watchers()->syncWithoutDetaching([get_current_user_id() => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
+            $task->watchers()->syncWithoutDetaching([$userId => ['object_type' => Constant::OBJECT_TYPE_USER_TASK_WATCH]]);
         }
     }
 

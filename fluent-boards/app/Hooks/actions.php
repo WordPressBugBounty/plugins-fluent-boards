@@ -52,7 +52,7 @@ $app->addCustomAction('subtask_deleted_activity', 'ActivityHandler@logSubtaskDel
 $app->addCustomAction('subtask_group_deleted_activity', 'ActivityHandler@logSubtaskGroupDeletedActivity', 10, 2);
 $app->addCustomAction('subtask_group_title_updated', 'ActivityHandler@logSubtaskGroupTitleUpdatedActivity', 10, 2);
 $app->addCustomAction('task_completed_activity', 'ActivityHandler@logTaskCompletedOrReopenActivity', 10, 2);
-$app->addCustomAction('task_stage_updated', 'ActivityHandler@logTaskStageUpdatedActivity', 10, 2);
+$app->addCustomAction('task_stage_updated', 'ActivityHandler@logTaskStageUpdatedActivity', 10, 3);
 $app->addCustomAction('task_assignee_added', 'ActivityHandler@logAssigneeAddedActivity', 10, 2);
 $app->addCustomAction('task_assignee_removed', 'ActivityHandler@logAssigneeRemovedActivity', 10, 2);
 $app->addCustomAction('task_added_from_fluent_form', 'ActivityHandler@taskAddedFromFluentForms', 10, 1);
@@ -81,6 +81,7 @@ $app->addCustomAction('task_deleted', 'BoardHandler@taskdeleted', 10, 1);
 $app->addCustomAction('task_moved_from_board', 'BoardHandler@taskMovedFromBoard', 10, 3);
 $app->addCustomAction('task_moved_from_board', 'ActivityHandler@taskMovedFromBoard', 10, 3);
 $app->addCustomAction('task_archived', 'BoardHandler@taskArchivedOnBoard', 10, 1);
+$app->addCustomAction('tasks_moved_between_stages', 'BoardHandler@tasksMovedBetweenStages', 10, 4);
 $app->addCustomAction('board_member_added', 'BoardHandler@boardMemberAdded', 10, 2);
 $app->addCustomAction('board_viewer_added', 'BoardHandler@boardViewerAdded', 10, 2);
 $app->addCustomAction('board_member_removed', 'BoardHandler@boardMemberRemoved', 10, 2);

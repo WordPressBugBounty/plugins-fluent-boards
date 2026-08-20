@@ -29,7 +29,9 @@ class TaskCreateAction extends BaseAction
             'settings'    => [
                 'stage' => [],
                 'create_task_type' => 'new',
-                'title' => 'Task from automation of {{contact.email}}'
+                'title' => 'Task from automation of {{contact.email}}',
+                'created_by' => get_current_user_id(),
+                'assignees' => [],
             ]
         ];
     }
@@ -46,6 +48,22 @@ class TaskCreateAction extends BaseAction
                     'label'       => __('Select Board & It\'s stage', 'fluent-boards'),
                     'placeholder' => __('Select Board & It\'s stage', 'fluent-boards'),
                     'options'     => Helper::getStagesByBoardGroup()
+                ],
+
+                'created_by' => [
+                    'type'        => 'rest_selector',
+                    'option_key'  => 'board_members',
+                    'is_multiple' => false,
+                    'label'       => __('Created by', 'fluent-boards'),
+                    'placeholder' => __('Select a task creator', 'fluent-boards'),
+                ],
+
+                'assignees' => [
+                    'type'        => 'rest_selector',
+                    'option_key'  => 'board_members',
+                    'is_multiple' => true,
+                    'label'       => __('Assign to', 'fluent-boards'),
+                    'placeholder' => __('Select task assignees', 'fluent-boards'),
                 ],
 
                 'create_task_type' => [
@@ -146,6 +164,10 @@ class TaskCreateAction extends BaseAction
 
         $createType = Arr::get($data, 'create_task_type');
         $stage = Arr::get($data, 'stage'); // this is a string of the pipeline stage id
+        $creatorId = $this->resolveCreatorId($data, $sequence);
+        $configuredAssignees = Arr::get($data, 'assignees', []);
+        $hasConfiguredAssignees = !empty($configuredAssignees);
+        $assigneeIds = $this->resolveAssigneeIds($configuredAssignees);
 
         if ( empty($stage) ) {
             FunnelHelper::changeFunnelSubSequenceStatus( $funnelSubscriberId, $sequence->id, 'skipped' );
@@ -188,12 +210,16 @@ class TaskCreateAction extends BaseAction
 
             $task['board_id'] = $taskData['board_id'];
             $task['stage_id'] = $taskData['stage_id'];
-            $task['created_by'] = get_current_user_id();
+            $task['created_by'] = $creatorId;
             $task['comments_count'] = 0;
             $task->moveToNewPosition(1);
             $task->save();
 
-            if (isset($taskData['assignee']) && $taskData['assignee'] == 'true') {
+            if ($hasConfiguredAssignees) {
+                foreach ($assigneeIds as $assigneeId) {
+                    $taskService->updateAssignee($assigneeId, $task);
+                }
+            } else {
                 $templateTask->load('assignees');
                 foreach ($templateTask->assignees as $assignee) {
                     $taskService->updateAssignee($assignee->ID, $task);
@@ -231,11 +257,61 @@ class TaskCreateAction extends BaseAction
                 'priority'       => $priority ?? '',
                 'due_at'         => $due_date ?? null,
                 'position'       => (new TaskService())->getLastPositionOfTasks($stageId),
+                'created_by'     => $creatorId,
+                'assignees'      => $assigneeIds,
             ]);
         }
 
         FunnelHelper::changeFunnelSubSequenceStatus($funnelSubscriberId, $sequence->id, 'completed');
 
+    }
+
+    /**
+     * Resolve a valid WordPress user to own tasks created by the automation.
+     */
+    private function resolveCreatorId($data, $sequence): int
+    {
+        $candidateIds = [
+            Arr::get($data, 'created_by'),
+            $sequence->created_by ?? 0,
+            get_current_user_id(),
+        ];
+        $existingIds = $this->getExistingUserIds($candidateIds);
+
+        return $existingIds[0] ?? 0;
+    }
+
+    /**
+     * Normalize configured task assignees to existing WordPress user IDs.
+     */
+    private function resolveAssigneeIds($assignees): array
+    {
+        return $this->getExistingUserIds((array) $assignees);
+    }
+
+    /**
+     * Keep positive, unique IDs that still belong to WordPress users.
+     */
+    private function getExistingUserIds($userIds): array
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('absint', (array) $userIds))));
+
+        if (!$userIds) {
+            return [];
+        }
+
+        $users = get_users([
+            'include' => $userIds,
+            'fields'  => 'ID',
+        ]);
+        $existingIds = array_map(function ($user) {
+            return absint(is_object($user) ? $user->ID : $user);
+        }, $users);
+        $existingLookup = array_flip($existingIds);
+
+        return array_values(array_filter($userIds, function ($userId) use ($existingLookup) {
+            return isset($existingLookup[$userId]);
+        }));
     }
 
 }

@@ -787,51 +787,35 @@ class TaskService
             }
         }
 
-        $deleted = $task->delete();
         $dbInstance = App::getInstance('db');
         $dbInstance->beginTransaction();
 
-        $deletedTask = clone $task;
-         //cloning because after delete $task object will be useless
-
         try {
-            $deleted = $task->delete();
+            $deletedTask = clone $task;
+            $task->watchers()->detach();
+            $task->assignees()->detach();
 
-            if ($deleted) {
-                //task assignees watchers removed
-                $task->watchers()->detach();
-                $task->assignees()->detach();
+            $notificationIds = $task->notifications->pluck('id');
+            $task->notifications()->delete();
+            NotificationUser::whereIn('notification_id', $notificationIds)->delete();
 
-                //removing all task related notifications
-                $notificationIds = $task->notifications->pluck('id');
-                $task->notifications()->delete();
-                NotificationUser::whereIn('notification_id', $notificationIds)->delete();
+            $task->labels()->detach();
 
-                //task labels removed
-                $task->labels()->detach();
-
-            //task custom field value
-            if (defined('FLUENT_BOARDS_PRO')) {
+            if (defined('FLUENT_BOARDS_PRO_VERSION')) {
                 $task->customFields()->detach();
+                $this->deleteTaskAttachments($task);
             }
-            $this->deleteTaskAttachments($task);
-                //task custom field value
-                if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
-                    $task->customFields()->detach();
-                    $this->deleteTaskAttachments($task);
-                }
 
-            // Delete time tracking records for this task
-            $this->deleteTimeTrackingRecords($task->id);
-
-            do_action('fluent_boards/task_deleted', $task);
+            $this->deleteTimeTrackingRecords($task->id, false);
             TaskMeta::where('task_id', $task->id)->delete();
-                do_action('fluent_boards/task_deleted', $deletedTask);
-                TaskMeta::where('task_id', $task->id)->delete();
+
+            if (!$task->delete()) {
+                throw new \RuntimeException(__('Task could not be deleted.', 'fluent-boards'));
             }
 
+            do_action('fluent_boards/task_deleted', $deletedTask);
             $dbInstance->commit();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $dbInstance->rollBack();
             throw $e; // Re-throw the exception after rolling back
         }
@@ -912,6 +896,7 @@ class TaskService
 
         try {
             $attachmentFileService->moveTaskFilesToBoard($task, $oldBoardId, (int) $targetBoardId);
+            $this->moveCommentsToBoard($task->id, $oldBoardId, (int) $targetBoardId, $attachmentFileService);
 
             $task->board_id = (int) $targetBoardId;
             $task->type = $newBoard->type === 'roadmap' ? 'roadmap' : 'task';
@@ -922,17 +907,14 @@ class TaskService
             $task->watchers()->detach();
             $this->removeCustomFieldAssociations($task);
 
-            // REMOVE: User-specific data to prevent security issues
-            $this->removeCommentsAndReplies($task->id);
-            $this->removeTimeTrackingRecords($task->id);
-
             // REMOVE: Recurring task settings for security
             $this->removeRecurringTaskSettings($task->id);
 
             $task->save();
+            do_action('fluent_boards/task_moved_update_time_tracking', $task);
 
             // MOVE: Subtasks to new board (preserves subtask groups)
-            $this->moveSubtasksToNewBoard($task->id, $targetBoardId, $newBoard->type, $attachmentFileService);
+            $this->moveSubtasksToNewBoard($task->id, $oldBoardId, $targetBoardId, $newBoard->type, $attachmentFileService);
 
             $dbInstance->commit();
             $attachmentFileService->commitMovedOriginalFiles();
@@ -950,7 +932,7 @@ class TaskService
      * Move all subtasks to the new board when parent task is moved
      * Preserves subtask groups and their relationships
      */
-    private function moveSubtasksToNewBoard($parentTaskId, $targetBoardId, $boardType, AttachmentFileService $attachmentFileService)
+    private function moveSubtasksToNewBoard($parentTaskId, $sourceBoardId, $targetBoardId, $boardType, AttachmentFileService $attachmentFileService)
     {
         // Get all subtasks of the parent task
         $subtasks = Task::where('parent_id', $parentTaskId)->get();
@@ -961,8 +943,10 @@ class TaskService
 
         foreach ($subtasks as $subtask) {
             // Update board_id and type
-            $oldBoardId = (int) $subtask->board_id;
+            // Legacy subtasks may not have their own board_id; inherit the parent's source board.
+            $oldBoardId = absint($subtask->board_id) ?: absint($sourceBoardId);
             $attachmentFileService->moveTaskFilesToBoard($subtask, $oldBoardId, (int) $targetBoardId);
+            $this->moveCommentsToBoard($subtask->id, $oldBoardId, (int) $targetBoardId, $attachmentFileService);
 
             $subtask->board_id = (int) $targetBoardId;
             $subtask->type = $boardType === 'roadmap' ? 'roadmap' : 'task';
@@ -977,14 +961,11 @@ class TaskService
                 ->where('key', '!=', Constant::SUBTASK_GROUP_CHILD)
                 ->delete();
 
-            // REMOVE: User-specific data for security
-            $this->removeCommentsAndReplies($subtask->id);
-            $this->removeTimeTrackingRecords($subtask->id);
-
             // REMOVE: Recurring task settings
             $this->removeRecurringTaskSettings($subtask->id);
 
             $subtask->save();
+            do_action('fluent_boards/task_moved_update_time_tracking', $subtask);
         }
     }
 
@@ -1032,22 +1013,24 @@ class TaskService
     }
 
     /**
-     * Remove comments and replies for security reasons
-     * Prevents exposing user-specific data to unauthorized users
+     * Move a task's complete comment history and images to another board.
      */
-    private function removeCommentsAndReplies($taskId)
+    private function moveCommentsToBoard($taskId, $sourceBoardId, $targetBoardId, AttachmentFileService $attachmentFileService)
     {
-        // Input validation
-        if (!is_numeric($taskId) || $taskId <= 0) {
+        $taskId = absint($taskId);
+        $sourceBoardId = absint($sourceBoardId);
+        $targetBoardId = absint($targetBoardId);
+
+        if (!$taskId || !$sourceBoardId || !$targetBoardId || $sourceBoardId === $targetBoardId) {
             return;
         }
-        
-        // Remove all comments and replies for this task (delete individually to fire model events and clean up images)
-        $comments = Comment::where('task_id', (int) $taskId)->get();
-        foreach ($comments as $comment) {
-            $comment->delete();
-        }
 
+        $attachmentFileService->moveCommentImagesToBoard($taskId, $sourceBoardId, $targetBoardId);
+
+        // Bypass ORM timestamps so only board ownership changes.
+        Comment::where('task_id', $taskId)
+            ->toBase()
+            ->update(['board_id' => $targetBoardId]);
     }
 
     /**
@@ -3242,13 +3225,14 @@ class TaskService
         ];
     }
   
-  /* Delete time tracking records for one or multiple tasks
-     * Uses try-catch for better performance - avoids table existence check overhead
+    /**
+     * Delete time tracking records for one or multiple tasks.
      *
-     * @param int|array $taskIds Single task ID or array of task IDs
+     * @param int|array $taskIds Single task ID or array of task IDs.
+     * @param bool $suppressErrors Whether cleanup failures should be ignored.
      * @return void
      */
-    public function deleteTimeTrackingRecords($taskIds)
+    public function deleteTimeTrackingRecords($taskIds, $suppressErrors = true)
     {
         // Check if FluentBoards Pro time tracking is available
         if (!class_exists('FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack')) {
@@ -3266,9 +3250,10 @@ class TaskService
                     \FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack::where('task_id', (int) $taskIds)->delete();
                 }
             }
-        } catch (\Exception $e) {
-            // Silently fail if table doesn't exist or any other error occurs
-            // This is intentional for cleanup operations
+        } catch (\Throwable $e) {
+            if (!$suppressErrors) {
+                throw $e;
+            }
         }
     }
 

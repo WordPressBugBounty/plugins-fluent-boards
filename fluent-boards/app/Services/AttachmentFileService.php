@@ -3,6 +3,8 @@
 namespace FluentBoards\App\Services;
 
 use FluentBoards\App\Models\Attachment;
+use FluentBoards\App\Models\Comment;
+use FluentBoards\App\Models\CommentImage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\TaskImage;
 use FluentBoards\App\Services\Libs\FileSystem;
@@ -42,6 +44,40 @@ class AttachmentFileService
         $this->updateTaskCoverFromFileResults($task, $movedImages, $targetBoardId);
 
         return $task;
+    }
+
+    /**
+     * Move every comment and reply image for a task to another board.
+     */
+    public function moveCommentImagesToBoard($taskId, $sourceBoardId, $targetBoardId)
+    {
+        $taskId = absint($taskId);
+        $sourceBoardId = absint($sourceBoardId);
+        $targetBoardId = absint($targetBoardId);
+
+        if (!$taskId || !$sourceBoardId || !$targetBoardId || $sourceBoardId === $targetBoardId) {
+            return;
+        }
+
+        $commentIds = Comment::where('task_id', $taskId)
+            ->pluck('id')
+            ->toArray();
+        $commentIds = array_filter(array_map('intval', $commentIds));
+
+        if (!$commentIds) {
+            return;
+        }
+
+        $images = CommentImage::whereIn('object_id', $commentIds)
+            ->where('object_type', Constant::COMMENT_IMAGE)
+            ->get();
+        $sharedFullUrls = $this->getSharedFullUrlLookup($this->combineAttachmentCollections($images));
+
+        CommentImage::withoutTimestamps(function () use ($images, $sourceBoardId, $targetBoardId, $sharedFullUrls) {
+            foreach ($images as $image) {
+                $this->moveAttachmentToBoard($image, $sourceBoardId, $targetBoardId, $sharedFullUrls);
+            }
+        });
     }
 
     public function cloneTaskFilesToBoard(Task $sourceTask, Task $targetTask, $targetBoardId, array $options = [])

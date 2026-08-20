@@ -244,10 +244,16 @@ class ActivityHandler
         }
     }
 
-    public function logTaskStageUpdatedActivity($task, $oldStageId)
+    public function logTaskStageUpdatedActivity($task, $oldStageId, $stageContext = null)
     {
-        $oldStage = Stage::findOrFail($oldStageId);
-        $newStage = Stage::findOrFail($task->stage_id);
+        $oldStage = $stageContext['source'] ?? null;
+        $newStage = $stageContext['target'] ?? null;
+
+        if (!$oldStage instanceof Stage || !$newStage instanceof Stage) {
+            $oldStage = Stage::findOrFail($oldStageId);
+            $newStage = Stage::findOrFail($task->stage_id);
+        }
+
         if($oldStage && $newStage){
             $this->createLogActivity($task->id, 'changed', 'stage', $oldStage->title, $newStage->title);
         }

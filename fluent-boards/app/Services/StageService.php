@@ -509,12 +509,19 @@ class StageService
     public function moveAllTasks($oldStageId, $newStageId)
     {
         $tasks = Task::where('stage_id', $oldStageId)->whereNull('parent_id')->whereNull('archived_at')->get();
+        $sourceStage = Stage::findOrFail($oldStageId);
+        $targetStage = Stage::findOrFail($newStageId);
+
+        // Load shared watcher data once; stage data is injected per task below.
+        $tasks->load('watchers');
 
         // get the last position available of that stage
         $position = (new TaskService())->getLastPositionOfTasks($newStageId);
 
         // update tasks stage and position
         foreach ($tasks as $key => $task) {
+            $taskOldStageId = $task->stage_id;
+
             // Clean up archived_by_stage meta when moving to different stage
             TaskMeta::where('task_id', $task->id)
                 ->where('key', Constant::META_KEY_ARCHIVED_BY_STAGE)
@@ -522,8 +529,27 @@ class StageService
             
             $task->stage_id = $newStageId;
             $task->position = $position + $key;
+            $task->setRelation('stage', $targetStage);
             $task->save();
+
+            if ((int) $taskOldStageId !== (int) $newStageId) {
+                do_action('fluent_boards/task_stage_updated', $task, $taskOldStageId, [
+                    'source' => $sourceStage,
+                    'target' => $targetStage,
+                ]);
+            }
         }
+
+        if ($tasks->count() && (int) $sourceStage->id !== (int) $targetStage->id) {
+            do_action(
+                'fluent_boards/tasks_moved_between_stages',
+                $sourceStage->board_id,
+                $sourceStage,
+                $targetStage,
+                $tasks->count()
+            );
+        }
+
         return $tasks;
     }
     public function archiveAllTasksInStage($stage_id, $boardId = null)

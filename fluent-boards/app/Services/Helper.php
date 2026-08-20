@@ -705,6 +705,7 @@ class Helper
             'archived' => __('archived', 'fluent-boards'),
             'restored' => __('restored', 'fluent-boards'),
             'set'      => __('set', 'fluent-boards'),
+            'moved'    => __('moved', 'fluent-boards'),
         ];
 
         $columnTranslations = [
@@ -726,6 +727,7 @@ class Helper
             'attachment'           => __('attachment', 'fluent-boards'),
             'repeat task'          => __('repeat task', 'fluent-boards'),
             'Repeat Task'          => __('Repeat Task', 'fluent-boards'),
+            'tasks'                => __('tasks', 'fluent-boards'),
         ];
 
         foreach ($activities as $activity) {
