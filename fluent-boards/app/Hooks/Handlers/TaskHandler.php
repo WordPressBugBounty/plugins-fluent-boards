@@ -4,6 +4,7 @@ namespace FluentBoards\App\Hooks\Handlers;
 
 use DateTimeImmutable;
 use Exception;
+use FluentBoards\App\App;
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\TaskMeta;
@@ -166,16 +167,43 @@ class TaskHandler
 
 
     /**
-     * Summary of taskAttachmentDeleted
-     * @param mixed $task
-     * @param mixed $deleteUrl
+     * Delete an attachment file only after the owning database transaction commits.
+     *
+     * @param mixed $deletedAttachment
+     * @param int|null $boardId
      * @return void
      */
-    public function taskAttachmentDeleted($deletedAttachment)
+    public function taskAttachmentDeleted($deletedAttachment, $boardId = null)
     {
+        if ($deletedAttachment->attachment_type === 'url') {
+            return;
+        }
+
+        if ($boardId === null) {
+            $task = Task::find(absint($deletedAttachment->object_id));
+            $boardId = $task ? $task->board_id : null;
+        }
+
+        $dbInstance = App::getInstance('db');
+
+        if ($dbInstance->inTransaction()) {
+            $attachmentSnapshot = clone $deletedAttachment;
+            $dbInstance->afterCommit(function () use ($attachmentSnapshot, $boardId) {
+                try {
+                    $this->fileHandler->deleteAttachmentFile($attachmentSnapshot, $boardId);
+                } catch (\Throwable $e) {
+                    error_log(sprintf(
+                        'FluentBoards: Failed to delete committed task attachment file: %s',
+                        sanitize_text_field($e->getMessage())
+                    ));
+                }
+            });
+
+            return;
+        }
+
         try {
-            $deleteUrl = $deletedAttachment->full_url;
-            $this->fileHandler->deleteFileByUrl($deleteUrl);
+            $this->fileHandler->deleteAttachmentFile($deletedAttachment, $boardId);
         } catch (Exception $e) {
             wp_send_json_error($e->getMessage());
         }

@@ -503,6 +503,13 @@ class BoardHandler
         $board->save();
     }
 
+    /**
+     * Delete a board-owned previous background attachment and log the change.
+     *
+     * @param int          $boardId
+     * @param array|string $oldBackground
+     * @return void
+     */
     public function backgroundUpdated($boardId, $oldBackground)
     {
         if (
@@ -510,17 +517,18 @@ class BoardHandler
             !empty($oldBackground['is_image']) &&
             !empty($oldBackground['image_url'])
         ) {
-            // Delete attachment if ID exists
+            // Only the target board's background attachment may be removed by this hook.
             if (!empty($oldBackground['id'])) {
-                $attachment = Attachment::find($oldBackground['id']);
-                if ($attachment) {
-                    $attachment->delete();
-                }
-            }
+                $attachment = Attachment::where('id', absint($oldBackground['id']))
+                    ->where('object_id', absint($boardId))
+                    ->where('object_type', Constant::BOARD_BACKGROUND_IMAGE)
+                    ->first();
 
-            // Delete file if full_url exists
-            if (!empty($oldBackground['full_url'])) {
-                (new FileHandler())->deleteFileByUrl($oldBackground['full_url']);
+                if ($attachment) {
+                    $deletedAttachment = clone $attachment;
+                    $attachment->delete();
+                    (new FileHandler())->deleteAttachmentFile($deletedAttachment, absint($boardId));
+                }
             }
         }
 

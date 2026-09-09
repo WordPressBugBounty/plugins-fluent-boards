@@ -84,7 +84,7 @@ class Comment extends Model
             foreach ($images as $image) {
                 $deletedImage = clone $image;
                 $image->delete();
-                $model->commentImageDeleted($deletedImage);
+                $model->commentImageDeleted($deletedImage, $model->board_id);
             }
         });
 
@@ -178,10 +178,9 @@ class Comment extends Model
     }
 
     
-    private function commentImageDeleted($deletedImage)
+    private function commentImageDeleted($deletedImage, $boardId)
     {
-            $deleteUrl = $deletedImage->full_url;
-            (new \FluentBoards\App\Hooks\Handlers\FileHandler())->deleteFileByUrl($deleteUrl);
+        (new \FluentBoards\App\Hooks\Handlers\FileHandler())->deleteAttachmentFile($deletedImage, $boardId);
     }
 
 }

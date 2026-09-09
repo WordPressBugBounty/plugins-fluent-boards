@@ -2,10 +2,12 @@
 
 namespace FluentBoards\App\Modules\MCP\Tools;
 
+use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Modules\MCP\Helpers\MCPHelper;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Services\TaskService;
 
 /**
@@ -153,6 +155,26 @@ class TaskTools
             return MCPHelper::error('forbidden', __('You do not have permission to update this task', 'fluent-boards'));
         }
 
+        $assigneeIds = null;
+        if (array_key_exists('assignees', $params)) {
+            $assigneeIds = array_values(array_unique(MCPHelper::sanitizeIdArray($params['assignees'])));
+            $task->load('assignees');
+            $currentAssigneeIds = [];
+            foreach ($task->assignees as $assignee) {
+                $currentAssigneeIds[] = (int) $assignee->ID;
+            }
+
+            $nonMemberIds = self::findIneligibleAssigneeUserIds(
+                array_diff($assigneeIds, $currentAssigneeIds),
+                $task->board_id
+            );
+            if ($nonMemberIds) {
+                return MCPHelper::error('forbidden', __('Some users are not members of this board', 'fluent-boards'), [
+                    'non_board_member_user_ids' => $nonMemberIds,
+                ]);
+            }
+        }
+
         $service = new TaskService();
         $updatable = [
             'title'          => 'text',
@@ -179,8 +201,8 @@ class TaskTools
             $task = $service->updateTaskProperty($field, $value, $task);
         }
 
-        if (array_key_exists('assignees', $params)) {
-            $task = self::syncAssignees($task, MCPHelper::sanitizeIdArray($params['assignees']));
+        if ($assigneeIds !== null) {
+            $task = self::syncAssignees($task, $assigneeIds);
         }
 
         MCPHelper::loadTaskDetails($task);
@@ -280,7 +302,7 @@ class TaskTools
         }
 
         $hasUserIds = array_key_exists('user_ids', $params);
-        $userIds = MCPHelper::sanitizeIdArray($params['user_ids'] ?? []);
+        $userIds = array_values(array_unique(MCPHelper::sanitizeIdArray($params['user_ids'] ?? [])));
         if (!$hasUserIds && !empty($params['user_id'])) {
             $userIds = [absint($params['user_id'])];
         }
@@ -322,6 +344,13 @@ class TaskTools
             $toRemove = array_diff($currentIds, $userIds);
         }
 
+        $nonMemberIds = self::findIneligibleAssigneeUserIds($toAdd, $task->board_id);
+        if ($nonMemberIds) {
+            return MCPHelper::error('forbidden', __('Some users are not members of this board', 'fluent-boards'), [
+                'non_board_member_user_ids' => $nonMemberIds,
+            ]);
+        }
+
         $service = new TaskService();
 
         foreach (array_merge($toRemove, $toAdd) as $userId) {
@@ -337,7 +366,7 @@ class TaskTools
             'mode'      => $mode,
             'added'     => array_values($toAdd),
             'removed'   => array_values($toRemove),
-            'assignees' => MCPHelper::formatUserList($task->assignees),
+            'assignees' => MCPHelper::formatUserList($task->assignees, $task->board_id),
             'message'   => __('Task assignees have been updated', 'fluent-boards'),
         ];
     }
@@ -379,6 +408,33 @@ class TaskTools
         $found = array_map('intval', (array) $found);
 
         return array_values(array_diff($userIds, $found));
+    }
+
+    /**
+     * @return array User ids that are neither board members nor global administrators.
+     */
+    private static function findIneligibleAssigneeUserIds($userIds, $boardId)
+    {
+        if (!$userIds) {
+            return [];
+        }
+
+        $memberIds = Relation::where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->where('object_id', (int) $boardId)
+            ->whereIn('foreign_id', $userIds)
+            ->pluck('foreign_id')
+            ->toArray();
+
+        $memberIds = array_map('intval', $memberIds);
+
+        $ineligibleIds = [];
+        foreach (array_diff($userIds, $memberIds) as $userId) {
+            if (!PermissionManager::isAdmin($userId)) {
+                $ineligibleIds[] = $userId;
+            }
+        }
+
+        return $ineligibleIds;
     }
 
     private static function sanitizeUpdateValue($value, $type)

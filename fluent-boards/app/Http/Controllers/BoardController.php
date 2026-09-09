@@ -549,6 +549,16 @@ class BoardController extends Controller
 
     public function update(Request $request, $board_id)
     {
+        // Board identity (title/description) is manager-only. This action shares the
+        // `update` name with CommentController@update under the same policy group, so the
+        // guard lives here rather than in a SingleBoardPolicy::update() method that would
+        // also block ordinary members from editing their own comments.
+        if (!PermissionManager::isBoardManager(absint($board_id))) {
+            return $this->sendError([
+                'message' => __('You do not have permission to edit this board.', 'fluent-boards'),
+            ], 403);
+        }
+
         $boardData = $this->boardSanitizeAndValidate($request->only(['title', 'description']), [
             'title'       => 'required|string',
             'description' => 'nullable|string',
@@ -804,13 +814,20 @@ class BoardController extends Controller
 
     public function addMembersInBoard(Request $request, $board_id)
     {
-        $memberId = $request->getSafe('memberId');
-        $isViewerOnly = $request->getSafe('isViewerOnly');
+        $memberId = $request->getSafe('memberId', 'intval');
+        $isViewerOnly = $request->getSafe('isViewerOnly', 'sanitize_text_field');
         $member = $this->boardService->addMembersInBoard($board_id, $memberId, $isViewerOnly);
+
+        if ($member === null) {
+            return $this->sendError([
+                'message' => __('User not found.', 'fluent-boards'),
+            ], 404);
+        }
+
         if (!$member) {
             return $this->sendError([
                 'message' => __('User already a member', 'fluent-boards'),
-            ], 304);
+            ], 409);
         }
 
 
@@ -936,7 +953,7 @@ class BoardController extends Controller
             ];
         } elseif ($request->image_url) {
             $backgroundData = $this->boardSanitizeAndValidate($request->all(), [
-                "id"        => 'required',
+                'id'        => 'required|integer',
                 'image_url' => 'required|string|url',
             ]);
         } elseif ($request->color) {

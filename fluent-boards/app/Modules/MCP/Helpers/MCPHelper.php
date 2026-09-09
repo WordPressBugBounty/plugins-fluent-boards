@@ -160,7 +160,7 @@ class MCPHelper
         $data = self::formatBoardSummary($board);
         $data['stages'] = self::formatStageList($board->stages ?? []);
         $data['labels'] = self::formatLabelList($board->labels ?? []);
-        $data['members'] = self::formatUserList($board->users ?? []);
+        $data['members'] = self::formatUserList($board->users ?? [], $board->id);
 
         if ($includeTasks) {
             $tasks = Task::with(['stage', 'labels', 'assignees'])
@@ -200,7 +200,7 @@ class MCPHelper
             'updated_at'        => self::toIso8601($task->updated_at),
             'stage'             => $task->stage ? self::formatStage($task->stage) : null,
             'labels'            => self::formatLabelList($task->labels ?? []),
-            'assignees'         => self::formatUserList($task->assignees ?? []),
+            'assignees'         => self::formatUserList($task->assignees ?? [], $task->board_id),
         ];
     }
 
@@ -210,7 +210,7 @@ class MCPHelper
         $data['description'] = self::descriptionToMarkdown($task->description);
         $data['settings'] = $task->settings;
         $data['board'] = $task->board ? self::formatBoardSummary($task->board) : null;
-        $data['watchers'] = self::formatUserList($task->watchers ?? []);
+        $data['watchers'] = self::formatUserList($task->watchers ?? [], $task->board_id);
         $data['comments'] = self::formatCommentList(self::limitItems($task->comments ?? [], self::TASK_HISTORY_LIMIT));
         $data['comments_limited_to'] = self::TASK_HISTORY_LIMIT;
         $data['activities'] = self::formatActivityList(self::limitItems($task->activities ?? [], self::TASK_HISTORY_LIMIT));
@@ -273,7 +273,7 @@ class MCPHelper
         return $items;
     }
 
-    public static function formatUserList($users)
+    public static function formatUserList($users, $boardId)
     {
         $items = [];
         foreach ($users as $user) {
@@ -286,10 +286,29 @@ class MCPHelper
                 'id'           => isset($user->ID) ? (int) $user->ID : (int) ($user->id ?? 0),
                 'display_name' => $name,
                 'email'        => $user->user_email ?? '',
-                'avatar'       => !empty($user->user_email) ? fluent_boards_user_avatar($user->user_email, $name) : '',
+                'avatar'       => '',
             ];
         }
-        return $items;
+        // Reuse the board permission lookup across user lists in this request.
+        static $boardManagerResults = [];
+        $isBoardManager = null;
+        if (!current_user_can('list_users')) {
+            $cacheKey = get_current_blog_id() . ':' . get_current_user_id() . ':' . (int) $boardId;
+            if (!array_key_exists($cacheKey, $boardManagerResults)) {
+                $boardManagerResults[$cacheKey] = PermissionManager::isBoardManager($boardId);
+            }
+            $isBoardManager = $boardManagerResults[$cacheKey];
+        }
+        $sanitizedItems = Helper::sanitizeUsersArray($items, $boardId, $isBoardManager);
+        foreach ($sanitizedItems as $index => &$item) {
+            // Only generate avatars when the policy permits disclosure of the email.
+            if ($item['email'] !== '' && $item['email'] === $items[$index]['email']) {
+                $item['avatar'] = fluent_boards_user_avatar($item['email'], $item['display_name']);
+            }
+        }
+        unset($item);
+
+        return $sanitizedItems;
     }
 
     public static function formatCommentList($comments)

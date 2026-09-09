@@ -77,6 +77,7 @@ class OptionsController extends Controller
 
             } elseif ('boards' === $optionKey) {
                 $boards = Board::query()
+                    ->byAccessUser(get_current_user_id())
                     ->when($search, function ($query) use ($search) {
                         // $search is already sanitized with sanitize_text_field above
                         return $query->where('title', 'LIKE', '%' . $search . '%');
@@ -465,19 +466,27 @@ class OptionsController extends Controller
 
         $boardId = $request->getSafe('boardId', 'intval');
 
-        $memberUserIds = Relation::where('object_type', 'board_user')
+        if ($boardId && !PermissionManager::userHasPermission($boardId)) {
+            return $this->sendError([
+                'message' => __('You do not have permission to access this route', 'fluent-boards')
+            ], 403);
+        }
+
+        $memberUserIdsQuery = Relation::where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
             ->select(['foreign_id'])
             ->groupBy('foreign_id');
 
         if ($boardId) {
-            $memberUserIds = $memberUserIds->where('object_id', $boardId);
+            $memberUserIdsQuery->where('object_id', $boardId);
+        } elseif (!PermissionManager::isAdmin()) {
+            $boardIds = array_filter(array_map('intval', PermissionManager::getBoardIdsForUser()));
+            $memberUserIdsQuery->whereIn('object_id', $boardIds);
         }
 
-        $members = [];
-
-        $memberUserIds = $memberUserIds->get()
+        $memberUserIds = $memberUserIdsQuery->get()
             ->pluck('foreign_id')->toArray();
 
+        $members = [];
 
         if ($memberUserIds) {
             $memberUsers = get_users([

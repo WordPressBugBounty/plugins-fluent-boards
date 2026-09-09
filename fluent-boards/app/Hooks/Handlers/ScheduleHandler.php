@@ -5,6 +5,7 @@ namespace FluentBoards\App\Hooks\Handlers;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Models\Meta;
+use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Constant;
@@ -14,7 +15,7 @@ class ScheduleHandler
 {
     public function sendEmailForComment(
         $commentId,
-        $usersToSendEmail,
+        $recipientUserIds,
         $current_user_id
     ) {
         try {
@@ -28,6 +29,15 @@ class ScheduleHandler
 
             $task = Task::findOrFail($comment->task_id);
             if ( ! $task) {
+                return;
+            }
+
+            $usersToSendEmail = $this->getEligibleCommentRecipientEmails(
+                $recipientUserIds,
+                $task->board_id
+            );
+
+            if (!$usersToSendEmail) {
                 return;
             }
 
@@ -91,7 +101,7 @@ class ScheduleHandler
         }
     }
 
-    public function sendEmailForMention($commentId, $usersToSendEmail, $current_user_id)
+    public function sendEmailForMention($commentId, $recipientUserIds, $current_user_id)
     {
         try {
             $comment = Comment::find($commentId) ?? null;
@@ -105,6 +115,14 @@ class ScheduleHandler
 
             $task = Task::findOrFail($comment->task_id);
             if ( ! $task) {
+                return;
+            }
+
+            $usersToSendEmail = $this->getEligibleCommentRecipientEmails(
+                $recipientUserIds,
+                $task->board_id
+            );
+            if (!$usersToSendEmail) {
                 return;
             }
 //            $assignees = $task->assignees;
@@ -447,6 +465,108 @@ class ScheduleHandler
         } catch (\Exception $e) {
             throw new \Exception(esc_html__('Error in sending mail to new assignees', 'fluent-boards'), 1);
         }
+    }
+
+    /**
+     * Resolve current recipient emails after revalidating board access and preferences.
+     *
+     * Email values are accepted only for queued actions created before recipient IDs
+     * were introduced. They are mapped back to current WordPress users before checks.
+     *
+     * @param array $queuedRecipients
+     * @param int $boardId
+     * @return array
+     */
+    private function getEligibleCommentRecipientEmails($queuedRecipients, $boardId)
+    {
+        $legacyEmails = [];
+        foreach ((array) $queuedRecipients as $queuedRecipient) {
+            if (is_string($queuedRecipient) && !ctype_digit($queuedRecipient)) {
+                $legacyEmail = sanitize_email($queuedRecipient);
+                if ($legacyEmail && is_email($legacyEmail)) {
+                    $legacyEmails[strtolower($legacyEmail)] = $legacyEmail;
+                }
+            }
+        }
+
+        $legacyUserIdsByEmail = [];
+        if ($legacyEmails) {
+            $legacyUsers = User::whereIn('user_email', array_values($legacyEmails))
+                ->get(['ID', 'user_email']);
+            foreach ($legacyUsers as $legacyUser) {
+                $legacyUserIdsByEmail[strtolower($legacyUser->user_email)] = absint($legacyUser->ID);
+            }
+        }
+
+        $recipientUserIds = [];
+        $seenRecipientUserIds = [];
+        foreach ((array) $queuedRecipients as $queuedRecipient) {
+            $recipientUserId = 0;
+
+            if (is_int($queuedRecipient) || (is_string($queuedRecipient) && ctype_digit($queuedRecipient))) {
+                $recipientUserId = absint($queuedRecipient);
+            } elseif (is_string($queuedRecipient)) {
+                $legacyEmail = sanitize_email($queuedRecipient);
+                if ($legacyEmail) {
+                    $recipientUserId = $legacyUserIdsByEmail[strtolower($legacyEmail)] ?? 0;
+                }
+            }
+
+            if (!$recipientUserId || isset($seenRecipientUserIds[$recipientUserId])) {
+                continue;
+            }
+            $seenRecipientUserIds[$recipientUserId] = true;
+            $recipientUserIds[] = $recipientUserId;
+        }
+
+        if (!$recipientUserIds) {
+            return [];
+        }
+
+        $eligibleRecipientIds = [];
+        $boardRelations = Relation::where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->where('object_id', absint($boardId))
+            ->whereIn('foreign_id', $recipientUserIds)
+            ->get(['foreign_id', 'preferences']);
+
+        foreach ($boardRelations as $boardRelation) {
+            $preferences = maybe_unserialize($boardRelation->preferences);
+            if (!is_array($preferences)) {
+                continue;
+            }
+
+            if (
+                !array_key_exists(Constant::BOARD_EMAIL_COMMENT, $preferences) ||
+                $preferences[Constant::BOARD_EMAIL_COMMENT]
+            ) {
+                $eligibleRecipientIds[absint($boardRelation->foreign_id)] = true;
+            }
+        }
+
+        if (!$eligibleRecipientIds) {
+            return [];
+        }
+
+        $usersById = [];
+        $recipients = User::whereIn('ID', array_keys($eligibleRecipientIds))
+            ->get(['ID', 'user_email']);
+        foreach ($recipients as $recipient) {
+            $usersById[absint($recipient->ID)] = $recipient;
+        }
+
+        $recipientEmails = [];
+        foreach ($recipientUserIds as $recipientUserId) {
+            if (!isset($eligibleRecipientIds[$recipientUserId], $usersById[$recipientUserId])) {
+                continue;
+            }
+
+            $email = sanitize_email($usersById[$recipientUserId]->user_email);
+            if ($email && is_email($email)) {
+                $recipientEmails[] = $email;
+            }
+        }
+
+        return $recipientEmails;
     }
 
     private function getUserData($userId)

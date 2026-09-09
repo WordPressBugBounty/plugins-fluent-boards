@@ -100,8 +100,18 @@ class ReportController extends Controller
         return $boardId;
     }
 
+    /**
+     * Returns the timesheet report for accessible boards when Pro is active.
+     */
     public function getTimeSheetReport(Request $request)
     {
+        if (!defined('FLUENT_BOARDS_PRO_VERSION')) {
+            return $this->sendError(
+                esc_html__('This is a pro feature', 'fluent-boards'),
+                403
+            );
+        }
+
         // Sanitize date inputs - validate they are valid date strings
         $startDate = $request->getSafe('start_date', 'sanitize_text_field');
         $endDate = $request->getSafe('end_date', 'sanitize_text_field');

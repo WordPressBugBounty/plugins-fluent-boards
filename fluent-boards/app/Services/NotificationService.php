@@ -259,6 +259,31 @@ class NotificationService
         return $wathersToSendEmail;
     }
 
+    /**
+     * Get comment notification recipients as revocable user IDs for async delivery.
+     *
+     * @param int $taskId
+     * @return array
+     */
+    public function getCommentRecipientUserIds($taskId)
+    {
+        $task = Task::findOrFail(absint($taskId));
+        $currentUserId = get_current_user_id();
+        $recipientUserIds = [];
+
+        foreach ($task->watchers as $watcher) {
+            $watcherId = absint($watcher->ID);
+            if (
+                $watcherId !== $currentUserId &&
+                $this->checkIfEmailEnable($watcherId, Constant::BOARD_EMAIL_COMMENT, $task->board_id)
+            ) {
+                $recipientUserIds[] = $watcherId;
+            }
+        }
+
+        return array_values(array_unique($recipientUserIds));
+    }
+
     public function checkIfEmailEnable($userId, $emailPurpose, $boardId)
     {
         if(
@@ -288,29 +313,66 @@ class NotificationService
         return false;
     }
 
+    /**
+     * Return the supplied user IDs that currently belong to a board.
+     *
+     * Mention recipients are board-scoped because comment content is private to
+     * the board, even when a caller supplies a valid WordPress user ID.
+     *
+     * @param int $boardId
+     * @param array $mentionedUserIds
+     * @return array
+     */
+    public function resolveBoardMentionUserIds($boardId, $mentionedUserIds)
+    {
+        $boardId = absint($boardId);
+        $mentionedUserIds = array_values(array_unique(array_filter(array_map('absint', (array) $mentionedUserIds))));
+
+        if (!$boardId || !$mentionedUserIds) {
+            return [];
+        }
+
+        $boardMemberIdLookup = [];
+        $boardRelations = Relation::where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->where('object_id', $boardId)
+            ->whereIn('foreign_id', $mentionedUserIds)
+            ->get(['foreign_id']);
+
+        foreach ($boardRelations as $boardRelation) {
+            $boardMemberIdLookup[absint($boardRelation->foreign_id)] = true;
+        }
+
+        return array_values(array_filter($mentionedUserIds, function ($mentionedUserId) use ($boardMemberIdLookup) {
+            return isset($boardMemberIdLookup[$mentionedUserId]);
+        }));
+    }
+
     public function mentionInComment($comment, $mentionedUserIds)
     {
-        $uniqueIds = array_unique($mentionedUserIds);
+        $currentUserId = get_current_user_id();
+        $uniqueIds = array_values(array_unique(array_filter(array_map('absint', (array) $mentionedUserIds))));
+        $uniqueIds = array_values(array_filter($uniqueIds, function ($mentionedUserId) use ($currentUserId) {
+            return $mentionedUserId !== $currentUserId;
+        }));
 
-        $uniqueIds = array_filter($uniqueIds, function($value) {
-            return (int)$value !== get_current_user_id();
-        });
+        if (!$uniqueIds) {
+            return;
+        }
 
-        //sending emails to mentioned users
-        $mentionedUserEmails = User::whereIn('ID', $uniqueIds)->pluck('user_email');
-        $this->sendMailAfterMention($comment->id, $mentionedUserEmails);
+        // Queued delivery revalidates membership and preferences before sending.
+        $this->sendMailAfterMention($comment->id, $uniqueIds);
 
         //sending desktop notifications
         do_action('fluent_boards/mention_comment_notification', $comment, $uniqueIds);
     }
 
-    public function sendMailAfterMention($commentId, $usersToSendEmail)
+    public function sendMailAfterMention($commentId, $recipientUserIds)
     {
         $current_user_id = get_current_user_id();
 
         /* this will run in background as soon as possible */
         /* sending Model or Model Instance won't work here */
-        as_enqueue_async_action('fluent_boards/one_time_schedule_send_email_for_mention', [$commentId, $usersToSendEmail, $current_user_id], 'fluent-boards');
+        as_enqueue_async_action('fluent_boards/one_time_schedule_send_email_for_mention', [$commentId, $recipientUserIds, $current_user_id], 'fluent-boards');
     }
 
     public function getUnreadNotificationsOfTasks($task)

@@ -109,18 +109,44 @@ class UserService
         return $boardUsers;
     }
 
+    /**
+     * Return associated users and roles only from boards shared with the requester.
+     */
     public function memberAssociatedTaskUsers($userId)
     {
         $user = User::find($userId);
-        $boards = $user->whichBoards->pluck('id');
-        $boardUsers = Relation::whereIn('object_id', $boards)
+        $memberBoardIds = array_values(array_unique(array_filter(array_map(
+            'intval',
+            $user->whichBoards->pluck('id')->toArray()
+        ))));
+        $requesterBoardIds = array_values(array_unique(array_filter(array_map(
+            'intval',
+            PermissionManager::getBoardIdsForUser(get_current_user_id())
+        ))));
+        $sharedBoardIds = array_values(array_intersect($memberBoardIds, $requesterBoardIds));
+
+        if (!$sharedBoardIds) {
+            return [
+                'uniqueUsers'               => [],
+                'userWiseBoardDesignation' => [],
+            ];
+        }
+
+        $boardUsers = Relation::whereIn('object_id', $sharedBoardIds)
             ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
             ->pluck('foreign_id')->toArray();
         $uniqueUsersIds = array_unique($boardUsers);
-        $uniqueUsers = User::whereIn('ID', $uniqueUsersIds)->with('whichBoards')->get();
+        $boardTable = (new Board())->getTable();
+        $uniqueUsers = User::whereIn('ID', $uniqueUsersIds)
+            ->with(['whichBoards' => function ($query) use ($boardTable, $sharedBoardIds) {
+                $query->whereIn($boardTable . '.id', $sharedBoardIds);
+            }])
+            ->get();
 
         $userWiseBoardDesignation = Relation::query()->whereIn('foreign_id', $uniqueUsersIds)
-            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)->get();
+            ->whereIn('object_id', $sharedBoardIds)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->get();
 
         $data = array();
         $data['userWiseBoardDesignation'] = $userWiseBoardDesignation;
@@ -136,7 +162,7 @@ class UserService
                 $uniqueUser['is_super'] = true;
                 $uniqueUser['is_wpadmin'] = false;
             } else {
-                $uniqueUser['all_boards'] = Arr::get($uniqueUser, 'boards');
+                $uniqueUser['all_boards'] = $uniqueUser->getRelation('whichBoards');
                 $uniqueUser['is_super'] = false;
                 $uniqueUser['is_wpadmin'] = false;
             }
@@ -393,33 +419,86 @@ class UserService
     }
 
 
+    /**
+     * Get a member's activities scoped to boards the requesting user can access.
+     */
     public function getMemberRelatedAcitivies($user_id, $page)
     {
-        $activities = Activity::query()->where('created_by', $user_id)
-            ->orderBy('created_at', 'desc')
-            ->with('user')->paginate(40, ['*'], 'page', $page);
+        $perPage = 40;
+        $user_id = absint($user_id);
+        $page = max(1, absint($page));
+        $allowedBoardIds = array_values(array_filter(array_map(
+            'intval',
+            PermissionManager::getBoardIdsForUser(get_current_user_id())
+        )));
 
-        $activitiesToShow = array();
+        if (empty($allowedBoardIds)) {
+            return [
+                'activities'  => [],
+                'pagination'  => $this->getEmptyPaginationInfo($page, $perPage),
+            ];
+        }
+
+        $allowedTaskIds = Task::query()
+            ->select('id')
+            ->whereIn('board_id', $allowedBoardIds);
+
+        $activities = Activity::query()
+            ->where('created_by', $user_id)
+            ->where(function ($query) use ($allowedBoardIds, $allowedTaskIds) {
+                $query->where(function ($boardQuery) use ($allowedBoardIds) {
+                    $boardQuery->where('object_type', Constant::ACTIVITY_BOARD)
+                        ->whereIn('object_id', $allowedBoardIds);
+                })->orWhere(function ($taskQuery) use ($allowedTaskIds) {
+                    $taskQuery->where('object_type', Constant::ACTIVITY_TASK)
+                        ->whereIn('object_id', $allowedTaskIds);
+                });
+            })
+            ->orderBy('created_at', 'desc')
+            ->with('user')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $activitiesToShow = [];
 
         foreach ($activities as $activity) {
             if ($activity->object_type == Constant::ACTIVITY_BOARD) {
                 $activity->load('board');
-//                if($activity->settings && $activity->settings['task_id']){
-//                    $activity->task = Task::findOrFail($activity->settings['task_id']);
-//                }
-                if (PermissionManager::userHasPermission($activity->board_id, get_current_user_id())) {
-                    $activitiesToShow[] = $activity;
-                }
+                $activitiesToShow[] = $activity;
             } elseif ($activity->object_type == Constant::ACTIVITY_TASK) {
                 $activity->load('task');
-                if ($activity->task && PermissionManager::userHasPermission($activity->task->board_id, get_current_user_id())) {
-                    $activitiesToShow[] = $activity;
-                }
+                $activitiesToShow[] = $activity;
             }
         }
+
         return [
-            'activities' => $activitiesToShow,
-            'pagination' => $activities->toArray(),
+            'activities'  => $activitiesToShow,
+            'pagination'  => $this->getPaginationInfo($activities),
+        ];
+    }
+
+    /**
+     * Return pagination metadata without duplicating serialized row data.
+     */
+    private function getPaginationInfo($paginator)
+    {
+        return [
+            'current_page' => $paginator->currentPage(),
+            'last_page'    => $paginator->lastPage(),
+            'per_page'     => (int) $paginator->perPage(),
+            'total'        => $paginator->total(),
+        ];
+    }
+
+    /**
+     * Return an empty pagination payload for callers without accessible boards.
+     */
+    private function getEmptyPaginationInfo($page, $perPage)
+    {
+        return [
+            'current_page' => max(1, (int) $page),
+            'last_page'    => 1,
+            'per_page'     => (int) $perPage,
+            'total'        => 0,
         ];
     }
 
@@ -433,23 +512,21 @@ class UserService
         if(!$user_id) {
             return [];
         }
-        $boardIds = [];
-        $boards = [];
         $user = User::find($user_id);
         $currentUserId = get_current_user_id();
-        if($currentUserId != $user->ID) {
-            if(!PermissionManager::isAdmin()){
-                $currentUser = User::find($currentUserId);
-                $currentUserBoardIds = $currentUser->whichBoards->pluck('id')->toArray();
-                $boardIds = $currentUserBoardIds;
-            }
+
+        if ($currentUserId == $user->ID || PermissionManager::isAdmin($currentUserId)) {
+            return $user->whichBoards;
         }
-        if (!empty($boardIds)) {
-            $boards = $user->whichBoards()->whereIn('fbs_boards.id', $boardIds)->get();
-        } else {
-            $boards = $user->whichBoards;
+
+        $currentUser = User::find($currentUserId);
+        $boardIds = $currentUser ? $currentUser->whichBoards->pluck('id')->toArray() : [];
+
+        if (empty($boardIds)) {
+            return [];
         }
-        return $boards;
+
+        return $user->whichBoards()->whereIn('fbs_boards.id', $boardIds)->get();
     }
 
     /**

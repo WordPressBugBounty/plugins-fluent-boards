@@ -71,10 +71,20 @@ class AttachmentFileService
         $images = CommentImage::whereIn('object_id', $commentIds)
             ->where('object_type', Constant::COMMENT_IMAGE)
             ->get();
+        $commentCreators = Comment::whereIn('id', $commentIds)
+            ->pluck('created_by', 'id')
+            ->toArray();
         $sharedFullUrls = $this->getSharedFullUrlLookup($this->combineAttachmentCollections($images));
+        $commentService = new CommentService();
 
-        CommentImage::withoutTimestamps(function () use ($images, $sourceBoardId, $targetBoardId, $sharedFullUrls) {
+        CommentImage::withoutTimestamps(function () use ($images, $sourceBoardId, $targetBoardId, $taskId, $sharedFullUrls, $commentCreators, $commentService) {
             foreach ($images as $image) {
+                $commentService->applyCommentImageScope(
+                    $image,
+                    $targetBoardId,
+                    $taskId,
+                    $commentCreators[$image->object_id] ?? null
+                );
                 $this->moveAttachmentToBoard($image, $sourceBoardId, $targetBoardId, $sharedFullUrls);
             }
         });
@@ -388,34 +398,7 @@ class AttachmentFileService
 
     protected function resolveLocalPath(Attachment $attachment, $boardId)
     {
-        if (!empty($attachment->file_path) && is_file($attachment->file_path)) {
-            return $attachment->file_path;
-        }
-
-        if (!empty($attachment->full_url)) {
-            $uploadDir = wp_upload_dir();
-            $pathFromUrl = rawurldecode(str_replace($uploadDir['baseurl'], $uploadDir['basedir'], $attachment->full_url));
-            if (is_file($pathFromUrl)) {
-                return $pathFromUrl;
-            }
-
-            if ($boardId) {
-                $urlPath = wp_parse_url($attachment->full_url, PHP_URL_PATH);
-                $pathFromBoardUrl = $urlPath ? $this->getBoardDir($boardId) . DIRECTORY_SEPARATOR . basename(rawurldecode($urlPath)) : null;
-                if ($pathFromBoardUrl && is_file($pathFromBoardUrl)) {
-                    return $pathFromBoardUrl;
-                }
-            }
-        }
-
-        if ($boardId && !empty($attachment->file_path)) {
-            $pathFromBoard = $this->getBoardDir($boardId) . DIRECTORY_SEPARATOR . basename(rawurldecode($attachment->file_path));
-            if (is_file($pathFromBoard)) {
-                return $pathFromBoard;
-            }
-        }
-
-        return null;
+        return FileSystem::resolveLocalAttachmentPath($attachment->file_path, $boardId);
     }
 
     protected function getAttachmentFilename(Attachment $attachment)

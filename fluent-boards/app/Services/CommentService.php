@@ -292,31 +292,152 @@ class CommentService
         }
     }
 
+    /**
+     * Validate every new image before attaching uploads or removing existing images.
+     */
     public function attachCommentImages($comment, $imageIds)
     {
+        $imageIds = $this->normalizeCommentImageIds($imageIds);
 
-        foreach ($imageIds as $imageId)
-        {
-            $attachmentObject = CommentImage::findOrFail($imageId);
-            if($attachmentObject) {
-                if ($attachmentObject->object_id == $comment->id && $attachmentObject->object_type == Constant::COMMENT_IMAGE) {
-                    continue;
-                }
+        $commentImages = CommentImage::where('object_id', $comment->id)
+            ->where('object_type', Constant::COMMENT_IMAGE)
+            ->get();
+
+        $attachedImageIds = [];
+        foreach ($commentImages as $commentImage) {
+            if (in_array((int) $commentImage->id, $imageIds, true)) {
+                $attachedImageIds[] = (int) $commentImage->id;
+            }
+        }
+
+        $newImageIds = array_values(array_diff($imageIds, $attachedImageIds));
+        if (!empty($newImageIds)) {
+            $attachmentObjects = $this->assertCommentImagesAttachable(
+                $newImageIds,
+                $comment->board_id,
+                $comment->task_id
+            );
+
+            foreach ($attachmentObjects as $attachmentObject) {
                 $attachmentObject->object_id = $comment->id;
                 $attachmentObject->object_type = Constant::COMMENT_IMAGE;
                 $attachmentObject->save();
             }
         }
-        //if(in_array("banana", $imageIds))
-        $commentImages = CommentImage::where('object_id', $comment->id)->where('object_type', Constant::COMMENT_IMAGE)->get();
 
         foreach ($commentImages as $commentImage) {
-            if(!in_array($commentImage->id, $imageIds)) {
+            if (!in_array((int) $commentImage->id, $imageIds, true)) {
                 $deletedImage = clone $commentImage;
                 $commentImage->delete();
                 //do_action('fluent_boards/comment_image_deleted', $deletedImage);
             }
         }
+    }
+
+    /**
+     * Allow retained images on this comment and validate all newly supplied uploads.
+     */
+    public function assertCommentImagesAttachableForComment($comment, $imageIds)
+    {
+        $imageIds = $this->normalizeCommentImageIds($imageIds);
+
+        if (empty($imageIds)) {
+            return [];
+        }
+
+        $commentImages = CommentImage::where('object_id', $comment->id)
+            ->where('object_type', Constant::COMMENT_IMAGE)
+            ->get();
+
+        foreach ($commentImages as $commentImage) {
+            $key = array_search((int) $commentImage->id, $imageIds, true);
+            if ($key !== false) {
+                unset($imageIds[$key]);
+            }
+        }
+
+        return $this->assertCommentImagesAttachable(
+            array_values($imageIds),
+            $comment->board_id,
+            $comment->task_id
+        );
+    }
+
+    /**
+     * Reject the entire image list unless every upload is unbound and owned by this actor, board, and task.
+     */
+    public function assertCommentImagesAttachable($imageIds, $boardId, $taskId)
+    {
+        $imageIds = $this->normalizeCommentImageIds($imageIds);
+
+        if (empty($imageIds)) {
+            return [];
+        }
+
+        $currentUserId = get_current_user_id();
+        if (!$currentUserId) {
+            throw new \Exception(esc_html__('Invalid comment image attachment', 'fluent-boards'));
+        }
+
+        $attachments = CommentImage::whereIn('id', $imageIds)
+            ->where('object_id', 0)
+            ->where('object_type', Constant::COMMENT_IMAGE)
+            ->get();
+
+        if (count($attachments) !== count($imageIds)) {
+            throw new \Exception(esc_html__('Invalid comment image attachment', 'fluent-boards'));
+        }
+
+        foreach ($attachments as $attachment) {
+            if (!$this->commentImageScopeMatches($attachment, $boardId, $taskId, $currentUserId)) {
+                throw new \Exception(esc_html__('Invalid comment image attachment', 'fluent-boards'));
+            }
+        }
+
+        return $attachments;
+    }
+
+    /**
+     * Fail closed for legacy uploads without recorded board, task, and uploader ownership.
+     */
+    private function commentImageScopeMatches($attachment, $boardId, $taskId, $userId)
+    {
+        $settings = is_array($attachment->settings) ? $attachment->settings : [];
+        $scope = isset($settings['comment_image_scope']) && is_array($settings['comment_image_scope'])
+            ? $settings['comment_image_scope']
+            : [];
+
+        return intval($scope['board_id'] ?? 0) === intval($boardId)
+            && intval($scope['task_id'] ?? 0) === intval($taskId)
+            && intval($scope['created_by'] ?? 0) === intval($userId);
+    }
+
+    /**
+     * Record trusted upload ownership in attachment metadata before saving.
+     */
+    public function applyCommentImageScope($attachment, $boardId, $taskId, $createdBy = null)
+    {
+        $settings = is_array($attachment->settings) ? $attachment->settings : [];
+        $settings['comment_image_scope'] = [
+            'board_id' => intval($boardId),
+            'task_id' => intval($taskId),
+            'created_by' => intval($createdBy === null ? get_current_user_id() : $createdBy),
+        ];
+        $attachment->settings = $settings;
+
+        return $attachment;
+    }
+
+    /**
+     * Normalize submitted image IDs and remove duplicates before validating the full list.
+     */
+    private function normalizeCommentImageIds($imageIds)
+    {
+        if (!is_array($imageIds)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_unique(array_map('intval', $imageIds))));
     }
 
     public function update($commentData, $comment_id, $mentionData, $boardId = null)
@@ -327,7 +448,16 @@ class CommentService
             return false;
         }
 
-        $allMentionedIds = array_unique(array_merge($comment->settings['mentioned_id'] ?? [], is_array($mentionData) ? $mentionData : []));
+        $effectiveBoardId = absint($comment->board_id ?: $boardId);
+        $notificationService = new NotificationService();
+        $existingMentionedIds = array_values(array_unique(array_filter(array_map('absint', (array) ($comment->settings['mentioned_id'] ?? [])))));
+        $newMentionedIds = array_values(array_unique(array_filter(array_map('absint', (array) $mentionData))));
+        $requestedMentionedIds = array_values(array_unique(array_merge($existingMentionedIds, $newMentionedIds)));
+        $allMentionedIds = $notificationService->resolveBoardMentionUserIds($effectiveBoardId, $requestedMentionedIds);
+
+        if (array_diff($newMentionedIds, $allMentionedIds)) {
+            throw new \Exception(esc_html__('One or more mentioned users are not members of this board', 'fluent-boards'), 403);
+        }
 
         if ($allMentionedIds) {
             $processedDescription = $this->processMentionAndLink($commentData['description'], $allMentionedIds);
@@ -419,16 +549,12 @@ class CommentService
     }
 
     /**
-     * Adds a task attachment to the specified task.
+     * Persist an unbound comment upload with trusted board, task, and uploader metadata.
+     * Legacy uploads without this scope cannot be newly attached to a comment.
      *
-     * @param int $taskId The ID of the task to which the attachment is added.
-     * @param string $title The title of the attachment.
-     * @param string $url The URL of the attachment.
-     *
-     * @return Attachment The updated list of task attachments.
-     * @throws \Exception
+     * @return CommentImage
      */
-    public function createCommentImage($data, $boardId)
+    public function createCommentImage($data, $boardId, $taskId = null)
     {
         /*
          * I will refactor this function later- within March 2024 Last Week
@@ -453,9 +579,12 @@ class CommentService
         $attachment->file_path = $attachData['type'] != 'url' ?  $attachData['file'] : null;
         $attachment->full_url = esc_url($attachData['url']);
         $attachment->file_size = $attachData['size'];
-        $attachment->settings = $attachData['type'] == 'url' ? [
+        $settings = $attachData['type'] == 'url' ? [
             'meta' => $UrlMeta
-        ] : '';
+        ] : [];
+        $settings['board_id'] = absint($boardId);
+        $attachment->settings = $settings;
+        $this->applyCommentImageScope($attachment, $boardId, $taskId);
         $attachment->driver = 'local';
         $attachment->save();
 
@@ -467,7 +596,6 @@ class CommentService
         return add_query_arg([
             'fbs'               => 1,
             'fbs_type'          => 'public_url',
-            'fbs_bid'           => $boardId,
             'fbs_comment_image'    => $attachment->file_hash
         ], site_url('/index.php'));
     }

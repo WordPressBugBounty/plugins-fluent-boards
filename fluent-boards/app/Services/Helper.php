@@ -435,7 +435,8 @@ class Helper
         return $users;
     }
 
-    public static function sanitizeUsersArray($users, $boardId = null)
+    // Callers formatting multiple lists may supply a resolved board-manager result.
+    public static function sanitizeUsersArray($users, $boardId = null, $isBoardManager = null)
     {
         if (current_user_can('list_users')) {
             return $users;
@@ -443,7 +444,7 @@ class Helper
 
         $sanitizedUsers = [];
 
-        if(!PermissionManager::isBoardManager($boardId)) //Todo: may create permission security issue, will be modified later
+        if (!($isBoardManager ?? PermissionManager::isBoardManager($boardId)))
         {
             $currentUser = wp_get_current_user();
             if($currentUser && isset($currentUser->user_email)){

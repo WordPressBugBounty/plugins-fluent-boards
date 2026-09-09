@@ -85,7 +85,10 @@ class DescriptionMarkdownConverter
         }
 
         if (!self::looksLikeHtml($description)) {
-            return self::restoreLegacyHardBreaks($description);
+            // Milkdown already serializes new descriptions as Markdown. Rewriting
+            // its line breaks here changes code blocks and other pasted content
+            // between the live editor and the next reload.
+            return $description;
         }
 
         try {
@@ -108,14 +111,6 @@ class DescriptionMarkdownConverter
         $text = preg_replace("/\n{3,}/", "\n\n", $text);
 
         return trim($text);
-    }
-
-    /**
-     * Restore hard breaks lost by the converter shipped in versions 2.0.0-2.0.4.
-     */
-    private static function restoreLegacyHardBreaks($markdown): string
-    {
-        return preg_replace('/(?<!\n)(?<!\\\\)(?<! {2})\n(?!\n)/', "  \n", $markdown);
     }
 
     private static function renderChildren(\DOMNode $node): string

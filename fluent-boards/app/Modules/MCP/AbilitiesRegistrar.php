@@ -215,7 +215,11 @@ class AbilitiesRegistrar
                         'priority'       => ['type' => 'string', 'description' => 'Omit to leave unchanged. Pass an empty string to clear. Custom priority keys registered via fluent_boards/task_priorities are allowed.'],
                         'due_at'         => ['type' => 'string', 'description' => 'Omit to leave unchanged. Pass an empty string to clear.'],
                         'started_at'     => ['type' => 'string', 'description' => 'Omit to leave unchanged. Pass an empty string to clear.'],
-                        'assignees'      => ['type' => 'array', 'items' => ['type' => 'integer']],
+                        'assignees'      => [
+                            'type'        => 'array',
+                            'items'       => ['type' => 'integer'],
+                            'description' => __('Replaces current assignees. Newly added user ids must identify board members or global administrators. Pass an empty array to clear all assignees.', 'fluent-boards'),
+                        ],
                         'crm_contact_id' => ['type' => 'integer', 'description' => 'Omit to leave unchanged. Pass 0 to clear.'],
                         'settings'       => ['type' => 'object'],
                     ],
@@ -476,7 +480,7 @@ class AbilitiesRegistrar
 
             'fluent-boards/assign-task' => [
                 'label'       => __('Assign Task', 'fluent-boards'),
-                'description' => __('Add, remove, or sync task assignees. User ids must belong to existing WordPress users. Adding someone already assigned is a no-op. Assignees also become task watchers.', 'fluent-boards'),
+                'description' => __('Add, remove, or sync task assignees. Newly added user ids must identify existing WordPress users who are board members or global administrators. Adding someone already assigned is a no-op. Assignees also become task watchers.', 'fluent-boards'),
                 'input_schema' => [
                     'type'       => 'object',
                     'properties' => [

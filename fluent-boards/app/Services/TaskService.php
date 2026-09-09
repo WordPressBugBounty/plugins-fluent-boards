@@ -5,6 +5,7 @@ namespace FluentBoards\App\Services;
 use FluentBoards\App\App;
 use FluentBoards\App\Models\Attachment;
 use FluentBoards\App\Models\Comment;
+use FluentBoards\App\Models\Notification;
 use FluentBoards\App\Models\NotificationUser;
 use FluentBoards\App\Models\TaskImage;
 use FluentBoards\App\Services\Constant;
@@ -787,40 +788,134 @@ class TaskService
             }
         }
 
-        $dbInstance = App::getInstance('db');
-        $dbInstance->beginTransaction();
+        $this->deleteTasksBatch([$task]);
+    }
 
-        try {
-            $deletedTask = clone $task;
-            $task->watchers()->detach();
-            $task->assignees()->detach();
+    /**
+     * Delete the supplied tasks and their owned records without discovering children.
+     *
+     * @param iterable $tasks
+     * @param bool $manageTransaction Set false only when the caller owns an active transaction.
+     * @return void
+     * @throws \Throwable
+     */
+    public function deleteTasksBatch($tasks, $manageTransaction = true)
+    {
+        if (!is_array($tasks) && !($tasks instanceof \Traversable)) {
+            $tasks = [$tasks];
+        }
 
-            $notificationIds = $task->notifications->pluck('id');
-            $task->notifications()->delete();
-            NotificationUser::whereIn('notification_id', $notificationIds)->delete();
-
-            $task->labels()->detach();
-
-            if (defined('FLUENT_BOARDS_PRO_VERSION')) {
-                $task->customFields()->detach();
-                $this->deleteTaskAttachments($task);
+        $deletedTasks = [];
+        $taskBoardIds = [];
+        foreach ($tasks as $task) {
+            if (!$task instanceof Task) {
+                continue;
             }
 
-            $this->deleteTimeTrackingRecords($task->id, false);
-            TaskMeta::where('task_id', $task->id)->delete();
+            $taskId = (int) $task->id;
+            if ($taskId < 1) {
+                continue;
+            }
 
-            if (!$task->delete()) {
+            $deletedTasks[$taskId] = clone $task;
+            $taskBoardIds[$taskId] = (int) $task->board_id;
+        }
+
+        if (!$deletedTasks) {
+            return;
+        }
+
+        ksort($deletedTasks, SORT_NUMERIC);
+        $taskIds = array_keys($deletedTasks);
+        $dbInstance = App::getInstance('db');
+
+        if (!$manageTransaction && !$dbInstance->inTransaction()) {
+            throw new \RuntimeException(__('An active transaction is required for caller-managed task deletion.', 'fluent-boards'));
+        }
+
+        if ($manageTransaction) {
+            $dbInstance->beginTransaction();
+        }
+
+        try {
+            $relationTypes = [
+                Constant::OBJECT_TYPE_USER_TASK_WATCH,
+                Constant::OBJECT_TYPE_TASK_ASSIGNEE,
+                Constant::OBJECT_TYPE_TASK_LABEL,
+            ];
+
+            if (defined('FLUENT_BOARDS_PRO_VERSION')) {
+                $relationTypes[] = \FluentBoardsPro\App\Services\Constant::TASK_CUSTOM_FIELD;
+            }
+
+            Relation::whereIn('object_id', $taskIds)
+                ->whereIn('object_type', $relationTypes)
+                ->delete();
+
+            Relation::where('object_type', Constant::OBJECT_TYPE_TASK_DEPENDENCY)
+                ->where(function ($query) use ($taskIds) {
+                    $query->whereIn('object_id', $taskIds)
+                        ->orWhereIn('foreign_id', $taskIds);
+                })
+                ->delete();
+
+            $notificationIds = Notification::whereIn('task_id', $taskIds)->pluck('id')->toArray();
+            NotificationUser::whereIn('notification_id', $notificationIds)->delete();
+            Notification::whereIn('task_id', $taskIds)->delete();
+
+            $this->deleteTaskAttachmentsBatch($taskIds, $taskBoardIds);
+            Activity::whereIn('object_id', $taskIds)
+                ->where('object_type', Constant::ACTIVITY_TASK)
+                ->delete();
+            Meta::whereIn('object_id', $taskIds)
+                ->where('object_type', Constant::REPEAT_TASK_META)
+                ->delete();
+            $this->deleteTimeTrackingRecords($taskIds, false);
+            TaskMeta::whereIn('task_id', $taskIds)->delete();
+
+            $deletedCount = Task::whereIn('id', $taskIds)->delete();
+            if ($deletedCount !== count($taskIds)) {
                 throw new \RuntimeException(__('Task could not be deleted.', 'fluent-boards'));
             }
 
-            do_action('fluent_boards/task_deleted', $deletedTask);
-            $dbInstance->commit();
-        } catch (\Throwable $e) {
-            $dbInstance->rollBack();
-            throw $e; // Re-throw the exception after rolling back
-        }
+            $this->dispatchTaskDeletedHooksAfterCommit($dbInstance, $deletedTasks);
 
+            if ($manageTransaction) {
+                $dbInstance->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($manageTransaction) {
+                $dbInstance->rollBack();
+            }
+
+            throw $e;
+        }
     }
+
+    /**
+     * Dispatch task deletion hooks after the outermost transaction commits.
+     *
+     * @param mixed $dbInstance
+     * @param array $deletedTasks
+     * @return void
+     */
+    private function dispatchTaskDeletedHooksAfterCommit($dbInstance, $deletedTasks)
+    {
+        $dbInstance->afterCommit(function () use ($deletedTasks) {
+            foreach ($deletedTasks as $deletedTask) {
+                try {
+                    do_action('fluent_boards/task_deleted', $deletedTask);
+                } catch (\Throwable $e) {
+                    error_log(sprintf(
+                        'FluentBoards: Failed to dispatch committed task deletion hook for task %d: %s',
+                        (int) $deletedTask->id,
+                        sanitize_text_field($e->getMessage())
+                    ));
+                }
+            }
+        });
+    }
+
     public function deleteTaskForBulk($task)
     {
         // If this is a parent task, delete all subtasks first
@@ -831,6 +926,8 @@ class TaskService
                 $this->deleteTaskForBulk($subtask);
             }
         }
+
+        $this->deleteTimeTrackingRecords($task->id, false);
 
         $deleted = $task->delete();
 
@@ -849,7 +946,7 @@ class TaskService
             $task->labels()->detach();
 
             //task custom field value
-             if (defined('FLUENT_BOARDS_PRO_VERSION')) {
+            if (defined('FLUENT_BOARDS_PRO_VERSION')) {
                 $task->customFields()->detach();
                 $this->deleteTaskAttachments($task);
             }
@@ -2380,7 +2477,33 @@ class TaskService
             $deletedAttachment = clone $attachment;
             $attachment->delete();
 
-            do_action('fluent_boards/task_attachment_deleted', $deletedAttachment);
+            do_action('fluent_boards/task_attachment_deleted', $deletedAttachment, $task->board_id);
+        }
+    }
+
+    /**
+     * Delete task attachments one at a time so each attachment-deleted hook is preserved.
+     *
+     * @param array $taskIds
+     * @param array $taskBoardIds
+     * @return void
+     */
+    private function deleteTaskAttachmentsBatch($taskIds, $taskBoardIds)
+    {
+        if (!defined('FLUENT_BOARDS_PRO_VERSION')) {
+            return;
+        }
+
+        $attachments = TaskAttachment::whereIn('object_id', $taskIds)
+            ->where('object_type', Constant::TASK_ATTACHMENT)
+            ->get();
+
+        foreach ($attachments as $attachment) {
+            $deletedAttachment = clone $attachment;
+            $attachment->delete();
+            $boardId = $taskBoardIds[(int) $attachment->object_id] ?? null;
+
+            do_action('fluent_boards/task_attachment_deleted', $deletedAttachment, $boardId);
         }
     }
 
@@ -2639,6 +2762,12 @@ class TaskService
             foreach ($images as $image) {
                 $clonedImage = $image->replicate();
                 $clonedImage->object_id = $clonedCommentOrReply->id;
+                (new CommentService())->applyCommentImageScope(
+                    $clonedImage,
+                    $clonedCommentOrReply->board_id,
+                    $clonedCommentOrReply->task_id,
+                    $clonedCommentOrReply->created_by
+                );
                 $clonedImage->save();
             }
         }

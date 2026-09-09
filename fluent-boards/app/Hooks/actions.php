@@ -125,7 +125,7 @@ $app->addCustomAction('one_time_schedule_send_email_for_removed_from_task', 'Sch
 
 $app->addCustomAction('task_attachment_added', 'ActivityHandler@taskAttachmentAdded', 10, 1);
 $app->addCustomAction('task_attachment_deleted', 'ActivityHandler@taskAttachmentDeleted', 10, 1);
-$app->addCustomAction('task_attachment_deleted', 'TaskHandler@taskAttachmentDeleted', 10, 1);
+$app->addCustomAction('task_attachment_deleted', 'TaskHandler@taskAttachmentDeleted', 10, 2);
 // Removed: direct call is made from Comment::deleting to TaskHandler@commentImageDeleted
 $app->addAction('deleted_user', 'BoardHandler@deleteUserRelatedData', 10, 3);
 

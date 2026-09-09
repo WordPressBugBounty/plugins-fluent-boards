@@ -107,7 +107,7 @@ class PermissionManager
             return false;
         }
 
-        return (bool)$boardUser->settings ? $boardUser->settings['is_admin'] : null;
+        return (bool)($boardUser->settings[Constant::IS_BOARD_ADMIN] ?? false);
 
     }
 
@@ -199,6 +199,43 @@ class PermissionManager
         }
 
         return true;
+    }
+
+    public static function userCanAccessMemberProfile($targetUserId, $userId = null): bool
+    {
+        $targetUserId = intval($targetUserId);
+
+        if (!$userId) {
+            $userId = get_current_user_id();
+        }
+
+        $userId = intval($userId);
+
+        if (!$targetUserId || !$userId) {
+            return false;
+        }
+
+        if ($userId === $targetUserId || static::isAdmin($userId)) {
+            return true;
+        }
+
+        if (!static::isFluentBoardsUser($targetUserId)) {
+            return false;
+        }
+
+        $boardIds = Relation::where('foreign_id', $userId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->pluck('object_id')
+            ->toArray();
+
+        if (empty($boardIds)) {
+            return false;
+        }
+
+        return Relation::where('foreign_id', $targetUserId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->whereIn('object_id', $boardIds)
+            ->exists();
     }
 
     public static function isAdmin($userId = null, $useCache = true)
@@ -353,7 +390,7 @@ class PermissionManager
         }
 
         // Admins have full permissions, allow access immediately
-        if (static::isAdmin()) {
+        if (static::isAdmin($userId)) {
             return true;
         }
 

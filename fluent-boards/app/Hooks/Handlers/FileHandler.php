@@ -33,37 +33,46 @@ class FileHandler
     }
 
     /**
-     * Summary of deleteFileByUrl
-     * @param mixed $file_url
+     * Delete a local attachment only when its stored path belongs to Fluent Boards.
+     *
+     * @param mixed $attachment
+     * @param int|null $boardId
      * @return bool
      */
-    public function deleteFileByUrl($file_url)
+    public function deleteAttachmentFile($attachment, $boardId = null)
     {
-        $exists = Attachment::where('full_url', $file_url)->exists();
-        if($exists) {
-            return;
+        if (
+            !$attachment ||
+            $attachment->attachment_type === 'url' ||
+            (!empty($attachment->driver) && $attachment->driver !== 'local') ||
+            empty($attachment->file_path)
+        ) {
+            return false;
         }
-        // Convert the URL to the local file path
-        $upload_dir = wp_upload_dir();
-        $file_path = str_replace($upload_dir['baseurl'], $upload_dir['basedir'], $file_url);
 
-        // Check if the file exists
-        if (file_exists($file_path)) {
-            // Delete the file
-            $deleted = wp_delete_file($file_path);
+        $storedFilename = rawurldecode((string) $attachment->file_path);
+        $isBareFilename = $storedFilename !== ''
+            && strpos($storedFilename, '/') === false
+            && strpos($storedFilename, '\\') === false;
+        $filePath = FileSystem::resolveLocalAttachmentPath($attachment->file_path, $boardId);
 
-            // Optionally, you can also remove the file from the media library
-            // Note: This won't delete the file physically, but it will remove it from the media library
-            $attachment_id = attachment_url_to_postid($file_url);
-            if ($attachment_id) {
-                wp_delete_attachment($attachment_id, true);
+        if (!$filePath) {
+            return false;
+        }
+
+        // Legacy filenames need the board-qualified URL to distinguish same-named files across boards.
+        if ($isBareFilename) {
+            if (
+                empty($attachment->full_url) ||
+                Attachment::where('full_url', $attachment->full_url)->exists()
+            ) {
+                return false;
             }
-
-            // Return true if the file was successfully deleted
-            return $deleted;
+        } elseif (Attachment::where('file_path', $attachment->file_path)->exists()) {
+            return false;
         }
-        // Return false if the file does not exist
-        return false;
+
+        return (bool) wp_delete_file($filePath);
     }
 
 

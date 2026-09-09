@@ -3,10 +3,7 @@
 namespace FluentBoards\App\Http\Controllers;
 
 use FluentBoards\App\Models\Comment;
-use FluentBoards\App\Models\Task;
-use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\NotificationService;
-use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\UploadService;
 use FluentBoards\Framework\Http\Request\Request;
@@ -57,7 +54,7 @@ class CommentController extends Controller
                 return (empty($value)) ? null : intval( $value);
             }, null),
             'description'   => $request->getSafe('comment', 'sanitize_textarea_field'),
-            'created_by'    => $request->getSafe('comment_by', 'intval', get_current_user_id()),
+            'created_by'    => get_current_user_id(),
             'task_id'       => (int) $task_id,
             'type'          => $request->getSafe('comment_type', 'sanitize_text_field', 'comment'),
             'board_id'      => (int) $board_id,
@@ -70,8 +67,8 @@ class CommentController extends Controller
             'type'          => 'required|string'
         ];
 
-        $images = $request->getSafe('images');
-        if ($images) {
+        $imageIds = $this->getImageIdsFromRequest($request);
+        if ($imageIds) {
             $validationRules['description'] = 'nullable|string';
         }
 
@@ -79,14 +76,12 @@ class CommentController extends Controller
 
 
         try {
+            if (!empty($imageIds)) {
+                $this->commentService->assertCommentImagesAttachable($imageIds, $board_id, $task_id);
+            }
 
             $rawDescription = $commentData['description'];
-            // Sanitize mentionData array to integers
-            $mentionData = [];
-            $rawMentionData = $request->getSafe('mentionData');
-            if ($rawMentionData && is_array($rawMentionData)) {
-                $mentionData = array_filter(array_map('intval', $rawMentionData));
-            }
+            $mentionData = $this->getMentionData($request, $board_id);
             $commentData['settings'] = [ 'raw_description' => $rawDescription, 'mentioned_id' => $mentionData ];
 
             // Ensure UTF-8 encoding for comment description
@@ -101,41 +96,30 @@ class CommentController extends Controller
             }
 
             $comment = $this->commentService->create($commentData, $task_id, $board_id);
+            if (!empty($imageIds)) {
+                $this->commentService->attachCommentImages($comment, $imageIds);
+                $comment->load(['images']);
+            }
             $comment['user'] = $comment->user;
 
-            $usersToSendEmail = [];
+            $recipientUserIds = [];
             if ($comment->type == 'reply') {
                 $parentComment = Comment::findOrFail($comment->parent_id);
                 $commenterId = $parentComment->created_by;
                 if ($commenterId != get_current_user_id())
                 {
-                    $commenter = User::select('user_email')->findOrFail($commenterId);
-                    $commenterEmail = $commenter->user_email;
-                    $usersToSendEmail[] = $commenterEmail;
+                    $recipientUserIds[] = absint($commenterId);
                 }
-                $this->sendMailAfterComment($comment->id, $usersToSendEmail);
+                $this->sendMailAfterComment($comment->id, $recipientUserIds);
             } else {
-                //sending emails to assignees who enabled their email
-                $usersToSendEmail = $this->notificationService->filterAssigneeToSendEmail($task_id, Constant::BOARD_EMAIL_COMMENT);
-                $this->sendMailAfterComment($comment->id, $usersToSendEmail);
+                // Queue revocable IDs; the worker rechecks membership and preferences before sending.
+                $recipientUserIds = $this->notificationService->getCommentRecipientUserIds($task_id);
+                $this->sendMailAfterComment($comment->id, $recipientUserIds);
             }
 
             if(!empty($mentionData))
             {
                 $this->notificationService->mentionInComment($comment, $mentionData);
-            }
-
-            $images = $request->getSafe('images');
-            if ($images) {
-                // Sanitize images array to integers
-                $imageIds = [];
-                if (is_array($images)) {
-                    $imageIds = array_filter(array_map('intval', $images));
-                }
-                if (!empty($imageIds)) {
-                    $this->commentService->attachCommentImages($comment, $imageIds);
-                    $comment->load(['images']);
-                }
             }
 
             if ($comment->type == 'comment')
@@ -148,7 +132,7 @@ class CommentController extends Controller
                 'comment' => $comment
             ], 201);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 400);
+            return $this->sendError($e->getMessage(), $e->getCode() === 403 ? 403 : 400);
         }
     }
 
@@ -162,20 +146,25 @@ class CommentController extends Controller
             'description'   => 'required|string'
         ];
 
-        $images = $request->getSafe('images');
-        if ($images) {
+        $hasImagesParam = $this->requestHasImagesArray($request);
+        $imageIds = $this->getImageIdsFromRequest($request);
+        if ($hasImagesParam) {
             $validationRules['description'] = 'nullable|string';
         }
 
         $commentData = $this->commentSanitizeAndValidate($requestData, $validationRules);
 
         try {
-            // Sanitize mentionData array to integers
-            $mentionData = [];
-            $rawMentionData = $request->getSafe('mentionData');
-            if ($rawMentionData && is_array($rawMentionData)) {
-                $mentionData = array_filter(array_map('intval', $rawMentionData));
+            if ($hasImagesParam) {
+                $commentForImages = $this->commentService->findCommentOnBoard($comment_id, $board_id);
+                if ($commentForImages->created_by != get_current_user_id()) {
+                    $errorMessage = __('Unauthorized Action', 'fluent-boards');
+                    return $this->sendError($errorMessage, 401);
+                }
+                $this->commentService->assertCommentImagesAttachableForComment($commentForImages, $imageIds);
             }
+
+            $mentionData = $this->getMentionData($request);
             
             $comment = $this->commentService->update($commentData, $comment_id, $mentionData, $board_id);
 
@@ -189,14 +178,9 @@ class CommentController extends Controller
                 $this->notificationService->mentionInComment($comment, $mentionData);
             }
 
-            // Sanitize images array to integers
-            $rawImages = $request->getSafe('images');
-            if ($rawImages && is_array($rawImages)) {
-                $imageIds = array_filter(array_map('intval', $rawImages));
-                if (!empty($imageIds)) {
-                    $this->commentService->attachCommentImages($comment, $imageIds);
-                    $comment->load(['images']);
-                }
+            if ($hasImagesParam) {
+                $this->commentService->attachCommentImages($comment, $imageIds);
+                $comment->load(['images']);
             }
 
             $comment->load('user');
@@ -206,7 +190,7 @@ class CommentController extends Controller
                 'message'     => __('Comment has been updated', 'fluent-boards'),
             ], 200);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), $e->getCode() === 403 ? 403 : 404);
         }
     }
 
@@ -236,12 +220,7 @@ class CommentController extends Controller
         $replyData = $this->commentSanitizeAndValidate($requestData, $validationRules);
 
         try {
-            // Sanitize mentionData array to integers
-            $mentionData = [];
-            $rawMentionData = $request->getSafe('mentionData');
-            if ($rawMentionData && is_array($rawMentionData)) {
-                $mentionData = array_filter(array_map('intval', $rawMentionData));
-            }
+            $mentionData = $this->getMentionData($request);
             
             $reply = $this->commentService->update($replyData, $reply_id, $mentionData, $board_id);
 
@@ -255,7 +234,7 @@ class CommentController extends Controller
                 'message'     => __('Reply has been updated', 'fluent-boards'),
             ], 200);
         } catch (\Exception $e) {
-            return $this->sendError($e->getMessage(), 404);
+            return $this->sendError($e->getMessage(), $e->getCode() === 403 ? 403 : 404);
         }
     }
 
@@ -272,13 +251,43 @@ class CommentController extends Controller
         }
     }
 
-    public function sendMailAfterComment($commentId, $usersToSendEmail)
+    public function sendMailAfterComment($commentId, $recipientUserIds)
     {
         $current_user_id = get_current_user_id();
 
         /* this will run in background as soon as possible */
         /* sending Model or Model Instance won't work here */
-        as_enqueue_async_action('fluent_boards/one_time_schedule_send_email_for_comment', [$commentId, $usersToSendEmail, $current_user_id], 'fluent-boards');
+        as_enqueue_async_action('fluent_boards/one_time_schedule_send_email_for_comment', [$commentId, $recipientUserIds, $current_user_id], 'fluent-boards');
+    }
+
+    /**
+     * Sanitize mention IDs and optionally verify board membership before a create.
+     *
+     * @param Request $request
+     * @param int $boardId
+     * @return array
+     * @throws \Exception
+     */
+    private function getMentionData(Request $request, $boardId = null)
+    {
+        $rawMentionData = $request->getSafe('mentionData');
+        if (!is_array($rawMentionData)) {
+            return [];
+        }
+
+        $mentionData = array_values(array_unique(array_filter(array_map('absint', $rawMentionData))));
+
+        if (!$boardId) {
+            return $mentionData;
+        }
+
+        $boardMemberIds = $this->notificationService->resolveBoardMentionUserIds($boardId, $mentionData);
+
+        if (array_diff($mentionData, $boardMemberIds)) {
+            throw new \Exception(esc_html__('One or more mentioned users are not members of this board', 'fluent-boards'), 403);
+        }
+
+        return $boardMemberIds;
     }
 
     private function commentSanitizeAndValidate($data, array $rules = [])
@@ -313,7 +322,7 @@ class CommentController extends Controller
         $uploadInfo = UploadService::handleFileUpload( $files, $board_id);
 
         $imageData = $uploadInfo[0];
-        $attachment = $this->commentService->createCommentImage($imageData, $board_id);
+        $attachment = $this->commentService->createCommentImage($imageData, $board_id, $task_id);
         if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
             $mediaData = (new AttachmentService())->processMediaData($imageData, $files['file']);
             $attachment['driver'] = $mediaData['driver'];
@@ -349,5 +358,21 @@ class CommentController extends Controller
             // translators: %s is the privacy setting (public or private)
             'message' => sprintf(__('This comment is now %s', 'fluent-boards'), $privacy),
         ], 200);
+    }
+
+    private function getImageIdsFromRequest(Request $request)
+    {
+        $images = $request->getSafe('images');
+
+        if (!$images || !is_array($images)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_unique(array_map('intval', $images))));
+    }
+
+    private function requestHasImagesArray(Request $request)
+    {
+        return $request->exists('images') && is_array($request->getSafe('images'));
     }
 }

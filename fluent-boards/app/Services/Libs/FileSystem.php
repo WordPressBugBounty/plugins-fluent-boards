@@ -64,6 +64,76 @@ class FileSystem
     }
 
     /**
+     * Resolve a stored attachment path only when it belongs to Fluent Boards uploads.
+     *
+     * @param string $storedPath
+     * @param int|null $boardId
+     * @return string|null
+     */
+    public function _resolveLocalAttachmentPath($storedPath, $boardId = null)
+    {
+        if (!$storedPath) {
+            return null;
+        }
+
+        $storedFilename = rawurldecode((string) $storedPath);
+        $isBareFilename = $storedFilename !== ''
+            && strpos($storedFilename, '/') === false
+            && strpos($storedFilename, '\\') === false;
+
+        if ($isBareFilename && $boardId === null) {
+            return null;
+        }
+
+        $filePath = $isBareFilename ? null : realpath($storedPath);
+        $allowedDirectory = $this->_getDir();
+        $pluginRoot = realpath($allowedDirectory);
+
+        if (!$pluginRoot) {
+            return null;
+        }
+
+        $pluginRoot = rtrim($pluginRoot, DIRECTORY_SEPARATOR);
+        $allowedRoot = $pluginRoot;
+
+        if ($boardId !== null) {
+            if (!is_int($boardId) && !is_string($boardId)) {
+                return null;
+            }
+
+            $boardId = filter_var($boardId, FILTER_VALIDATE_INT, [
+                'options' => ['min_range' => 1],
+            ]);
+            if ($boardId === false) {
+                return null;
+            }
+
+            $allowedDirectory .= DIRECTORY_SEPARATOR . 'board_' . $boardId;
+            if (is_link($allowedDirectory)) {
+                return null;
+            }
+
+            $allowedRoot = realpath($allowedDirectory);
+            $expectedBoardRoot = $pluginRoot . DIRECTORY_SEPARATOR . 'board_' . $boardId;
+            if (!$allowedRoot || $allowedRoot !== $expectedBoardRoot) {
+                return null;
+            }
+        }
+
+        if ($isBareFilename) {
+            $filePath = realpath($allowedDirectory . DIRECTORY_SEPARATOR . $storedFilename);
+        }
+
+        if (!$filePath || !$allowedRoot || !is_file($filePath)) {
+            return null;
+        }
+
+        $allowedRoot = rtrim($allowedRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+
+        return strpos($filePath, $allowedRoot) === 0 ? $filePath : null;
+    }
+
+    /**
      * Upload files into custom upload dir of this application
      * @return array
      */

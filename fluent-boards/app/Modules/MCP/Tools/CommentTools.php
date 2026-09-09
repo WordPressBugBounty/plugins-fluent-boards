@@ -4,6 +4,7 @@ namespace FluentBoards\App\Modules\MCP\Tools;
 
 use FluentBoards\App\Modules\MCP\Helpers\MCPHelper;
 use FluentBoards\App\Services\CommentService;
+use FluentBoards\App\Services\NotificationService;
 
 /**
  * Comment write tools.
@@ -28,6 +29,12 @@ class CommentTools
 
         $privacy = !empty($params['privacy']) && $params['privacy'] === 'public' ? 'public' : 'private';
         $mentionedIds = MCPHelper::sanitizeIdArray($params['mentioned_ids'] ?? []);
+        $boardMemberIds = (new NotificationService())->resolveBoardMentionUserIds($task->board_id, $mentionedIds);
+        if (array_diff($mentionedIds, $boardMemberIds)) {
+            return MCPHelper::error('forbidden', __('One or more mentioned users are not members of this board', 'fluent-boards'));
+        }
+
+        $mentionedIds = $boardMemberIds;
         $commentService = new CommentService();
 
         $comment = $commentService->create([

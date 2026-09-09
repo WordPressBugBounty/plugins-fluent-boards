@@ -12,6 +12,7 @@ use FluentBoards\App\Services\NotificationService;
 use FluentBoards\App\Services\TaskService;
 use FluentBoardsPro\App\Models\TaskAttachment;
 use FluentForm\App\Http\Controllers\IntegrationManagerController;
+use FluentForm\App\Modules\Acl\Acl;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Task;
@@ -101,6 +102,9 @@ class Bootstrap extends IntegrationManagerController
         ];
     }
 
+    /**
+     * Build the Fluent Forms feed fields with a form-scoped board options URL.
+     */
     public function getSettingsFields($settings, $formId)
     {
         $data = [
@@ -145,7 +149,10 @@ class Bootstrap extends IntegrationManagerController
                             'placeholder' => 'Priority'
                         ]
                     ],
-                    'remote_url'     => admin_url('admin-ajax.php?action=fluentform_fluent_board_config')
+                    'remote_url'     => add_query_arg([
+                        'action'  => 'fluentform_fluent_board_config',
+                        'form_id' => absint($formId)
+                    ], admin_url('admin-ajax.php'))
                 ],
                 [
                     'key'         => 'task_title',
@@ -233,15 +240,30 @@ class Bootstrap extends IntegrationManagerController
     }
 
 
+    /**
+     * Return board configuration options to authorized Fluent Forms managers.
+     */
     public function getBoardConfigOptions()
     {
-        $requestInfo = $this->app->request->get('settings');
-        $boardConfig = Arr::get($requestInfo, 'board_config');
+        $formId = absint($this->app->request->get('form_id'));
+        $nonceValid = check_ajax_referer('fluent_forms_admin_nonce', 'fluent_forms_admin_nonce', false);
 
-        $boardId = Arr::get($boardConfig, 'board_id');
+        if (!$nonceValid || !$formId || !Acl::hasPermission('fluentform_forms_manager', $formId)) {
+            $this->sendBoardConfigForbidden();
+        }
+
+        $requestInfo = $this->app->request->get('settings', []);
+        $boardConfig = Arr::get($requestInfo, 'board_config', []);
+
+        $boardId = absint(Arr::get($boardConfig, 'board_id'));
+        $boards = $this->getBoards();
+
+        if ($boardId && !array_key_exists($boardId, $boards)) {
+            $this->sendBoardConfigForbidden();
+        }
 
         $data = [
-            'board_id'       => $this->getBoards(),
+            'board_id'       => $boards,
             'stage_id'       => [],
             'board_label_id' => [],
             'member_ids'     => [],
@@ -259,9 +281,26 @@ class Bootstrap extends IntegrationManagerController
         ], 200);
     }
 
+    /**
+     * Send a consistent forbidden response for invalid board configuration requests.
+     */
+    private function sendBoardConfigForbidden()
+    {
+        wp_send_json_error([
+            'message' => __('You do not have permission to configure Fluent Boards for this form.', 'fluent-boards')
+        ], 403);
+    }
+
+    /**
+     * Get active boards accessible to the current user.
+     */
     private function getBoards()
     {
-        $boards = Board::query()->whereNull('archived_at')->get()->toArray();
+        $boards = Board::query()
+            ->whereNull('archived_at')
+            ->byAccessUser(get_current_user_id())
+            ->get()
+            ->toArray();
 
         $formattedBoards = [];
         foreach ($boards as $board) {

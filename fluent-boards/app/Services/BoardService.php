@@ -3,6 +3,7 @@
 namespace FluentBoards\App\Services;
 
 use FluentBoards\App\Models\Activity;
+use FluentBoards\App\Models\Attachment;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Models\Folder;
@@ -373,12 +374,27 @@ class BoardService
         return $isAlreadyMember ?? false;
     }
 
+    /**
+     * Add a WordPress user to a board.
+     *
+     * @return User|false|null User on success, false for an existing relation,
+     *                         or null when the board/user does not exist.
+     */
     public function addMembersInBoard($boardId, $memberId, $isViewerOnly = null)
     {
-        $board = Board::find($boardId);
+        $boardId = intval($boardId);
+        $memberId = intval($memberId);
+        $isViewerOnly = sanitize_text_field((string)$isViewerOnly);
 
-        if (!$board) {
-            return false;
+        if ($boardId <= 0 || $memberId <= 0) {
+            return null;
+        }
+
+        $board = Board::find($boardId);
+        $boardMember = User::find($memberId);
+
+        if (!$board || !$boardMember) {
+            return null;
         }
         $isAlreadyMember = $this->isAlreadyMember($boardId, $memberId);
         if($isAlreadyMember) {
@@ -400,7 +416,6 @@ class BoardService
                 'preferences' => maybe_serialize(Constant::BOARD_NOTIFICATION_TYPES)
             ]
         );
-        $boardMember = User::find($memberId);
         if(!$isViewerOnly) {
             do_action('fluent_boards/board_member_added', $boardId, $boardMember);
         } else {
@@ -523,18 +538,29 @@ class BoardService
     /**
      * Change or clear the board background.
      *
-     * @param mixed $backgroundData
+     * Image attachments must belong to the target board and use the board
+     * background attachment type before their identifiers can be persisted.
+     *
+     * @param array $backgroundData
+     * @param int   $board_id
      * @return array|string
+     * @throws \Exception
      */
     public function setBoardBackground($backgroundData, $board_id)
     {
-        $board = Board::find($board_id);
+        $boardId = absint($board_id);
+        $board = Board::find($boardId);
+
+        if (!$board) {
+            throw new \Exception(esc_html__('Board not found.', 'fluent-boards'));
+        }
+
         $oldBackground = $board->background;
 
         if (!empty($backgroundData['reset'])) {
             $board->background = '';
             $board->save();
-            do_action('fluent_boards/board_background_updated', $board_id, $oldBackground);
+            do_action('fluent_boards/board_background_updated', $boardId, $oldBackground);
 
             return $board->background;
         }
@@ -544,24 +570,32 @@ class BoardService
             $background = [];
         }
 
-        // if board background has color
-        if (isset($backgroundData['color'])) {
+        // Resolve image metadata from the board-owned attachment, never from the client URL.
+        if (isset($backgroundData['image_url'])) {
+            $attachmentId = absint($backgroundData['id'] ?? 0);
+            $attachment = Attachment::where('id', $attachmentId)
+                ->where('object_id', $boardId)
+                ->where('object_type', Constant::BOARD_BACKGROUND_IMAGE)
+                ->first();
+
+            if (!$attachment) {
+                throw new \Exception(esc_html__('Background image not found.', 'fluent-boards'));
+            }
+
+            $background['id'] = (int) $attachment->id;
+            $background['image_url'] = (new CommentService())->createPublicUrl($attachment, $boardId);
+            $background['is_image'] = true;
+            $background['color'] = null;
+        } elseif (isset($backgroundData['color'])) {
+            $background['id'] = $backgroundData['id'];
             $background['color'] = $backgroundData['color'];
             $background['image_url'] = null;
             $background['is_image'] = false;
         }
 
-        // if board background has image
-        if (isset($backgroundData['image_url'])) {
-            $background['image_url'] = $backgroundData['image_url'];
-            $background['is_image'] = true;
-            $background['color'] = null;
-        }
-        $background['id'] = $backgroundData['id'];
-
         $board->background = $background;
         $board->save();
-        do_action('fluent_boards/board_background_updated', $board_id, $oldBackground);
+        do_action('fluent_boards/board_background_updated', $boardId, $oldBackground);
 
         return $board->background;
     }
@@ -911,9 +945,33 @@ class BoardService
             ->get();
     }
 
-    public function deleteInvitation($invitationId)
+    /**
+     * Delete an invitation only when it belongs to the supplied board.
+     *
+     * The optional second argument lets older Pro releases receive a controlled
+     * error instead of reporting a successful deletion that never happened.
+     */
+    public function deleteInvitation($boardId, $invitationId = null)
     {
-        Meta::findOrFail($invitationId)->delete();
+        if ($invitationId === null) {
+            throw new \Exception(
+                __('A board ID is required to delete an invitation.', 'fluent-boards')
+            );
+        }
+
+        $boardId = intval($boardId);
+        $invitationId = intval($invitationId);
+
+        if ($boardId <= 0 || $invitationId <= 0) {
+            return false;
+        }
+
+        return (bool) Meta::query()
+            ->where('id', $invitationId)
+            ->where('object_id', $boardId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD)
+            ->where('key', Constant::BOARD_INVITATION)
+            ->delete();
     }
 
     public function hasDataChanged($boardId, $includeArchived = false, $since = null)

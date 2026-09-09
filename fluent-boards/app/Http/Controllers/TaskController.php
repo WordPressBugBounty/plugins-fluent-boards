@@ -440,11 +440,30 @@ class TaskController extends Controller
         }
     }
 
-
+    /**
+     * Create a task with field-specific sanitization for its request data.
+     *
+     * @param Request $request
+     * @param int $board_id
+     * @return mixed
+     */
     public function create(Request $request, $board_id)
     {
         $board_id = absint($board_id);
-        $taskData = $this->taskSanitizeAndValidate($request->getSafe('task'), [
+        $safeTaskData = $request->getSafe('task');
+        $rawTaskData = $request->get('task', []);
+
+        // Milkdown serializes pasted URLs as <https://...>, which generic text
+        // sanitization removes as a tag.
+        if (
+            is_array($safeTaskData) &&
+            is_array($rawTaskData) &&
+            array_key_exists('description', $rawTaskData)
+        ) {
+            $safeTaskData['description'] = fluent_boards_sanitize_description($rawTaskData['description']);
+        }
+
+        $taskData = $this->taskSanitizeAndValidate($safeTaskData, [
             'title'          => 'required|string',
             'board_id'       => 'required|numeric',
             'stage_id'       => 'required|numeric',

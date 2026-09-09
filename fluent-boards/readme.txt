@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.0.12
+Stable tag: 2.0.15
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -170,7 +170,22 @@ You can filter any task by assignees, stages, and task priorities.
 
 == Changelog ==
 
+= v2.0.15 (Date: September 9, 2026) =
+
+- Improvement: Refined priority controls and task card UI
+- Improvement: Smoother task description editing
+- Improvement: Updated translations
+- Improvement: Faster board exports
+- Fixed: Task description formatting and links when creating and editing tasks
+- Fixed: Duplicate subtask creation through the AI assistant
+- Fixed: Subtask and time-tracking cleanup issues
+- Fixed: Attachment popover placement, folder title overflow, and template preview contrast in dark mode
+- Fixed: Board background cleanup and board-scoped image file resolution
+- Fixed: Member authorization issue
+- Fixed: Other security issues
+
 = v2.0.12 (Date: August 20, 2026) =
+
 - Improvement: Compatibility with WordPress 7.1
 - Improvement: Comments, replies, attached images, and time-tracking entries now move with tasks transferred to another board
 - Improvement: Refined the task label interface with a shared label popover
@@ -180,6 +195,7 @@ You can filter any task by assignees, stages, and task priorities.
 - Other improvements and bug fixes
 
 = v2.0.10 (Date: August 12, 2026) =
+
 - Improvement: Better RTL support across dashboards, boards, tasks, comments, subtasks, activities, settings, reports
 - Improvement: Responsive admin layouts
 - Improvement: Newly created tasks now open in the task modal

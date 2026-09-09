@@ -16,8 +16,6 @@ class ExternalPages
     {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public file serving endpoint, security validated via hash
         $attachmentHash = isset($_REQUEST['fbs_comment_image']) ? sanitize_text_field(wp_unslash($_REQUEST['fbs_comment_image'])) : '';
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public file serving endpoint, security validated via hash
-        $boardId = isset($_REQUEST['fbs_bid']) ? sanitize_text_field(wp_unslash($_REQUEST['fbs_bid'])) : '';
 
         if (empty($attachmentHash)) {
             die(esc_html__('Invalid Attachment Hash', 'fluent-boards'));
@@ -29,6 +27,11 @@ class ExternalPages
             die(esc_html__('Invalid Attachment Hash', 'fluent-boards'));
         }
 
+        $boardId = $this->getAttachmentBoardId($attachment);
+        if (!$boardId) {
+            die(esc_html__('Invalid Attachment Hash', 'fluent-boards'));
+        }
+
         if ('local' !== $attachment->driver) {
             if(!empty($attachment->file_path)){
                 $this->redirectToExternalAttachment($attachment->full_url);
@@ -37,14 +40,9 @@ class ExternalPages
             }
             return;
         }
-        $fileName = $attachment->file_path;
-        $boardId = $boardId;
-        $filePath = $fileName;
-        if(!file_exists($fileName)){
-            $filePath = FileSystem::setSubDir('board_' . $boardId)->getDir() . DIRECTORY_SEPARATOR . $fileName;
-        }
+        $filePath = FileSystem::resolveLocalAttachmentPath($attachment->file_path, $boardId);
 
-        if (!file_exists($filePath)) {
+        if (!$filePath) {
             die(esc_html__('File could not be found.', 'fluent-boards'));
         }
 
@@ -110,6 +108,37 @@ class ExternalPages
     private function getUploadedImageByHash($attachmentHash)
     {
         return CommentImage::where('file_hash', $attachmentHash)->first();
+    }
+
+    /**
+     * Resolve the owning board from server-side attachment relationships.
+     */
+    private function getAttachmentBoardId($attachment)
+    {
+        if ($attachment->object_type === Constant::COMMENT_IMAGE) {
+            $attachment->load('comment');
+            if (!empty($attachment->comment->board_id)) {
+                return absint($attachment->comment->board_id);
+            }
+
+            if (empty($attachment->object_id)) {
+                $settings = is_array($attachment->settings) ? $attachment->settings : [];
+                return empty($settings['board_id']) ? 0 : absint($settings['board_id']);
+            }
+
+            return 0;
+        }
+
+        if ($attachment->object_type === Constant::TASK_DESCRIPTION) {
+            $task = Task::find($attachment->object_id);
+            return !empty($task->board_id) ? absint($task->board_id) : 0;
+        }
+
+        if ($attachment->object_type === Constant::BOARD_BACKGROUND_IMAGE) {
+            return empty($attachment->object_id) ? 0 : absint($attachment->object_id);
+        }
+
+        return 0;
     }
 
     private function serveLocalAttachment($attachment, $filePath)
