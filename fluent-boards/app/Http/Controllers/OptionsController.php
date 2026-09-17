@@ -120,7 +120,7 @@ class OptionsController extends Controller
                 }
 
                 $users = (new BoardService())->getAssigneesByBoard($boardId, $search);
-                $options = $this->addUserDataAsSelectorOption($users);
+                $options = $this->maskSelectorEmailsForViewer($this->addUserDataAsSelectorOption($users));
             } else {
                 $options = apply_filters('fluent_boards/ajax_options_' . $optionKey, [], $search, $includedIds);
             }

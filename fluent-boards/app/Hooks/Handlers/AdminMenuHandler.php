@@ -392,6 +392,7 @@ class AdminMenuHandler
             'upgrade_url'                     => fluent_boards_get_upgrade_url(),
             'board_solid_colors'              => Constant::BOARD_BACKGROUND_DEFAULT_SOLID_COLORS,
             'board_gradient_colors'           => Constant::BOARD_BACKGROUND_DEFAULT_GRADIENT_COLORS,
+            'label_color_presets'             => Constant::LABEL_COLOR_PRESETS,
             'ai_features'                     => [
                 'enabled' => (new \FluentBoards\App\Services\AiService())->isReady(),
             ],

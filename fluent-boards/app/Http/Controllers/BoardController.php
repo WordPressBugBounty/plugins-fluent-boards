@@ -351,6 +351,8 @@ class BoardController extends Controller
                 $boardData['background'] = $backgroundData;
             }
 
+            $this->validateRequestedLabelPresets($request->get('labels'));
+
             $board = $this->boardService->createBoard($boardData);
             $this->createBoardLabelsFromRequest($request, $board->id);
             $this->addBoardMembersFromRequest($request, $board->id);
@@ -446,15 +448,48 @@ class BoardController extends Controller
         foreach ($labels as $label) {
             $labelData = Helper::sanitizeLabel((array) $label);
 
-            if (empty($labelData['label']) && empty($labelData['bg_color'])) {
+            if (empty($labelData['label']) && empty($labelData['bg_color']) && empty($labelData['color_preset'])) {
                 continue;
             }
 
-            $this->labelService->createLabel([
+            $labelPayload = [
                 'label'    => $labelData['label'] ?? '',
                 'bg_color' => $labelData['bg_color'] ?? '#f3f4f6',
                 'color'    => $labelData['color'] ?? '#1B2533',
-            ], $boardId);
+            ];
+
+            if (array_key_exists('color_preset', $labelData)) {
+                $labelPayload['color_preset'] = $labelData['color_preset'];
+            }
+
+            $this->labelService->createLabel($labelPayload, $boardId);
+        }
+    }
+
+    /**
+     * Reject unsupported label preset ids before creating any board records.
+     *
+     * @param mixed $labels
+     * @return void
+     * @throws \Exception
+     */
+    private function validateRequestedLabelPresets($labels)
+    {
+        if (!is_array($labels)) {
+            return;
+        }
+
+        foreach ($labels as $label) {
+            $labelData = Helper::sanitizeLabel((array) $label);
+            $presetId = $labelData[Constant::LABEL_COLOR_PRESET_SETTING] ?? null;
+
+            if ($presetId === null || $presetId === '') {
+                continue;
+            }
+
+            if (!is_string($presetId) || !Constant::getLabelColorPreset($presetId)) {
+                throw new \Exception(esc_html__('Invalid label color preset', 'fluent-boards'));
+            }
         }
     }
 
@@ -533,6 +568,7 @@ class BoardController extends Controller
 
         $board->labelColor = Constant::TRELLO_COLOR_MAP;
         $board->labelColorText = Constant::TEXT_COLOR_MAP;
+        $board->labelColorPresets = Constant::LABEL_COLOR_PRESETS;
 
         $board->users = Helper::sanitizeUserCollections($board->users);
         $board->owner = Helper::sanitizeUserCollections($board->owner);
@@ -723,7 +759,6 @@ class BoardController extends Controller
             $formattedUsers[] = [
                 'ID'           => $user->ID,
                 'display_name' => $name,
-                'user_login'   => $user->user_login,
                 'email'        => $user->user_email,
                 'photo'        => fluent_boards_user_avatar($user->user_email, $name),
                 'role'         => $this->boardUserRole($boardRelation),

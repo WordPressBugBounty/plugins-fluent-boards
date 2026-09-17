@@ -2,6 +2,7 @@
 
 namespace FluentBoards\App\Http\Controllers;
 
+use FluentBoards\Framework\Database\Orm\ModelNotFoundException;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
@@ -542,6 +543,8 @@ class TaskController extends Controller
                 'task' => $task
             ];
 
+        } catch (ModelNotFoundException $e) {
+            throw $e;
         } catch (\Exception $e ) {
             return $this->sendError($e->getMessage(), 400);
         }

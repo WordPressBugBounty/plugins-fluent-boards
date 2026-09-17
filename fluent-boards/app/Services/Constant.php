@@ -190,6 +190,65 @@ class Constant{
         "black_light" => "#1B2533"
     ];
 
+    const LABEL_COLOR_PRESET_SETTING = 'color_preset';
+
+    /**
+     * Theme-aware label colors in the same order shown by the label picker.
+     *
+     * The persisted preset ID is stable; the UI selects the light or dark
+     * pair at render time. The light pair is also stored as a compatibility
+     * fallback for integrations and older clients.
+     */
+    const LABEL_COLOR_PRESETS = [
+        ['id' => 'green-soft', 'light_bg_color' => '#C1EED9', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#234030', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'yellow-soft', 'light_bg_color' => '#F1E593', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#463817', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'orange-soft', 'light_bg_color' => '#F7E0A8', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#562F15', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'red-soft', 'light_bg_color' => '#F6D2CE', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#4B211D', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'purple-soft', 'light_bg_color' => '#E6D3F7', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#3A234F', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'green-bold', 'light_bg_color' => '#70C392', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#366048', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'yellow-bold', 'light_bg_color' => '#E4CA59', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#6F5523', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'orange-bold', 'light_bg_color' => '#EBA146', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#874922', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'red-bold', 'light_bg_color' => '#E17066', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#95362D', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'purple-bold', 'light_bg_color' => '#B579E7', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#6B3E92', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'green-strong', 'light_bg_color' => '#3F7654', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#70C392', 'dark_text_color' => '#1B2533'],
+        ['id' => 'yellow-strong', 'light_bg_color' => '#826429', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#CFAA47', 'dark_text_color' => '#1B2533'],
+        ['id' => 'orange-strong', 'light_bg_color' => '#A6572A', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#EBA146', 'dark_text_color' => '#1B2533'],
+        ['id' => 'red-strong', 'light_bg_color' => '#AF4035', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#E17066', 'dark_text_color' => '#1B2533'],
+        ['id' => 'purple-strong', 'light_bg_color' => '#8049AE', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#B579E7', 'dark_text_color' => '#1B2533'],
+        ['id' => 'blue-soft', 'light_bg_color' => '#CCDDF9', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#1A2D53', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'sky-soft', 'light_bg_color' => '#C9E8F7', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#223B49', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'lime-soft', 'light_bg_color' => '#D5ECAA', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#333E22', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'pink-soft', 'light_bg_color' => '#F4CDE6', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#402436', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'gray-soft', 'light_bg_color' => '#D8D9DC', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#424446', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'blue-bold', 'light_bg_color' => '#6A93E3', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#294FA9', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'sky-bold', 'light_bg_color' => '#7BB9D6', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#345E73', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'lime-bold', 'light_bg_color' => '#97BD5C', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#4A5F2B', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'pink-bold', 'light_bg_color' => '#D172AE', 'light_text_color' => '#1B2533', 'dark_bg_color' => '#7D3D65', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'gray-bold', 'light_bg_color' => '#81848B', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#595B60', 'dark_text_color' => '#FFFFFF'],
+        ['id' => 'blue-strong', 'light_bg_color' => '#305FCA', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#6A93E3', 'dark_text_color' => '#1B2533'],
+        ['id' => 'sky-strong', 'light_bg_color' => '#3D708B', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#7BB9D6', 'dark_text_color' => '#1B2533'],
+        ['id' => 'lime-strong', 'light_bg_color' => '#5A7133', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#97BD5C', 'dark_text_color' => '#1B2533'],
+        ['id' => 'pink-strong', 'light_bg_color' => '#964878', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#D172AE', 'dark_text_color' => '#1B2533'],
+        ['id' => 'gray-strong', 'light_bg_color' => '#60636A', 'light_text_color' => '#FFFFFF', 'dark_bg_color' => '#8B8E93', 'dark_text_color' => '#1B2533'],
+    ];
+
+    /**
+     * Find a predefined label color by its persisted ID.
+     *
+     * @param string $presetId
+     * @return array|null
+     */
+    public static function getLabelColorPreset($presetId)
+    {
+        foreach (self::LABEL_COLOR_PRESETS as $preset) {
+            if ($preset['id'] === $presetId) {
+                return $preset;
+            }
+        }
+
+        return null;
+    }
+
 
     const FBS_ONBOARDING = 'fbs_onboarding';
     const FBS_RECENTLY_VIEWED_CHECK = 'fbs_recently_viewed_checked';
@@ -348,6 +407,11 @@ class Constant{
     const TASK_DESCRIPTION = 'task_description';
 
     const COMMENT_IMAGE = 'comment_image';
+
+    const ATTACHMENT_UPLOAD_BOARD_ID = 'upload_board_id';
+    const ATTACHMENT_UPLOAD_USER_ID = 'upload_user_id';
+    const ATTACHMENT_LEGACY_SIGNATURE_QUERY_KEY = 'secure_sign';
+    const ATTACHMENT_LEGACY_EXPIRES_QUERY_KEY = 'secure_expires';
 
     const REPEAT_TASK_META = 'repeat_task';
 

@@ -115,7 +115,6 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
 
     $router->post('/crm-contact', [BoardController::class, 'updateAssociateCrmContact'])->int('board_id');
     $router->get('/crm-contacts', [BoardController::class, 'getAssociateCrmContacts'])->int('board_id');
-    $router->delete('/crm-contact/{contact_id}', [BoardController::class, 'deleteAssociateCrmContact'])->int('board_id')->int('contact_id');
 
     $router->get('/notification-settings', [NotificationController::class, 'getBoardNotificationSettings'])->int('board_id');
     $router->put('/update-notification-settings', [NotificationController::class, 'updateBoardNotificationSettings'])->int('board_id');

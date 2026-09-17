@@ -2,12 +2,14 @@
 
 namespace FluentBoards\App\Services;
 
+use FluentBoards\App\App;
 use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Models\CommentImage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\TaskActivity;
 use FluentBoardsPro\App\Services\AttachmentService;
 use FluentBoardsPro\App\Services\RemoteUrlParser;
+use RuntimeException;
 
 class CommentService
 {
@@ -93,6 +95,38 @@ class CommentService
         return $comment;
     }
 
+    /** Allow only paragraph content and the comment editor's five inline formats. */
+    public function sanitizeContent($content)
+    {
+        if (!is_string($content) || trim(wp_strip_all_tags($content)) === '') {
+            return '';
+        }
+
+        return trim(wp_kses($content, [
+            'p' => [], 'br' => [], 'strong' => [], 'b' => [],
+            'em' => [], 'i' => [], 'del' => [], 's' => [], 'code' => [],
+            'a' => ['href' => true, 'title' => true],
+        ]));
+    }
+
+    /** Resolve mentions and bare URLs in text without rewriting link attributes or code. */
+    public function renderContent($content, $mentionData = [])
+    {
+        $parts = wp_html_split($this->sanitizeContent($content));
+        $skipDepth = 0;
+        foreach ($parts as &$part) {
+            if (preg_match('~^</?(a|code)\b~i', $part)) {
+                $skipDepth += strpos($part, '</') === 0 ? -1 : 1;
+                $skipDepth = max(0, $skipDepth);
+            } elseif ($skipDepth === 0 && $part !== '' && $part[0] !== '<') {
+                $part = $this->processMentionAndLink($part, $mentionData);
+            }
+        }
+        unset($part);
+
+        return wp_kses_post(implode('', $parts));
+    }
+
     private function startsWithAt($word) {
         return mb_strpos($word, '@') === 0;
     }
@@ -174,7 +208,7 @@ class CommentService
 
     public function processMentionAndLink($commentDescription, $mentionData = [])
     {
-        if (empty($commentDescription)) {
+        if ($commentDescription === '' || $commentDescription === null) {
             return '';
         }
 
@@ -293,45 +327,65 @@ class CommentService
     }
 
     /**
-     * Validate every new image before attaching uploads or removing existing images.
+     * Retain this comment's images or claim the current user's pending uploads on its board.
+     * Validate the complete list before changing attachments or removing omitted images.
      */
     public function attachCommentImages($comment, $imageIds)
     {
         $imageIds = $this->normalizeCommentImageIds($imageIds);
+        $commentId = absint($comment->id);
+        $boardId = absint($comment->board_id);
+        $taskId = absint($comment->task_id);
+        $userId = get_current_user_id();
 
-        $commentImages = CommentImage::where('object_id', $comment->id)
-            ->where('object_type', Constant::COMMENT_IMAGE)
-            ->get();
-
-        $attachedImageIds = [];
-        foreach ($commentImages as $commentImage) {
-            if (in_array((int) $commentImage->id, $imageIds, true)) {
-                $attachedImageIds[] = (int) $commentImage->id;
-            }
+        if (!$commentId || !$boardId || !$userId) {
+            throw new RuntimeException(__('Invalid comment image selection.', 'fluent-boards'));
         }
 
-        $newImageIds = array_values(array_diff($imageIds, $attachedImageIds));
-        if (!empty($newImageIds)) {
-            $attachmentObjects = $this->assertCommentImagesAttachable(
-                $newImageIds,
-                $comment->board_id,
-                $comment->task_id
-            );
+        App::getInstance('db')->transaction(function () use ($imageIds, $commentId, $boardId, $taskId, $userId) {
+            // Serialize edits to this comment and prevent concurrent claims of the same upload.
+            Comment::withoutGlobalScopes()->where('id', $commentId)->where('board_id', $boardId)->lockForUpdate()->firstOrFail();
+            $images = CommentImage::whereIn('id', $imageIds)
+                ->where('object_type', Constant::COMMENT_IMAGE)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
 
-            foreach ($attachmentObjects as $attachmentObject) {
-                $attachmentObject->object_id = $comment->id;
-                $attachmentObject->object_type = Constant::COMMENT_IMAGE;
-                $attachmentObject->save();
+            if ($images->count() !== count($imageIds)) {
+                throw new RuntimeException(__('Invalid comment image selection.', 'fluent-boards'));
             }
-        }
 
-        foreach ($commentImages as $commentImage) {
-            if (!in_array((int) $commentImage->id, $imageIds, true)) {
-                $deletedImage = clone $commentImage;
-                $commentImage->delete();
-                //do_action('fluent_boards/comment_image_deleted', $deletedImage);
+            foreach ($images as $image) {
+                if ((int) $image->object_id === $commentId) {
+                    continue;
+                }
+
+                if ((int) $image->object_id !== 0
+                    || !$this->commentImageScopeMatches($image, $boardId, $taskId, $userId)) {
+                    throw new RuntimeException(__('Invalid comment image selection.', 'fluent-boards'));
+                }
             }
-        }
+
+            foreach ($images as $image) {
+                if ((int) $image->object_id === 0) {
+                    $image->object_id = $commentId;
+                    if (!$image->save()) {
+                        throw new RuntimeException(__('Could not attach comment image.', 'fluent-boards'));
+                    }
+                }
+            }
+
+            $removedImages = CommentImage::where('object_id', $commentId)
+                ->where('object_type', Constant::COMMENT_IMAGE)
+                ->whereNotIn('id', $imageIds)
+                ->get();
+
+            foreach ($removedImages as $image) {
+                if (!$image->delete()) {
+                    throw new RuntimeException(__('Could not remove comment image.', 'fluent-boards'));
+                }
+            }
+        });
     }
 
     /**
@@ -459,11 +513,8 @@ class CommentService
             throw new \Exception(esc_html__('One or more mentioned users are not members of this board', 'fluent-boards'), 403);
         }
 
-        if ($allMentionedIds) {
-            $processedDescription = $this->processMentionAndLink($commentData['description'], $allMentionedIds);
-        } elseif(!$allMentionedIds) {
-            $processedDescription = $this->checkIfCommentHaveLinks($commentData['description']);
-        }
+        $commentData['description'] = $this->sanitizeContent($commentData['description']);
+        $processedDescription = $this->renderContent($commentData['description'], $allMentionedIds);
 
         $oldComment = $comment->settings['raw_description'] ?? $comment->description;
         $comment->description = $processedDescription;
@@ -583,7 +634,10 @@ class CommentService
             'meta' => $UrlMeta
         ] : [];
         $settings['board_id'] = absint($boardId);
-        $attachment->settings = $settings;
+        $attachment->settings = $settings + [
+            Constant::ATTACHMENT_UPLOAD_BOARD_ID => absint($boardId),
+            Constant::ATTACHMENT_UPLOAD_USER_ID => get_current_user_id(),
+        ];
         $this->applyCommentImageScope($attachment, $boardId, $taskId);
         $attachment->driver = 'local';
         $attachment->save();
@@ -593,10 +647,12 @@ class CommentService
 
     public function createPublicUrl($attachment, $boardId)
     {
+        $boardId = absint($boardId);
+
         return add_query_arg([
             'fbs'               => 1,
             'fbs_type'          => 'public_url',
-            'fbs_comment_image'    => $attachment->file_hash
+            'fbs_comment_image' => $attachment->file_hash,
         ], site_url('/index.php'));
     }
 

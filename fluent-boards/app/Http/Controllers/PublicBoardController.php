@@ -21,7 +21,8 @@ class PublicBoardController extends Controller
         $board->createdOn = $board->created_at ? $board->created_at->format('Y-m-d') : null;
         $board->load(['stages', 'labels', 'users']);
 
-        $board->users = PublicAccessService::sanitizeUsers($board->users);
+        // Members must never be serialized from the User relation; replace it with the reduced list.
+        PublicAccessService::replaceUserRelation($board, 'users');
         $board->isUserOnlyViewer = true;
         $board->is_pinned = false;
 
@@ -29,6 +30,8 @@ class PublicBoardController extends Controller
             'settings', 'currency', 'crm_contact_id',
             'updated_at', 'created_by',
         ]);
+
+        PublicAccessService::stripUserRelations($board);
 
         return [
             'board' => $board
@@ -263,7 +266,9 @@ class PublicBoardController extends Controller
             $task->contact = null;
             $task->notifications = [];
             $task->watchers = [];
-            $task->assignees = PublicAccessService::sanitizeUsers($task->assignees);
+            // Assignees must never be serialized from the User relation; replace it with the reduced list.
+            PublicAccessService::replaceUserRelation($task, 'assignees');
+            PublicAccessService::stripUserRelations($task);
         }
     }
 }

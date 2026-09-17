@@ -199,6 +199,7 @@ class Helper
         $fieldMaps = [
             'bg_color'   => 'sanitize_text_field',
             'color'      => 'sanitize_text_field',
+            'color_preset' => 'sanitize_key',
             'label'      => 'sanitize_text_field',
             'boardId'    => 'intval',
             'task_id'    => 'intval',

@@ -352,17 +352,51 @@ class AttachmentFileService
             return;
         }
 
-        $description = $task->description;
-
+        $replacements = [];
         foreach ($urlMap as $oldUrl => $newUrl) {
-            $description = str_replace($oldUrl, $newUrl, $description);
-            $description = str_replace(esc_url($oldUrl), esc_url($newUrl), $description);
-            $description = str_replace(esc_attr($oldUrl), esc_attr($newUrl), $description);
+            $identity = $this->getPublicAttachmentUrlIdentity($oldUrl);
+            if ($identity !== null) {
+                $replacements[$identity] = $newUrl;
+            }
         }
+
+        // Keep HTML and Markdown delimiters outside the URL being replaced.
+        $description = preg_replace_callback('~https?://[^\s<>"\')\]]+~i', function ($matches) use ($replacements) {
+            $url = html_entity_decode($matches[0], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $identity = $this->getPublicAttachmentUrlIdentity($url);
+            if ($identity === null || !isset($replacements[$identity])) {
+                return $matches[0];
+            }
+
+            $newUrl = $replacements[$identity];
+            return $url === $matches[0] ? $newUrl : esc_attr($newUrl);
+        }, $task->description);
 
         if ($description !== $task->description) {
             $task->description = $description;
         }
+    }
+
+    /**
+     * Match stored public image URLs by endpoint and query, excluding renewable credentials.
+     */
+    protected function getPublicAttachmentUrlIdentity($url)
+    {
+        $parts = wp_parse_url($url);
+        if (!$parts || empty($parts['query'])) {
+            return null;
+        }
+
+        parse_str($parts['query'], $query);
+        if (($query['fbs_type'] ?? null) !== 'public_url' || empty($query['fbs_comment_image'])) {
+            return null;
+        }
+
+        unset($query[Constant::ATTACHMENT_LEGACY_SIGNATURE_QUERY_KEY], $query[Constant::ATTACHMENT_LEGACY_EXPIRES_QUERY_KEY]);
+        ksort($query);
+        $parts['query'] = $query;
+
+        return serialize($parts);
     }
 
     protected function updateTaskCoverFromFileResults(Task $task, array $fileResults, $targetBoardId, $sourceCoverImageId = null)

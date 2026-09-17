@@ -28,7 +28,17 @@ if (!function_exists('fluent_boards_sanitize_description')) {
             return $url ? '[' . $url . '](' . str_replace(')', '%29', $url) . ')' : $matches[0];
         }, (string) $description);
 
-        return wp_kses_post($description);
+        // KSES encodes standalone > characters, which breaks Markdown quotes.
+        // Protect only quote prefixes; all HTML still passes through KSES.
+        $quotePrefix = 'fbs-quote-' . wp_generate_uuid4() . '-';
+        $quotes = [];
+        $description = preg_replace_callback('/^[ \t]*(?:>[ \t]*)+/m', function ($matches) use (&$quotes, $quotePrefix) {
+            $key = $quotePrefix . count($quotes);
+            $quotes[$key] = $matches[0];
+            return $key;
+        }, $description);
+
+        return strtr(wp_kses_post($description), $quotes);
     }
 }
 

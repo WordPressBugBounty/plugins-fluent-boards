@@ -53,7 +53,7 @@ class CommentController extends Controller
             'parent_id'     => $request->getSafe('parent_id', function ($value) {
                 return (empty($value)) ? null : intval( $value);
             }, null),
-            'description'   => $request->getSafe('comment', 'sanitize_textarea_field'),
+            'description'   => $this->commentService->sanitizeContent($request->get('comment', '')),
             'created_by'    => get_current_user_id(),
             'task_id'       => (int) $task_id,
             'type'          => $request->getSafe('comment_type', 'sanitize_text_field', 'comment'),
@@ -84,16 +84,7 @@ class CommentController extends Controller
             $mentionData = $this->getMentionData($request, $board_id);
             $commentData['settings'] = [ 'raw_description' => $rawDescription, 'mentioned_id' => $mentionData ];
 
-            // Ensure UTF-8 encoding for comment description
-            $description = mb_convert_encoding($commentData['description'], 'UTF-8', 'auto');
-
-            if(!empty($mentionData)) {
-                // Process mentions and links with UTF-8 support
-                $commentData['description'] = $this->commentService->processMentionAndLink($description, $mentionData);
-            } else {
-                // Process links with UTF-8 support
-                $commentData['description'] = $this->commentService->checkIfCommentHaveLinks($description);
-            }
+            $commentData['description'] = $this->commentService->renderContent($rawDescription, $mentionData);
 
             $comment = $this->commentService->create($commentData, $task_id, $board_id);
             if (!empty($imageIds)) {
@@ -139,7 +130,7 @@ class CommentController extends Controller
     public function update(Request $request, $board_id, $comment_id)
     {
         $requestData = [
-            'description'   => $request->getSafe('comment', 'sanitize_textarea_field')
+            'description'   => $this->commentService->sanitizeContent($request->get('comment', ''))
         ];
 
         $validationRules = [
@@ -210,7 +201,7 @@ class CommentController extends Controller
     public function updateReply(Request $request, $board_id, $reply_id)
     {
         $requestData = [
-            'description'   => $request->getSafe('comment', 'sanitize_textarea_field')
+            'description'   => $this->commentService->sanitizeContent($request->get('comment', ''))
         ];
 
         $validationRules = [

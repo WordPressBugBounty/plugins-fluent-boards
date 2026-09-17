@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.0.15
+Stable tag: 2.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,23 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v2.1.0 (Date: September 17, 2026) =
+
+- New: Rich text formatting for comments and replies
+- New: Markdown attachment previews with Mermaid diagrams and full-screen mode
+- New: Import Trello boards via API
+- New: Label colors that adapt to light and dark modes
+- Improvement: Identify labels faster with colored backgrounds
+- Improvement: Task descriptions now auto-save, with dedicated Save and Cancel buttons for added control
+- Improvement: Task headers now show the current stage
+- Improvement: Spot high-priority tasks faster with color-coded priorities
+- Improvement: Refined task details and dashboard badges
+- Fixed: Table search persistence, Gantt scrolling, and date picker overlap
+- Fixed: Timesheet reports, missing board descriptions, and task lookup errors
+- Fixed: Tightened security for public boards and API responses
+- Fixed: Other security issues
+- Other improvements and bug fixes
 
 = v2.0.15 (Date: September 9, 2026) =
 

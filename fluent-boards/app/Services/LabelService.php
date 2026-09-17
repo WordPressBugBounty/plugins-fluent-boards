@@ -47,11 +47,16 @@ class  LabelService
 
     public function createLabel($labelData, $boardId)
     {
+        $labelData = $this->normalizeLabelColorData($labelData);
+
         $label = new Label();
         $label->board_id = $boardId;
-        $label->title = $labelData['label'];
-        $label->bg_color = $labelData['bg_color'];
-        $label->color = $labelData['color'];
+        $label->title = $labelData['label'] ?? '';
+        $label->bg_color = $labelData['bg_color'] ?? '';
+        $label->color = $labelData['color'] ?? '';
+        if (isset($labelData['settings'])) {
+            $label->settings = $labelData['settings'];
+        }
         $label->save();
 
         return $label;
@@ -59,27 +64,24 @@ class  LabelService
 
     public function createDefaultLabel($boardId)
     {
-        $defaultColors = [
-            "green" => "#4bce97",
-            "yellow" => "#f5cd47",
-            "orange" => "#fea362",
-            "red" => "#f87168",
-            "purple" => "#9f8fef"
-        ];
+        $defaultColors = ['green-bold', 'yellow-bold', 'orange-bold', 'red-bold', 'purple-bold'];
 
         $data = [];
 
-        foreach ($defaultColors as $index => $bg_color)
+        foreach ($defaultColors as $presetId)
         {
+            $preset = Constant::getLabelColorPreset($presetId);
+            $colorName = strtok($presetId, '-');
             $data[] = [
                 'board_id' => $boardId,
                 // Titles match the create-board modal defaults, otherwise boards created
                 // outside that modal end up with colour chips carrying no text.
-                'title' => ucfirst($index),
-                'slug' => $index,
+                'title' => ucfirst($colorName),
+                'slug' => $colorName,
                 'type' => 'label',
-                'bg_color' => $bg_color,
-                'color' => Constant::TEXT_COLOR_MAP[$index],
+                'bg_color' => $preset['light_bg_color'],
+                'color' => $preset['light_text_color'],
+                'settings' => maybe_serialize([Constant::LABEL_COLOR_PRESET_SETTING => $presetId]),
                 'created_at' => current_time('mysql'),
                 'updated_at' => current_time('mysql')
             ];
@@ -133,7 +135,8 @@ class  LabelService
     public function editLabelofBoard($labelData, $id, $boardId = null)
     {
         $label = $boardId ? $this->findLabelOnBoard($id, $boardId) : Label::findOrFail($id);
-        $label->title = $labelData['label'];
+        $labelData = $this->normalizeLabelColorData($labelData, $label);
+        $label->title = $labelData['label'] ?? $label->title;
 
         // Background and text colour move independently: coupling them dropped a
         // text-colour-only change on the floor while still reporting success.
@@ -143,6 +146,14 @@ class  LabelService
 
         if (isset($labelData['color']) && $labelData['color'] !== '') {
             $label->color = $labelData['color'];
+        }
+
+        if (array_key_exists('settings', $labelData)) {
+            if (array_key_exists('color_preset', $labelData) && $labelData['color_preset'] === '') {
+                $label->replaceSettings($labelData['settings']);
+            } else {
+                $label->settings = $labelData['settings'];
+            }
         }
 
         $label->save();
@@ -187,11 +198,59 @@ class  LabelService
             $labelToSave['position'] = 0;
             $labelToSave['color'] = $label->color;
             $labelToSave['bg_color'] = $label->bg_color;
+            $settings = (array) $label->settings;
+            $presetId = $settings[Constant::LABEL_COLOR_PRESET_SETTING] ?? '';
+            if (Constant::getLabelColorPreset($presetId)) {
+                $labelToSave['settings'] = [Constant::LABEL_COLOR_PRESET_SETTING => $presetId];
+            }
             $copiedLabel = Label::create($labelToSave);
 
             $labelMap[$label['id']] = $copiedLabel->id;
         }
          return $labelMap;
+    }
+
+    /**
+     * Converts a selected preset into stable light-mode fallback colors.
+     *
+     * @param array $labelData
+     * @param Label|null $label
+     * @return array
+     * @throws \Exception
+     */
+    private function normalizeLabelColorData($labelData, $label = null)
+    {
+        if (!array_key_exists('color_preset', $labelData)) {
+            return $labelData;
+        }
+
+        $presetId = $labelData['color_preset'];
+        $settings = $label ? (array) $label->settings : [];
+
+        // Framework request extraction can represent an omitted optional field
+        // as null. That must preserve an existing preset rather than reject it.
+        if ($presetId === null) {
+            unset($labelData['color_preset']);
+            return $labelData;
+        }
+
+        if ($presetId === '') {
+            unset($settings[Constant::LABEL_COLOR_PRESET_SETTING]);
+            $labelData['settings'] = $settings;
+            return $labelData;
+        }
+
+        $preset = Constant::getLabelColorPreset($presetId);
+        if (!$preset) {
+            throw new \Exception(esc_html__('Invalid label color preset', 'fluent-boards'));
+        }
+
+        $settings[Constant::LABEL_COLOR_PRESET_SETTING] = $preset['id'];
+        $labelData['settings'] = $settings;
+        $labelData['bg_color'] = $preset['light_bg_color'];
+        $labelData['color'] = $preset['light_text_color'];
+
+        return $labelData;
     }
     public function getLastOneMinuteUpdatedLabels($boardId, $lastUpdated = null, $includeArchived = true)
     {

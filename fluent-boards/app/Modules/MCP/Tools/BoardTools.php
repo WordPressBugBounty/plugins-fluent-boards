@@ -6,6 +6,7 @@ use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Modules\MCP\Helpers\MCPHelper;
 use FluentBoards\App\Services\BoardService;
+use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\FolderService;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\LabelService;
@@ -117,6 +118,11 @@ class BoardTools
         $memberIds = self::validateBoardMemberIds($params['member_ids'] ?? []);
         if (is_wp_error($memberIds)) {
             return $memberIds;
+        }
+
+        $labelPresetValidation = self::validateLabelPresets($params['labels'] ?? null);
+        if (is_wp_error($labelPresetValidation)) {
+            return $labelPresetValidation;
         }
 
         $description = isset($params['description']) ? MCPHelper::sanitizeMarkdown($params['description']) : '';
@@ -343,6 +349,7 @@ class BoardTools
                 'label'    => $label['title'] ?? ($label['label'] ?? ''),
                 'bg_color' => $label['bg_color'] ?? '',
                 'color'    => $label['color'] ?? '',
+                'color_preset' => $label['color_preset'] ?? '',
             ]);
 
             if (empty($labelData['label']) && empty($labelData['bg_color'])) {
@@ -353,8 +360,43 @@ class BoardTools
                 'label'    => $labelData['label'] ?? '',
                 'bg_color' => !empty($labelData['bg_color']) ? $labelData['bg_color'] : '#f3f4f6',
                 'color'    => !empty($labelData['color']) ? $labelData['color'] : '#1B2533',
+                'color_preset' => $labelData['color_preset'] ?? '',
             ], $boardId);
         }
+    }
+
+    /**
+     * Validate label preset ids before the board is persisted.
+     *
+     * @param mixed $labels
+     * @return true|\WP_Error
+     */
+    private static function validateLabelPresets($labels)
+    {
+        if (!is_array($labels)) {
+            return true;
+        }
+
+        foreach ($labels as $label) {
+            if (!is_array($label)) {
+                continue;
+            }
+
+            $labelData = Helper::sanitizeLabel([
+                Constant::LABEL_COLOR_PRESET_SETTING => $label[Constant::LABEL_COLOR_PRESET_SETTING] ?? null,
+            ]);
+            $presetId = $labelData[Constant::LABEL_COLOR_PRESET_SETTING] ?? null;
+
+            if ($presetId === null || $presetId === '') {
+                continue;
+            }
+
+            if (!is_string($presetId) || !Constant::getLabelColorPreset($presetId)) {
+                return MCPHelper::error('invalid_param', __('Invalid label color preset', 'fluent-boards'));
+            }
+        }
+
+        return true;
     }
 
     private static function addBoardMembers($boardService, $boardId, $memberIds)

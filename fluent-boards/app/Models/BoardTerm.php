@@ -28,6 +28,19 @@ class BoardTerm extends Model
         $this->attributes['settings'] = \maybe_serialize($originalSettings);
     }
 
+    /**
+     * Persist a complete settings payload without merging it with the previous value.
+     *
+     * @param array $settings
+     * @return $this
+     */
+    public function replaceSettings($settings)
+    {
+        $this->attributes['settings'] = \maybe_serialize((array) $settings);
+
+        return $this;
+    }
+
     public function getSettingsAttribute($settings)
     {
         return maybe_unserialize($settings);

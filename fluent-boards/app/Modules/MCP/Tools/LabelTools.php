@@ -68,7 +68,12 @@ class LabelTools
             'label'    => array_key_exists('title', $params) ? $params['title'] : ($existing ? $existing->title : ''),
             'bg_color' => !empty($params['bg_color']) ? $params['bg_color'] : ($existing ? $existing->bg_color : ''),
             'color'    => !empty($params['color']) ? $params['color'] : ($existing ? $existing->color : ''),
+            'color_preset' => array_key_exists('color_preset', $params) ? $params['color_preset'] : null,
         ]);
+
+        if (!array_key_exists('color_preset', $params)) {
+            unset($labelData['color_preset']);
+        }
 
         if (empty($labelData['label']) && empty($labelData['bg_color'])) {
             return MCPHelper::error('invalid_param', __('Provide a label title or a background color', 'fluent-boards'));
@@ -82,6 +87,7 @@ class LabelTools
                 'label'    => $labelData['label'] ?? '',
                 'bg_color' => !empty($labelData['bg_color']) ? $labelData['bg_color'] : self::DEFAULT_BG_COLOR,
                 'color'    => !empty($labelData['color']) ? $labelData['color'] : self::DEFAULT_TEXT_COLOR,
+                'color_preset' => $labelData['color_preset'] ?? '',
             ], $board->id);
             do_action('fluent_boards/board_label_created', $label);
         }

@@ -190,7 +190,13 @@ class ActivityHandler
         $taskId = $comment->task_id;
         $newComment = $comment->settings['raw_description'] ?? $comment->description;
 
-        $this->createLogActivity($taskId, 'updated', 'comment', $oldComment, $newComment);
+        // Activity previews are plain text, while comment drafts now contain inline HTML.
+        $plainText = static function ($content) {
+            $content = preg_replace('~<br\s*/?>|</p\s*>~i', "\n", $content);
+            return trim(html_entity_decode(wp_strip_all_tags($content), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        };
+
+        $this->createLogActivity($taskId, 'updated', 'comment', $plainText($oldComment), $plainText($newComment));
     }
     public function logCommentDeleteActivity($comment)
     {

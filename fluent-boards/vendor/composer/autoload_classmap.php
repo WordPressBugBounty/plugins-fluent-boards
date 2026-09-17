@@ -90,6 +90,7 @@ return array(
     'FluentBoards\\App\\Modules\\MCP\\Tools\\TaskQueryTools' => $baseDir . '/app/Modules/MCP/Tools/TaskQueryTools.php',
     'FluentBoards\\App\\Modules\\MCP\\Tools\\TaskTools' => $baseDir . '/app/Modules/MCP/Tools/TaskTools.php',
     'FluentBoards\\App\\Services\\AiService' => $baseDir . '/app/Services/AiService.php',
+    'FluentBoards\\App\\Services\\AttachmentAccessService' => $baseDir . '/app/Services/AttachmentAccessService.php',
     'FluentBoards\\App\\Services\\AttachmentFileService' => $baseDir . '/app/Services/AttachmentFileService.php',
     'FluentBoards\\App\\Services\\BoardService' => $baseDir . '/app/Services/BoardService.php',
     'FluentBoards\\App\\Services\\CommentService' => $baseDir . '/app/Services/CommentService.php',

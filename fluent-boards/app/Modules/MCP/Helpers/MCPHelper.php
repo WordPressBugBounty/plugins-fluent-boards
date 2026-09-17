@@ -266,6 +266,10 @@ class MCPHelper
                 'slug'        => $label->slug,
                 'color'       => $label->color,
                 'bg_color'    => $label->bg_color,
+                'color_preset' => \FluentBoards\Framework\Support\Arr::get(
+                    (array) $label->settings,
+                    \FluentBoards\App\Services\Constant::LABEL_COLOR_PRESET_SETTING
+                ),
                 'position'    => isset($label->position) ? (float) $label->position : null,
                 'archived_at' => self::toIso8601($label->archived_at),
             ];

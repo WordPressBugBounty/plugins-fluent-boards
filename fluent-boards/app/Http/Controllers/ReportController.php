@@ -102,6 +102,7 @@ class ReportController extends Controller
 
     /**
      * Returns the timesheet report for accessible boards when Pro is active.
+     * Preserves logs for missing users with a deleted-user placeholder.
      */
     public function getTimeSheetReport(Request $request)
     {
@@ -180,10 +181,10 @@ class ReportController extends Controller
                     'completed_at'     => $time['completed_at'],
                     'message'          => $time['message'],
                     'user' => [
-                        'ID'     => $user->ID,
-                        'name'   => $user->display_name,
-                        'avatar' => fluent_boards_user_avatar($user->user_email),
-                        'email'  => $user->user_email
+                        'ID'     => $user ? $user->ID : (int) $time->user_id,
+                        'name'   => $user ? $user->display_name : __('Deleted user', 'fluent-boards'),
+                        'avatar' => $user ? fluent_boards_user_avatar($user->user_email) : '',
+                        'email'  => $user ? $user->user_email : ''
                     ]
                 ];
 

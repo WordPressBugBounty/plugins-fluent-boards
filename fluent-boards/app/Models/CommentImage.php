@@ -37,11 +37,9 @@ class CommentImage extends Attachment
         }
         return add_query_arg([
             'fbs'               => 1,
-            'fbs_comment_image'    => $this->file_hash,
-            'secure_sign' => md5($this->id . gmdate('YmdH'))
+            'fbs_comment_image' => $this->file_hash,
         ], site_url('/index.php'));
     }
 
 
 }
-

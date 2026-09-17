@@ -151,7 +151,7 @@ class BoardService
         $boardData = [
             'title'       => $boardData['title'],
             'type'        => $boardData['type'] ? $boardData['type'] : 'to-do',
-            'description' => DescriptionMarkdownConverter::normalize($boardData['description']),
+            'description' => DescriptionMarkdownConverter::normalize($boardData['description'] ?? ''),
             'currency'    => isset($boardData['currency']) ? $boardData['currency'] : 'USD',
             'background'  => isset($boardData['background']) ? $boardData['background'] : '',
             'created_by'  => isset($boardData['created_by']) ? $boardData['created_by'] : get_current_user_id()

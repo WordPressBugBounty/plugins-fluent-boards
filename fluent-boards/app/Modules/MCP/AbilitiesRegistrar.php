@@ -9,6 +9,7 @@ use FluentBoards\App\Modules\MCP\Tools\LabelTools;
 use FluentBoards\App\Modules\MCP\Tools\StageTools;
 use FluentBoards\App\Modules\MCP\Tools\TaskQueryTools;
 use FluentBoards\App\Modules\MCP\Tools\TaskTools;
+use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\PermissionManager;
 
 /**
@@ -112,6 +113,11 @@ class AbilitiesRegistrar
                                     'title'    => ['type' => 'string'],
                                     'bg_color' => ['type' => 'string', 'description' => 'Hex background colour. Defaults to #f3f4f6.'],
                                     'color'    => ['type' => 'string', 'description' => 'Hex text colour. Defaults to #1B2533.'],
+                                    Constant::LABEL_COLOR_PRESET_SETTING => [
+                                        'type'        => 'string',
+                                        'enum'        => self::getLabelColorPresetIds(),
+                                        'description' => 'Optional predefined label colour. Use an empty string to clear a preset when updating a label.',
+                                    ],
                                 ],
                                 'required' => ['title'],
                             ],
@@ -320,6 +326,11 @@ class AbilitiesRegistrar
                         'title'    => ['type' => 'string', 'description' => 'Required when creating unless bg_color is given.'],
                         'bg_color' => ['type' => 'string', 'description' => 'Hex background colour. Defaults to #f3f4f6 on create.'],
                         'color'    => ['type' => 'string', 'description' => 'Hex text colour. Defaults to #1B2533 on create.'],
+                        Constant::LABEL_COLOR_PRESET_SETTING => [
+                            'type'        => 'string',
+                            'enum'        => self::getLabelColorPresetIds(),
+                            'description' => 'Optional predefined label colour. Omit to retain the current preset; use an empty string to clear it.',
+                        ],
                     ],
                     'required' => ['board_id'],
                 ],
@@ -555,5 +566,15 @@ class AbilitiesRegistrar
                 return new \WP_Error('failed', $e->getMessage(), $details);
             }
         };
+    }
+
+    /**
+     * Return every supported preset id plus the explicit value that clears one.
+     *
+     * @return array
+     */
+    private static function getLabelColorPresetIds()
+    {
+        return array_merge([''], array_column(Constant::LABEL_COLOR_PRESETS, 'id'));
     }
 }

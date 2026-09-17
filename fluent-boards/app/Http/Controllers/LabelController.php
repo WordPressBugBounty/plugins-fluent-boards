@@ -49,9 +49,12 @@ class LabelController extends Controller
     public function createLabel(Request $request, $board_id)
     {
         $board_id = absint($board_id);
-        $labelData = $this->labelSanitizeAndValidate($request->only(['bg_color', 'color', 'label']), [
-            'bg_color' => 'required|string',
-            'color' => 'required|string',
+        $labelData = Helper::sanitizeLabel($request->only(['bg_color', 'color', 'color_preset', 'label']));
+        $hasPreset = !empty($labelData['color_preset']);
+        $labelData = $this->validate($labelData, [
+            'bg_color' => $hasPreset ? 'nullable|string' : 'required|string',
+            'color' => $hasPreset ? 'nullable|string' : 'required|string',
+            'color_preset' => 'nullable|string',
             'label' => 'nullable|string',
         ]);
 
@@ -143,9 +146,12 @@ class LabelController extends Controller
     {
         $board_id = absint($board_id);
         $label_id = absint($label_id);
-        $labelData = $this->labelSanitizeAndValidate($request->only(['bg_color', 'color', 'label']), [
-            'bg_color' => 'required|string',
-            'color' => 'nullable|string',
+        $labelData = Helper::sanitizeLabel($request->only(['bg_color', 'color', 'color_preset', 'label']));
+        $isCustomSelection = array_key_exists('color_preset', $labelData) && $labelData['color_preset'] === '';
+        $labelData = $this->validate($labelData, [
+            'bg_color' => $isCustomSelection ? 'required|string' : 'nullable|string',
+            'color' => $isCustomSelection ? 'required|string' : 'nullable|string',
+            'color_preset' => 'nullable|string',
             'label' => 'nullable|string',
         ]);
         try {

@@ -86,6 +86,11 @@ class TaskHandler
 
     public function searchNonBoardWordpressUsers()
     {
+        // This enumerates every WordPress user with their email; only user managers may see it.
+        if (!current_user_can('list_users')) {
+            return [];
+        }
+
         $superAdmin = Relation::select('user_id')->distinct()->pluck('user_id');
         $users = User::whereDoesntHave('boards')->whereNotIn('ID', $superAdmin)->get();
 

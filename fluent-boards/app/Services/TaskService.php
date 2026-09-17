@@ -2,6 +2,7 @@
 
 namespace FluentBoards\App\Services;
 
+use FluentBoards\Framework\Database\Orm\ModelNotFoundException;
 use FluentBoards\App\App;
 use FluentBoards\App\Models\Attachment;
 use FluentBoards\App\Models\Comment;
@@ -33,12 +34,13 @@ class TaskService
      *
      * Subtasks normally carry the same board_id as their parent, but the parent
      * fallback protects older data where that relationship may be incomplete.
+     * Missing or mismatched tasks use the router's deliberate 404 response.
      *
      * @param int $taskId
      * @param int $boardId
      * @param bool $allowParentFallback
      * @return Task
-     * @throws \Exception
+     * @throws ModelNotFoundException
      */
     public function findTaskOnBoard($taskId, $boardId, $allowParentFallback = true)
     {
@@ -46,7 +48,7 @@ class TaskService
         $boardId = absint($boardId);
 
         if (!$taskId || !$boardId) {
-            throw new \Exception(esc_html__('Task not found', 'fluent-boards'));
+            throw new ModelNotFoundException(esc_html__('Task not found', 'fluent-boards'));
         }
 
         $task = Task::where('id', $taskId)
@@ -72,7 +74,7 @@ class TaskService
             }
         }
 
-        throw new \Exception(esc_html__('Task not found', 'fluent-boards'));
+        throw new ModelNotFoundException(esc_html__('Task not found', 'fluent-boards'));
     }
 
     private function normalizeTaskDescriptionForEditor(Task $task)
@@ -2223,7 +2225,7 @@ class TaskService
         // Fetch comments and activities separately
         $comments = [];
         if ($feedType !== 'activities') {
-            $comments = $task->comments()->with('user')->orderBy('created_at', 'desc')->get()->toArray();
+            $comments = $task->comments()->with(['user', 'replies.user'])->orderBy('created_at', 'desc')->get()->toArray();
         }
 
         $activities = [];

@@ -8,6 +8,7 @@
             '_descriptionToPlainText.js'
         ],
         'dynamicImports' => [
+            '_vendor.js',
             'resources/admin/Components/Report/Reports.vue',
             'resources/admin/Components/Report/Overview/Overview.vue',
             'resources/admin/Components/Report/Tasks/Tasks.vue',
@@ -123,6 +124,7 @@
     '_vendor.js' => [
         'file' => 'vendor.js',
         'name' => 'vendor',
+        'isDynamicEntry' => true,
         'css' => [
             'admin/vendor.css'
         ]

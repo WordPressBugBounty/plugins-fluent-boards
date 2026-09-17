@@ -118,6 +118,7 @@ class ComposerStaticInitef65e8ee7a4d8e83fa883b5cd8817103
         'FluentBoards\\App\\Modules\\MCP\\Tools\\TaskQueryTools' => __DIR__ . '/../..' . '/app/Modules/MCP/Tools/TaskQueryTools.php',
         'FluentBoards\\App\\Modules\\MCP\\Tools\\TaskTools' => __DIR__ . '/../..' . '/app/Modules/MCP/Tools/TaskTools.php',
         'FluentBoards\\App\\Services\\AiService' => __DIR__ . '/../..' . '/app/Services/AiService.php',
+        'FluentBoards\\App\\Services\\AttachmentAccessService' => __DIR__ . '/../..' . '/app/Services/AttachmentAccessService.php',
         'FluentBoards\\App\\Services\\AttachmentFileService' => __DIR__ . '/../..' . '/app/Services/AttachmentFileService.php',
         'FluentBoards\\App\\Services\\BoardService' => __DIR__ . '/../..' . '/app/Services/BoardService.php',
         'FluentBoards\\App\\Services\\CommentService' => __DIR__ . '/../..' . '/app/Services/CommentService.php',
