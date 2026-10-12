@@ -244,6 +244,10 @@ class CommentController extends Controller
 
     public function sendMailAfterComment($commentId, $recipientUserIds)
     {
+        if (empty($recipientUserIds)) {
+            return;
+        }
+
         $current_user_id = get_current_user_id();
 
         /* this will run in background as soon as possible */

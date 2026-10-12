@@ -6,7 +6,7 @@ use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Services\UserService;
 use FluentBoards\Framework\Database\Orm\Builder;
-use FluentBoardsPro\App\Models\CustomField;
+use FluentBoards\App\Models\CustomField;
 
 class Board extends Model
 {
@@ -17,6 +17,8 @@ class Board extends Model
     protected $hidden = [
         'created_at',
         'updated_at',
+        'boardMeta',
+        'viewerMembership',
     ];
 
     protected $fillable = [
@@ -82,7 +84,30 @@ class Board extends Model
 
     public function getMetaAttribute()
     {
-        return $this->getMeta();
+        if (!$this->relationLoaded('boardMeta')) {
+            return $this->getMeta();
+        }
+
+        $meta = [];
+        foreach ($this->getRelation('boardMeta') as $item) {
+            $meta[$item->key] = $item->value;
+        }
+        return $meta;
+    }
+
+    /** Internal eager-loaded metadata for board-list serialization. */
+    public function boardMeta()
+    {
+        return $this->hasMany(Meta::class, 'object_id')
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD);
+    }
+
+    /** Internal membership snapshot for the current board-list reader. */
+    public function viewerMembership()
+    {
+        return $this->hasOne(Relation::class, 'object_id')
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->where('foreign_id', get_current_user_id());
     }
 
     public function setBackgroundAttribute($background)
@@ -302,6 +327,7 @@ class Board extends Model
 
     public function updateMeta($key, $value)
     {
+        $this->unsetRelation('boardMeta');
         $meta = Meta::where('object_id', $this->id)
             ->where('object_type', Constant::OBJECT_TYPE_BOARD)
             ->where('key', $key)
@@ -336,10 +362,14 @@ class Board extends Model
         if(PermissionManager::isAdmin()) {
             return false;
         }
-        $boardPermissions = Relation::where('object_id', $this->id)
-            ->where('foreign_id', $userId)
-            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
-            ->first();
+        $boardPermissions = $this->relationLoaded('viewerMembership') ? $this->getRelation('viewerMembership') : null;
+        // Never reuse another user's eagerly loaded membership.
+        if (!$boardPermissions || (int) $boardPermissions->foreign_id !== (int) $userId) {
+            $boardPermissions = Relation::where('object_id', $this->id)
+                ->where('foreign_id', $userId)
+                ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+                ->first();
+        }
 
         return $boardPermissions->settings['is_viewer_only'] ?? false;
     }

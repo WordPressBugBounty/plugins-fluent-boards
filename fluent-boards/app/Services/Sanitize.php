@@ -4,6 +4,15 @@ namespace FluentBoards\App\Services;
 
 class Sanitize
 {
+    const MAX_PAGE_SIZE = 150;
+
+    /** Bound list sizes while retaining the largest shared UI pagination choice. */
+    public static function perPage($value, $maximum = self::MAX_PAGE_SIZE)
+    {
+        $value = is_scalar($value) ? (int) $value : 1;
+        return max(1, min((int) $maximum, $value));
+    }
+
     public static function campaign($data)
     {
         $fieldMaps = [

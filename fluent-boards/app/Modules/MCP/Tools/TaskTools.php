@@ -7,6 +7,7 @@ use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Modules\MCP\Helpers\MCPHelper;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\NotificationService;
 use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Services\TaskService;
 
@@ -57,6 +58,8 @@ class TaskTools
         ];
 
         $paginated = (new TaskService())->getTableTasks($board->id, $args);
+        // Every summary includes its stage; load once for the page instead of per task.
+        $paginated->getCollection()->load('stage');
 
         return [
             'items'      => MCPHelper::formatTaskList($paginated->items()),
@@ -268,6 +271,9 @@ class TaskTools
             }
 
             do_action('fluent_boards/task_stage_updated', $task, $oldStageId);
+
+            $recipients = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_STAGE_CHANGE);
+            $service->sendMailAfterTaskModify('stage_change', $recipients, $task->id);
         }
 
         do_action('fluent_boards/task_updated', $task, 'position');

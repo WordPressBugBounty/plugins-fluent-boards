@@ -17,7 +17,7 @@ class DescriptionMarkdownConverter
 {
     /**
      * Cheap heuristic mirroring the frontend `looksLikeHtml` helper: does the
-     * string contain markup the legacy editor would have produced?
+     * string contain markup the legacy editor would have produced outside code?
      */
     public static function looksLikeHtml($str): bool
     {
@@ -25,9 +25,28 @@ class DescriptionMarkdownConverter
             return false;
         }
 
+        $fence = null;
+        $prose = '';
+        foreach (explode("\n", $str) as $line) {
+            if ($fence !== null) {
+                if (preg_match('/^ {0,3}(`+|~+)[ \t]*\r?$/', $line, $closing)
+                    && $closing[1][0] === $fence[0]
+                    && strlen($closing[1]) >= strlen($fence)) {
+                    $fence = null;
+                }
+                continue;
+            }
+            if (preg_match('/^ {0,3}(`{3,}|~{3,})([^\r\n]*)/', $line, $opening)
+                && !($opening[1][0] === '`' && strpos($opening[2], '`') !== false)) {
+                $fence = $opening[1];
+                continue;
+            }
+            $prose .= $line . "\n";
+        }
+
         return (bool) preg_match(
             '/<(\/?)(p|div|br|span|ul|ol|li|h[1-6]|img|a|table|pre|blockquote|strong|em|code)\b[^>]*>/i',
-            $str
+            $prose
         );
     }
 

@@ -3,6 +3,8 @@
 namespace FluentBoards\App\Services\Libs;
 
 use FluentBoards\Framework\Support\Arr;
+use FluentBoards\App\Services\Constant;
+use Exception;
 
 class FileSystem
 {
@@ -52,6 +54,115 @@ class FileSystem
         }
 
         return $uploadDir['basedir'] . DIRECTORY_SEPARATOR . $fbsUploadDir;
+    }
+
+    /**
+     * Prepare local storage with Apache rules or verified host-managed protection.
+     * Installing rules alone does not prove the HTTP server enforces them.
+     * Pass false to defer any required HTTP verification to cron.
+     */
+    public function _installUploadProtectionRules($allowProbe = true)
+    {
+        // Protect the root even when called on a board-specific filesystem instance.
+        $directory = (new static())->_getDir();
+        if (!wp_mkdir_p($directory)) {
+            return false;
+        }
+
+        $path = $directory . '/.htaccess';
+        $rules = [
+            '<IfModule mod_authz_core.c>',
+            'Require all denied',
+            '</IfModule>',
+            '<IfModule !mod_authz_core.c>',
+            'Order deny,allow',
+            'Deny from all',
+            '</IfModule>',
+        ];
+
+        // Hosts may lock security configuration while leaving upload storage writable.
+        if (is_file($path) && is_readable($path)) {
+            $contents = str_replace("\r\n", "\n", file_get_contents($path));
+            if (preg_match_all('/^# BEGIN Fluent Boards\n(.*?)^# END Fluent Boards$/ms', $contents, $blocks) === 1) {
+                $existingRules = array_values(array_filter(array_map('trim', explode("\n", $blocks[1][0])), function ($line) {
+                    return $line !== '' && strpos($line, '#') !== 0;
+                }));
+                if ($existingRules === $rules) {
+                    return true;
+                }
+            }
+        }
+
+        if (!function_exists('insert_with_markers')) {
+            require_once ABSPATH . 'wp-admin/includes/misc.php';
+        }
+
+        if (insert_with_markers($path, 'Fluent Boards', $rules)) {
+            return true;
+        }
+
+        // Unmarked, locked host rules and server-level restrictions need no rewrite.
+        return $this->_checkUploadProtection($allowProbe) === true;
+    }
+
+    /**
+     * Probe direct access without login cookies using a harmless temporary file.
+     * Return true for denied access, false for exposure, or null when unverified.
+     * Pass false to read only the cache and schedule a missing check in cron.
+     */
+    public function _checkUploadProtection($allowProbe = true)
+    {
+        $directory = (new static())->_getDir();
+        $uploads = wp_upload_dir();
+        $folder = apply_filters('fluent_boards/upload_folder_name', FLUENT_BOARDS_UPLOAD_DIR);
+        $url = trailingslashit($uploads['baseurl']) . trim($folder, '/');
+        $rulesPath = $directory . '/.htaccess';
+        $rulesHash = is_file($rulesPath) && is_readable($rulesPath) ? hash_file('sha256', $rulesPath) : '';
+        $cacheKey = Constant::UPLOAD_PROTECTION_CHECK_PREFIX . md5($directory . '|' . $url);
+        $cached = get_transient($cacheKey);
+        if (is_array($cached) && isset($cached['rules_hash']) && $cached['rules_hash'] === $rulesHash && array_key_exists('blocked', $cached)) {
+            return $cached['blocked'];
+        }
+
+        if (!$allowProbe) {
+            $hook = 'fluent_boards/check_upload_protection';
+            if (!wp_next_scheduled($hook)) {
+                wp_schedule_single_event(time(), $hook);
+            }
+            return null;
+        }
+
+        $blocked = null;
+        $filename = 'fbs-access-check-' . wp_generate_uuid4() . '.txt';
+        $path = trailingslashit($directory) . $filename;
+        $contents = wp_generate_uuid4();
+        try {
+            if (is_dir($directory) && is_writable($directory)
+                && file_put_contents($path, $contents, LOCK_EX) === strlen($contents)) {
+                // The upload URL comes from trusted site configuration, never request input.
+                $response = wp_remote_get($url . '/' . $filename, [
+                    'timeout' => 5,
+                    'redirection' => 0,
+                    'limit_response_size' => 1024,
+                    'headers' => ['Cache-Control' => 'no-cache'],
+                ]);
+                if (!is_wp_error($response)) {
+                    $status = wp_remote_retrieve_response_code($response);
+                    if (in_array($status, [403, 404], true)) {
+                        $blocked = true;
+                    } elseif ($status === 200 && wp_remote_retrieve_body($response) === $contents) {
+                        $blocked = false;
+                    }
+                }
+            }
+        } finally {
+            if (is_file($path)) {
+                wp_delete_file($path);
+            }
+        }
+
+        set_transient($cacheKey, ['rules_hash' => $rulesHash, 'blocked' => $blocked], 5 * MINUTE_IN_SECONDS);
+        return $blocked;
     }
 
     /**
@@ -134,7 +245,7 @@ class FileSystem
     }
 
     /**
-     * Upload files into custom upload dir of this application
+     * Upload request files into the application's custom upload directory.
      * @return array
      */
     public function _uploadFromRequest()
@@ -143,12 +254,16 @@ class FileSystem
     }
 
     /**
-     * Upload files into custom upload dir of this application
+     * Prepare upload-directory protection before accepting local files.
      * @param array $files
      * @return array
      */
     public function _put($files)
     {
+        if (!$this->_installUploadProtectionRules()) {
+            throw new Exception(__('Could not prepare upload-directory protection. Please ask your hosting provider to block direct file access and check directory permissions.', 'fluent-boards'));
+        }
+
         if (!function_exists('wp_handle_upload')) {
             require_once(ABSPATH . 'wp-admin/includes/file.php');
         }

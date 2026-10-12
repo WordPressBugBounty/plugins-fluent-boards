@@ -10,6 +10,7 @@ use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
+use FluentBoards\App\Services\Libs\Mailer;
 
 class ScheduleHandler
 {
@@ -18,6 +19,7 @@ class ScheduleHandler
         $recipientUserIds,
         $current_user_id
     ) {
+        $context = ['type' => 'comment', 'comment_id' => $commentId];
         try {
             $comment = Comment::find($commentId) ?? null;
             if ( ! $comment) {
@@ -43,66 +45,62 @@ class ScheduleHandler
 
             $board    = $task->board;
 
-            $page_url = site_url('/') . '?redirect=to_task&taskId='.$task->id;
-
-            $user = $task->user($comment->created_by);
+            $page_url = fluent_boards_page_url();
+            $redirectUrl = site_url('/') . '?redirect=to_task&taskId='.$task->id;
 
             $userData = $this->getUserData($current_user_id);
 
-            $boardUrl = $page_url.'boards/'.$board->id;
-            $taskUrl  = $page_url.'boards/'.$board->id.'/tasks/'.$task->id.'-'
-                        .substr($task->title, 0, 10);
+            $taskUrl = $this->taskUrl($page_url, $board->id, $task);
 
-            $userLinkTag  = '<strong>'.htmlspecialchars($user->display_name)
-                            .'</strong>';
-            $taskLinkTag  = '<a target="_blank" href="'
-                            .htmlspecialchars($taskUrl).'">'
-                            .htmlspecialchars($task->title).'</a>';
-            $boardLinkTag = '<a target="_blank" href="'
-                            .htmlspecialchars($boardUrl).'">'
-                            .htmlspecialchars($board->title).'</a>';
+            $isReply = $comment->type == 'reply';
 
-            // Consolidated translation with placeholders
-            // translators: %1$s is the task link, %2$s is the board link
-            $preparedBody = sprintf(__('commented on %1$s on %2$s board.', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
-            $preHeader = __('New comment has been added on task','fluent-boards');
-            $mailSubject = __('New comment has been added on task','fluent-boards');
+            if ($isReply) {
+                $parentComment = $comment->parent_id ? Comment::find($comment->parent_id) : null;
 
-
-            if ($comment->type == 'reply')
-            {
-                // translators: %1$s is the task link, %2$s is the board link
-                $preparedBody = sprintf(__('replied on your comment on %1$s on %2$s board.', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
-
-                $preHeader = __('A reply has been added to your comment on a task.','fluent-boards');
-                $mailSubject = __('New Reply on Your Task Comment','fluent-boards');
+                $data = [
+                    'badge'          => ['label' => __('Reply', 'fluent-boards'), 'tone' => 'accent'],
+                    // translators: %s is the name of the person who replied
+                    'heading'        => sprintf(__('%s replied to your comment', 'fluent-boards'), $userData['display_name']),
+                    'parent_comment' => $parentComment ? $parentComment->description : '',
+                    'cta'            => ['label' => __('Reply', 'fluent-boards'), 'url' => $redirectUrl],
+                    'email_reason'   => __('You’re getting this because someone replied to your comment.', 'fluent-boards'),
+                    'pre_header'     => wp_trim_words(wp_strip_all_tags($comment->description), 20),
+                ];
+                // translators: %s is the name of the person who replied
+                $mailSubject = sprintf(__('%s replied to your comment', 'fluent-boards'), $userData['display_name']);
+            } else {
+                $data = [
+                    'badge'        => ['label' => __('New comment', 'fluent-boards'), 'tone' => 'accent'],
+                    // translators: %s is the name of the commenter
+                    'heading'      => sprintf(__('%s commented on a task', 'fluent-boards'), $userData['display_name']),
+                    'cta'          => ['label' => __('Reply to comment', 'fluent-boards'), 'url' => $redirectUrl],
+                    'email_reason' => __('You’re getting this because of your email settings for this board.', 'fluent-boards'),
+                    'pre_header'   => wp_trim_words(wp_strip_all_tags($comment->description), 20),
+                ];
+                // translators: %1$s is the commenter name, %2$s is the task title
+                $mailSubject = sprintf(__('%1$s commented on “%2$s”', 'fluent-boards'), $userData['display_name'], $task->title);
             }
 
-            $data = [
-                'body'        => $preparedBody,
-                'comment_link' => $page_url,
-                'pre_header'  => $preHeader,
-                'show_footer' => true,
+            $data = array_merge($this->getBrandingData(), $data, [
+                'context'     => $this->contextLine($task->title, $taskUrl, $board->title, $page_url.'boards/'.$board->id),
                 'comment'     => $comment->description,
                 'userData'    => $userData,
-                'site_url'    => site_url(),
-                'site_title'  => get_bloginfo('name'),
-                'site_logo'   => fluent_boards_site_logo(),
-            ];
+                'show_footer' => true,
+            ]);
 
             $message     = Helper::loadView('emails.comment2', $data);
-            $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
             foreach ($usersToSendEmail as $email) {
-                \wp_mail($email, $mailSubject, $message, $headers);
+                (new Mailer($email, $mailSubject, $message))->sendNotification($context);
             }
-        } catch (\Exception $e) {
-            // do nothing // better to log here
+        } catch (\Throwable $e) {
+            Mailer::reportFailure($context, $e);
         }
     }
 
     public function sendEmailForMention($commentId, $recipientUserIds, $current_user_id)
     {
+        $context = ['type' => 'mention', 'comment_id' => $commentId];
         try {
             $comment = Comment::find($commentId) ?? null;
             if ( ! $comment) {
@@ -125,54 +123,37 @@ class ScheduleHandler
             if (!$usersToSendEmail) {
                 return;
             }
-//            $assignees = $task->assignees;
             $board    = $task->board;
 
-            $page_url = site_url('/') . '?redirect=to_task&taskId='.$task->id;
-
-            $user = $task->user($comment->created_by);
+            $page_url = fluent_boards_page_url();
+            $redirectUrl = site_url('/') . '?redirect=to_task&taskId='.$task->id;
 
             $userData = $this->getUserData($current_user_id);
 
-            $boardUrl = $page_url.'boards/'.$board->id;
-            $taskUrl  = $page_url.'boards/'.$board->id.'/tasks/'.$task->id.'-'
-                .substr($task->title, 0, 10);
+            $taskUrl = $this->taskUrl($page_url, $board->id, $task);
 
-            $userLinkTag  = '<strong>'.htmlspecialchars($user->display_name)
-                .'</strong>';
-            $taskLinkTag  = '<a target="_blank" href="'
-                .htmlspecialchars($taskUrl).'">'
-                .htmlspecialchars($task->title).'</a>';
-            $boardLinkTag = '<a target="_blank" href="'
-                .htmlspecialchars($boardUrl).'">'
-                .htmlspecialchars($board->title).'</a>';
+            $data = array_merge($this->getBrandingData(), [
+                'badge'        => ['label' => __('Mentioned you', 'fluent-boards'), 'tone' => 'accent'],
+                // translators: %s is the name of the person who mentioned the recipient
+                'heading'      => sprintf(__('%s mentioned you in a comment', 'fluent-boards'), $userData['display_name']),
+                'context'      => $this->contextLine($task->title, $taskUrl, $board->title, $page_url.'boards/'.$board->id),
+                'comment'      => $comment->description,
+                'userData'     => $userData,
+                'cta'          => ['label' => __('Reply to comment', 'fluent-boards'), 'url' => $redirectUrl],
+                'email_reason' => __('You’re getting this because someone mentioned you.', 'fluent-boards'),
+                'pre_header'   => wp_trim_words(wp_strip_all_tags($comment->description), 20),
+                'show_footer'  => true,
+            ]);
 
-            $commentLink = $taskUrl . '?comment='.$comment->id;
-
-            // translators: %1$s is the task link, %2$s is the board link
-            $bodyText = sprintf(__('mentioned you in a comment on %1$s on %2$s board.', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
-
-            $data = [
-                'body'        => $bodyText,
-                'comment_link' => $page_url,
-                'pre_header'  => __('You are mentioned in a comment','fluent-boards'),
-                'show_footer' => true,
-                'comment'     => $comment->description,
-                'userData'    => $userData,
-                'site_url'    => site_url(),
-                'site_title'  => get_bloginfo('name'),
-                'site_logo'   => fluent_boards_site_logo(),
-            ];
-
-            $mailSubject = __('You are mentioned in a comment','fluent-boards');
+            // translators: %1$s is the name of the person who mentioned the recipient, %2$s is the task title
+            $mailSubject = sprintf(__('%1$s mentioned you in “%2$s”', 'fluent-boards'), $userData['display_name'], $task->title);
             $message     = Helper::loadView('emails.comment2', $data);
-            $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
             foreach ($usersToSendEmail as $email) {
-                \wp_mail($email, $mailSubject, $message, $headers);
+                (new Mailer($email, $mailSubject, $message))->sendNotification($context);
             }
-        } catch (\Exception $e) {
-            // do nothing // better to log here
+        } catch (\Throwable $e) {
+            Mailer::reportFailure($context, $e);
         }
     }
 
@@ -181,71 +162,68 @@ class ScheduleHandler
         $newAssigneeId,
         $current_user_id
     ) {
+        $context = ['type' => 'add_assignee', 'task_id' => $taskId];
         try {
             $task     = Task::findOrFail($taskId);
             $board    = $task->board;
             $assignee = User::findOrFail($newAssigneeId);
 
             $userData = $this->getUserData($current_user_id);
-
-            $page_url     = fluent_boards_page_url();
-            $boardUrl     = $page_url.'boards/'.$board->id;
-            $boardLinkTag = '<a target="_blank" href="'
-                            .htmlspecialchars($boardUrl).'">'
-                            .htmlspecialchars($board->title).'</a>';
+            $page_url = fluent_boards_page_url();
+            $boardUrl = $page_url.'boards/'.$board->id;
 
             if (null == $task->parent_id) {
                 // this is a task
-                $taskUrl     = $page_url.'boards/'.$board->id.'/tasks/'
-                               .$task->id.'-'.substr($task->title, 0, 10);
-                $taskLinkTag = '<a target="_blank" href="'
-                               .htmlspecialchars($taskUrl).'">'
-                               .htmlspecialchars($task->title).'</a>';
-                // translators: %1$s is the task link, %2$s is the board link
-                $bodyText = sprintf(__('has assigned you to task %1$s on %2$s board.', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
-                
-                $data        = [
-                    'body'        => $bodyText,
-                    'pre_header'  => __('you have been assigned to task','fluent-boards'),
-                    'show_footer' => true,
-                    'userData'    => $userData,
-                    'site_url'    => site_url(),
-                    'site_title'  => get_bloginfo('name'),
-                    'site_logo'   => fluent_boards_site_logo(),
-                ];
-            } else {
-                // this is a subtask
-                $task = $task->parentTask($task->parent_id);
-
-                $taskUrl     = $page_url.'boards/'.$board->id.'/tasks/'
-                               .$task->id.'-'.substr($task->title, 0, 10);
-                $taskLinkTag = '<a target="_blank" href="'
-                               .htmlspecialchars($taskUrl).'">'
-                               .htmlspecialchars($task->title).'</a>';
-
-                // translators: %1$s is the subtask title, %2$s is the task link, %3$s is the board link
-                $bodyText = sprintf(__('has assigned you to subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'), $task->title, $taskLinkTag, $boardLinkTag);
+                $taskUrl = $this->taskUrl($page_url, $board->id, $task);
 
                 $data = [
-                    'body'        => $bodyText,
-                    'pre_header'  => __('you have been assigned to subtask','fluent-boards'),
-                    'show_footer' => true, 'user' => $assignee,
-                    'userData'    => $userData,
-                    'site_url'    => site_url(),
-                    'site_title'  => get_bloginfo('name'),
-                    'site_logo'   => fluent_boards_site_logo(),
+                    'badge'      => ['label' => __('Assigned to you', 'fluent-boards'), 'tone' => 'accent'],
+                    // translators: %s is the name of the person who assigned the task
+                    'heading'    => sprintf(__('%s assigned you to a task', 'fluent-boards'), $userData['display_name']),
+                    'task_card'  => [
+                        'title' => $task->title,
+                        'rows'  => $this->taskRows($task, $board, $boardUrl),
+                    ],
+                    'cta'        => ['label' => __('Open task', 'fluent-boards'), 'url' => $taskUrl],
+                    'pre_header' => $this->taskPreHeader($task, $board),
                 ];
+                // translators: %s is the task title
+                $mailSubject = sprintf(__('You’re assigned to “%s”', 'fluent-boards'), $task->title);
+            } else {
+                // this is a subtask; subtasks open inside their parent task
+                $parentTask = $task->parentTask($task->parent_id);
+                $taskUrl    = $this->taskUrl($page_url, $board->id, $parentTask);
+
+                $data = [
+                    'badge'      => ['label' => __('Subtask assigned', 'fluent-boards'), 'tone' => 'accent'],
+                    // translators: %s is the name of the person who assigned the subtask
+                    'heading'    => sprintf(__('%s assigned you to a subtask', 'fluent-boards'), $userData['display_name']),
+                    'task_card'  => [
+                        'title'        => $task->title,
+                        'parent_title' => $parentTask->title,
+                        'parent_url'   => $taskUrl,
+                        'rows'         => $this->taskRows($task, $board, $boardUrl, false),
+                    ],
+                    'cta'        => ['label' => __('Open subtask', 'fluent-boards'), 'url' => $taskUrl],
+                    'pre_header' => $this->taskPreHeader($task, $board),
+                ];
+                // translators: %s is the subtask title
+                $mailSubject = sprintf(__('You’re assigned to subtask “%s”', 'fluent-boards'), $task->title);
             }
 
-            $mailSubject = __('You have been assigned to task','fluent-boards');
+            $data = array_merge($this->getBrandingData(), $data, [
+                'email_reason' => __('You’re getting this because you were assigned to this task.', 'fluent-boards'),
+                'show_footer'  => true,
+                'user'         => $assignee,
+                'userData'     => $userData,
+            ]);
+
             $message     = Helper::loadView('emails.assignee2', $data);
-            $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
+            (new Mailer($assignee->user_email, $mailSubject, $message))->sendNotification($context);
 
-            \wp_mail($assignee->user_email, $mailSubject, $message, $headers);
-
-        } catch (\Exception $e) {
-            throw new \Exception(esc_html__('Error in sending mail to new assignees', 'fluent-boards'), 1);
+        } catch (\Throwable $e) {
+            Mailer::reportFailure($context, $e);
         }
     }
 
@@ -254,68 +232,69 @@ class ScheduleHandler
         $newAssigneeId,
         $current_user_id
     ) {
+        $context = ['type' => 'remove_assignee', 'task_id' => $taskId];
         try {
             $task     = Task::findOrFail($taskId);
             $board    = $task->board;
             $assignee = User::findOrFail($newAssigneeId);
 
             $userData = $this->getUserData($current_user_id);
-
             $page_url = fluent_boards_page_url();
-
-            $boardUrl     = $page_url.'boards/'.$board->id;
-            $boardLinkTag = '<a target="_blank" href="'
-                            .htmlspecialchars($boardUrl).'">'
-                            .htmlspecialchars($board->title).'</a>';
+            $boardUrl = $page_url.'boards/'.$board->id;
 
             if (null == $task->parent_id) {
                 // this is a task
-                $taskUrl     = $page_url.'boards/'.$board->id.'/tasks/'
-                               .$task->id.'-'.substr($task->title, 0, 10);
-                $taskLinkTag = '<a target="_blank" href="'
-                               .htmlspecialchars($taskUrl).'">'
-                               .htmlspecialchars($task->title).'</a>';
-                // translators: %1$s is the task link, %2$s is the board link
-                $bodyText = sprintf(__('has removed you from task %1$s on the board %2$s', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
-                
-                $data        = [
-                    'body'        => $bodyText,
-                    'pre_header'  => __('you have been removed from task','fluent-boards'),
-                    'show_footer' => true,
-                    'userData'    => $userData,
-                    'site_url'    => site_url(),
-                    'site_title'  => get_bloginfo('name'),
-                    'site_logo'   => fluent_boards_site_logo(),
-                ];
-            } else {
-                // this is a subtask
-                $task = $task->parentTask($task->parent_id);
-
-                $taskUrl     = $page_url.'boards/'.$board->id.'/tasks/'
-                               .$task->id.'-'.substr($task->title, 0, 10);
-                $taskLinkTag = '<a target="_blank" href="'
-                               .htmlspecialchars($taskUrl).'">'
-                               .htmlspecialchars($task->title).'</a>';
-
-                // translators: %1$s is the subtask title, %2$s is the task link, %3$s is the board link
-                $bodyText = sprintf(__('has removed you from subtask <strong>%1$s</strong> of task %2$s on the board %3$s', 'fluent-boards'), $task->title, $taskLinkTag, $boardLinkTag);
+                $taskUrl = $this->taskUrl($page_url, $board->id, $task);
 
                 $data = [
-                    'body'        => $bodyText,
-                    'pre_header'  => __('you have been removed from subtask','fluent-boards'),
-                    'show_footer' => true,
-                    'userData'    => $userData,
+                    // translators: %s is the name of the person who removed the assignee
+                    'heading'   => sprintf(__('%s removed you from a task', 'fluent-boards'), $userData['display_name']),
+                    'task_card' => [
+                        'title' => $task->title,
+                        'rows'  => $this->taskRows($task, $board, $boardUrl, true, false),
+                        'muted' => true,
+                    ],
+                    'note'      => __('You won’t get updates about this task unless you’re mentioned or assigned again.', 'fluent-boards'),
+                    'cta'       => ['label' => __('View task', 'fluent-boards'), 'url' => $taskUrl, 'style' => 'secondary'],
                 ];
+                // translators: %s is the task title
+                $mailSubject = sprintf(__('You were removed from “%s”', 'fluent-boards'), $task->title);
+            } else {
+                // this is a subtask; subtasks open inside their parent task
+                $parentTask = $task->parentTask($task->parent_id);
+                $taskUrl    = $this->taskUrl($page_url, $board->id, $parentTask);
+
+                $data = [
+                    // translators: %s is the name of the person who removed the assignee
+                    'heading'   => sprintf(__('%s removed you from a subtask', 'fluent-boards'), $userData['display_name']),
+                    'task_card' => [
+                        'title'        => $task->title,
+                        'parent_title' => $parentTask->title,
+                        'parent_url'   => $taskUrl,
+                        'rows'         => [[__('Board', 'fluent-boards'), $this->link($board->title, $boardUrl)]],
+                        'muted'        => true,
+                    ],
+                    'note'      => __('You won’t get updates about this subtask unless you’re mentioned or assigned again.', 'fluent-boards'),
+                    'cta'       => ['label' => __('View subtask', 'fluent-boards'), 'url' => $taskUrl, 'style' => 'secondary'],
+                ];
+                // translators: %s is the subtask title
+                $mailSubject = sprintf(__('You were removed from subtask “%s”', 'fluent-boards'), $task->title);
             }
 
-            $mailSubject = __('You have been removed from task','fluent-boards');
+            $data = array_merge($this->getBrandingData(), $data, [
+                'badge'        => ['label' => __('Unassigned', 'fluent-boards'), 'tone' => 'neutral'],
+                'pre_header'   => $this->taskPreHeader($task, $board),
+                'email_reason' => __('You’re getting this because you were assigned to this task.', 'fluent-boards'),
+                'show_footer'  => true,
+                'userData'     => $userData,
+            ]);
+
             $message     = Helper::loadView('emails.assignee2', $data);
-            $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
-            \wp_mail($assignee->user_email, $mailSubject, $message, $headers);
+            (new Mailer($assignee->user_email, $mailSubject, $message))->sendNotification($context);
 
-        } catch (\Exception $e) {
-            throw new \Exception(esc_html__('Error in sending mail to new assignees', 'fluent-boards'), 1);
+        } catch (\Throwable $e) {
+            Mailer::reportFailure($context, $e);
         }
     }
 
@@ -325,47 +304,39 @@ class ScheduleHandler
         $newAssigneeEmails,
         $current_user_id
     ) {
+        $context = ['type' => 'stage_change', 'task_id' => $taskId];
         try {
             $task  = Task::findOrFail($taskId);
             $board = $task->board;
 
             $userData = $this->getUserData($current_user_id);
 
-            $page_url     = fluent_boards_page_url();
-            $boardUrl     = $page_url.'boards/'.$board->id;
-            $boardLinkTag = '<a target="_blank" href="'
-                            .htmlspecialchars($boardUrl).'">'
-                            .htmlspecialchars($board->title).'</a>';
+            $page_url = fluent_boards_page_url();
+            $taskUrl  = $this->taskUrl($page_url, $board->id, $task);
+            $stage    = $task->stage ? $task->stage->title : '';
 
-            $taskUrl     = $page_url.'boards/'.$board->id.'/tasks/'.$task->id
-                           .'-'.substr($task->title, 0, 10);
-            $taskLinkTag = '<a target="_blank" href="'
-                           .htmlspecialchars($taskUrl).'">'
-                           .htmlspecialchars($task->title).'</a>';
+            $data = array_merge($this->getBrandingData(), [
+                'badge'        => ['label' => __('Stage changed', 'fluent-boards'), 'tone' => 'accent'],
+                // translators: %s is the name of the person who moved the task
+                'heading'      => sprintf(__('%s moved a task', 'fluent-boards'), $userData['display_name']),
+                'context'      => $this->contextLine($task->title, $taskUrl, $board->title, $page_url.'boards/'.$board->id),
+                'change'       => ['label' => __('Now in', 'fluent-boards'), 'to' => $stage],
+                'cta'          => ['label' => __('Open task', 'fluent-boards'), 'url' => $taskUrl],
+                'pre_header'   => $this->taskPreHeader($task, $board),
+                'email_reason' => __('You’re getting this because you’re assigned to this task.', 'fluent-boards'),
+                'show_footer'  => true,
+                'userData'     => $userData,
+            ]);
 
-            // translators: %1$s is the task link, %2$s is the stage title, %3$s is the board link
-            $bodyText = sprintf(__('has moved %1$s task to <strong>%2$s</strong> stage of board %3$s', 'fluent-boards'), $taskLinkTag, $task->stage->title, $boardLinkTag);
-
-            $data = [
-                'body'        => $bodyText,
-                'pre_header'  => __('Task stage has been changed','fluent-boards'),
-                'show_footer' => true,
-                'userData'    => $userData,
-                'site_url'    => site_url(),
-                'site_title'  => get_bloginfo('name'),
-                'site_logo'   => fluent_boards_site_logo(),
-            ];
-
-
-            $mailSubject = __('Task stage has been changed','fluent-boards');
+            // translators: %1$s is the task title, %2$s is the stage title
+            $mailSubject = sprintf(__('“%1$s” moved to %2$s', 'fluent-boards'), $task->title, $stage);
             $message     = Helper::loadView('emails.assignee2', $data);
-            $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
             foreach ($newAssigneeEmails as $assignee_email) {
-                \wp_mail($assignee_email, $mailSubject, $message, $headers);
+                (new Mailer($assignee_email, $mailSubject, $message))->sendNotification($context);
             }
-        } catch (\Exception $e) {
-            // Silent fail for email sending
+        } catch (\Throwable $e) {
+            Mailer::reportFailure($context, $e);
         }
     }
 
@@ -374,47 +345,39 @@ class ScheduleHandler
         $newAssigneeEmails,
         $current_user_id
     ) {
+        $context = ['type' => 'due_date_update', 'task_id' => $taskId];
         try {
             $task  = Task::findOrFail($taskId);
             $board = $task->board;
 
             $userData = $this->getUserData($current_user_id);
 
-            $page_url     = fluent_boards_page_url();
-            $boardUrl     = $page_url.'boards/'.$board->id;
-            $boardLinkTag = '<a target="_blank" href="'
-                            .htmlspecialchars($boardUrl).'">'
-                            .htmlspecialchars($board->title).'</a>';
+            $page_url = fluent_boards_page_url();
+            $taskUrl  = $this->taskUrl($page_url, $board->id, $task);
+            $dueDate  = $task->due_at ? $this->formatDate($task->due_at) : __('No due date', 'fluent-boards');
 
-            $taskUrl     = $page_url.'boards/'.$board->id.'/tasks/'.$task->id
-                           .'-'.substr($task->title, 0, 10);
-            $taskLinkTag = '<a target="_blank" href="'
-                           .htmlspecialchars($taskUrl).'">'
-                           .htmlspecialchars($task->title).'</a>';
+            $data = array_merge($this->getBrandingData(), [
+                'badge'        => ['label' => __('Due date changed', 'fluent-boards'), 'tone' => 'accent'],
+                // translators: %s is the name of the person who changed the due date
+                'heading'      => sprintf(__('%s changed a due date', 'fluent-boards'), $userData['display_name']),
+                'context'      => $this->contextLine($task->title, $taskUrl, $board->title, $page_url.'boards/'.$board->id),
+                'change'       => ['label' => __('Now due', 'fluent-boards'), 'to' => $dueDate],
+                'cta'          => ['label' => __('Open task', 'fluent-boards'), 'url' => $taskUrl],
+                'pre_header'   => $this->taskPreHeader($task, $board),
+                'email_reason' => __('You’re getting this because you’re assigned to this task.', 'fluent-boards'),
+                'show_footer'  => true,
+                'userData'     => $userData,
+            ]);
 
-            // translators: %1$s is the task link, %2$s is the due date, %3$s is the board link
-            $bodyText = sprintf(__('has updated due date of %1$s task to <strong>%2$s</strong> of board %3$s', 'fluent-boards'), $taskLinkTag, $task->due_at, $boardLinkTag);
-
-            $data = [
-                'body'        => $bodyText,
-                'pre_header'  => __('Task due date has been changed','fluent-boards'),
-                'show_footer' => true,
-                'userData'    => $userData,
-                'site_url'    => site_url(),
-                'site_title'  => get_bloginfo('name'),
-                'site_logo'   => fluent_boards_site_logo(),
-            ];
-
-
-            $mailSubject = __('Task due date has been changed','fluent-boards');
+            // translators: %s is the task title
+            $mailSubject = sprintf(__('Due date changed for “%s”', 'fluent-boards'), $task->title);
             $message     = Helper::loadView('emails.assignee2', $data);
-            $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
             foreach ($newAssigneeEmails as $assignee_email) {
-                \wp_mail($assignee_email, $mailSubject, $message, $headers);
+                (new Mailer($assignee_email, $mailSubject, $message))->sendNotification($context);
             }
-        } catch (\Exception $e) {
-            throw new \Exception(esc_html__('Error in sending mail to new assignees', 'fluent-boards'), 1);
+        } catch (\Throwable $e) {
+            Mailer::reportFailure($context, $e);
         }
     }
 
@@ -423,47 +386,43 @@ class ScheduleHandler
         $newAssigneeEmails,
         $current_user_id
     ) {
+        $context = ['type' => 'task_archived', 'task_id' => $taskId];
         try {
             $task  = Task::findOrFail($taskId);
             $board = $task->board;
 
             $userData = $this->getUserData($current_user_id);
 
-            $page_url     = fluent_boards_page_url();
-            $boardUrl     = $page_url.'boards/'.$board->id;
-            $boardLinkTag = '<a target="_blank" href="'
-                            .htmlspecialchars($boardUrl).'">'
-                            .htmlspecialchars($board->title).'</a>';
+            $page_url = fluent_boards_page_url();
+            $boardUrl = $page_url.'boards/'.$board->id;
+            $taskUrl  = $this->taskUrl($page_url, $board->id, $task);
 
-            $taskUrl     = $page_url.'boards/'.$board->id.'/tasks/'.$task->id
-                           .'-'.substr($task->title, 0, 10);
-            $taskLinkTag = '<a target="_blank" href="'
-                           .htmlspecialchars($taskUrl).'">'
-                           .htmlspecialchars($task->title).'</a>';
+            $data = array_merge($this->getBrandingData(), [
+                'badge'        => ['label' => __('Archived', 'fluent-boards'), 'tone' => 'neutral'],
+                // translators: %s is the name of the person who archived the task
+                'heading'      => sprintf(__('%s archived a task', 'fluent-boards'), $userData['display_name']),
+                'task_card'    => [
+                    'title' => $task->title,
+                    'rows'  => $this->taskRows($task, $board, $boardUrl, true, false),
+                    'muted' => true,
+                ],
+                'note'         => __('Archived tasks can be restored from the board’s archive.', 'fluent-boards'),
+                'cta'          => ['label' => __('View task', 'fluent-boards'), 'url' => $taskUrl, 'style' => 'secondary'],
+                'pre_header'   => $this->taskPreHeader($task, $board),
+                'email_reason' => __('You’re getting this because you’re assigned to this task.', 'fluent-boards'),
+                'show_footer'  => true,
+                'userData'     => $userData,
+            ]);
 
-            // translators: %1$s is the task link, %2$s is the board link
-            $bodyText = sprintf(__('has archived %1$s task of board %2$s', 'fluent-boards'), $taskLinkTag, $boardLinkTag);
-
-            $data = [
-                'body'        => $bodyText,
-                'pre_header'  => __('Task has been archived','fluent-boards'),
-                'show_footer' => true,
-                'userData'    => $userData,
-                'site_url'    => site_url(),
-                'site_title'  => get_bloginfo('name'),
-                'site_logo'   => fluent_boards_site_logo(),
-            ];
-
-
-            $mailSubject = __('Task has been archived','fluent-boards');
+            // translators: %s is the task title
+            $mailSubject = sprintf(__('“%s” was archived', 'fluent-boards'), $task->title);
             $message     = Helper::loadView('emails.assignee2', $data);
-            $headers     = ['Content-Type: text/html; charset=UTF-8'];
 
             foreach ($newAssigneeEmails as $assignee_email) {
-                \wp_mail($assignee_email, $mailSubject, $message, $headers);
+                (new Mailer($assignee_email, $mailSubject, $message))->sendNotification($context);
             }
-        } catch (\Exception $e) {
-            throw new \Exception(esc_html__('Error in sending mail to new assignees', 'fluent-boards'), 1);
+        } catch (\Throwable $e) {
+            Mailer::reportFailure($context, $e);
         }
     }
 
@@ -581,4 +540,75 @@ class ScheduleHandler
         ];
     }
 
+    /**
+     * Site branding passed to every email view (header logo or initial, footer name).
+     *
+     * @return array
+     */
+    private function getBrandingData()
+    {
+        return [
+            'site_url'   => site_url(),
+            'site_title' => get_bloginfo('name'),
+            'site_logo'  => fluent_boards_site_logo(),
+        ];
+    }
+
+    private function taskUrl($pageUrl, $boardId, $task)
+    {
+        return $pageUrl.'boards/'.$boardId.'/tasks/'.$task->id.'-'.substr($task->title, 0, 10);
+    }
+
+    private function link($text, $url)
+    {
+        return '<a class="fbs_email_link" target="_blank" href="'.esc_url($url).'" style="color: #335CFF; font-weight: 600; text-decoration: none;">'
+               .esc_html($text).'</a>';
+    }
+
+    /**
+     * "Task · Board" line under an email headline, both linked.
+     */
+    private function contextLine($taskTitle, $taskUrl, $boardTitle, $boardUrl)
+    {
+        return $this->link($taskTitle, $taskUrl).' &middot; '.$this->link($boardTitle, $boardUrl);
+    }
+
+    /**
+     * Label/value rows for the task card. Values are HTML and already escaped.
+     *
+     * @return array
+     */
+    private function taskRows($task, $board, $boardUrl, $withStage = true, $withDue = true)
+    {
+        $rows = [[__('Board', 'fluent-boards'), $this->link($board->title, $boardUrl)]];
+
+        if ($withStage && $task->stage) {
+            $rows[] = [__('Stage', 'fluent-boards'), esc_html($task->stage->title)];
+        }
+
+        if ($withDue && $task->due_at) {
+            $rows[] = [__('Due', 'fluent-boards'), esc_html($this->formatDate($task->due_at))];
+        }
+
+        return $rows;
+    }
+
+    private function taskPreHeader($task, $board)
+    {
+        $parts = [$board->title];
+        if ($task->due_at) {
+            // translators: %s is the due date
+            $parts[] = sprintf(__('Due %s', 'fluent-boards'), $this->formatDate($task->due_at));
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    /**
+     * Due dates are stored in site time; format them with the site's date and time settings.
+     */
+    private function formatDate($dateTime)
+    {
+        return date_i18n(get_option('date_format').' '.get_option('time_format'), strtotime($dateTime));
+    }
 }

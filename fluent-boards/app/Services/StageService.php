@@ -512,11 +512,16 @@ class StageService
         $sourceStage = Stage::findOrFail($oldStageId);
         $targetStage = Stage::findOrFail($newStageId);
 
-        // Load shared watcher data once; stage data is injected per task below.
-        $tasks->load('watchers');
+        // Reuse task-user relations unless default assignments change them.
+        $tasks->load(['assignees', 'watchers']);
 
         // get the last position available of that stage
-        $position = (new TaskService())->getLastPositionOfTasks($newStageId);
+        $taskService = new TaskService();
+        $position = $taskService->getLastPositionOfTasks($newStageId);
+        $notificationService = new NotificationService();
+        $currentUserId = get_current_user_id();
+        // Stage-email eligibility per watcher, resolved in batches and shared across tasks.
+        $emailEligibility = [];
 
         // update tasks stage and position
         foreach ($tasks as $key => $task) {
@@ -533,10 +538,36 @@ class StageService
             $task->save();
 
             if ((int) $taskOldStageId !== (int) $newStageId) {
+                $assignmentsChanged = $taskService->manageDefaultAssignees($task, $newStageId, $targetStage);
+                if ($targetStage->defaultTaskStatus() === 'closed' && $task->status !== 'closed') {
+                    $task = $task->close();
+                }
+                // Assignment hooks may change assignees and watchers before notification.
+                if ($assignmentsChanged) {
+                    $task->load(['assignees', 'watchers']);
+                }
+
                 do_action('fluent_boards/task_stage_updated', $task, $taskOldStageId, [
                     'source' => $sourceStage,
                     'target' => $targetStage,
                 ]);
+
+                $watcherIds = array_diff(array_map('intval', $task->watchers->pluck('ID')->toArray()), [$currentUserId]);
+                $unknownIds = array_diff($watcherIds, array_keys($emailEligibility));
+                if ($unknownIds) {
+                    $emailEligibility += array_fill_keys($unknownIds, false);
+                    $enabledIds = $notificationService->getEmailEnabledUserIds($task->board_id, $unknownIds, Constant::BOARD_EMAIL_STAGE_CHANGE);
+                    foreach ($enabledIds as $enabledId) {
+                        $emailEligibility[$enabledId] = true;
+                    }
+                }
+                $recipients = [];
+                foreach ($task->watchers as $watcher) {
+                    if (!empty($emailEligibility[(int) $watcher->ID])) {
+                        $recipients[] = $watcher->user_email;
+                    }
+                }
+                $taskService->sendMailAfterTaskModify('stage_change', $recipients, $task->id);
             }
         }
 

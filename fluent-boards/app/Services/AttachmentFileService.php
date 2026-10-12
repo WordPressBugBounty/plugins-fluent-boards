@@ -8,6 +8,7 @@ use FluentBoards\App\Models\CommentImage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\TaskImage;
 use FluentBoards\App\Services\Libs\FileSystem;
+use Exception;
 
 class AttachmentFileService
 {
@@ -299,6 +300,9 @@ class AttachmentFileService
         return array_fill_keys($sharedUrls, true);
     }
 
+    /**
+     * Copy a local file into a protected board directory and track it for rollback.
+     */
     protected function copyAttachmentFileData(Attachment $source, Attachment $target, $sourceBoardId, $targetBoardId)
     {
         $result = [
@@ -318,6 +322,10 @@ class AttachmentFileService
         $sourcePath = $this->resolveLocalPath($source, $sourceBoardId);
         if (!$sourcePath || !is_file($sourcePath) || !is_readable($sourcePath)) {
             return $result;
+        }
+
+        if (!FileSystem::installUploadProtectionRules()) {
+            throw new Exception(__('Could not prepare upload-directory protection. Please ask your hosting provider to block direct file access and check directory permissions.', 'fluent-boards'));
         }
 
         $targetDir = $this->getBoardDir($targetBoardId);

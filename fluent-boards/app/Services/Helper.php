@@ -242,8 +242,21 @@ class Helper
         return $data;
     }
 
+    /** Store full custom-field messages in LONGTEXT while keeping legacy VARCHAR columns bounded. */
     public static function createActivity($data)
     {
+        if (!empty($data['settings']['custom_field_id'])) {
+            $payload = [];
+            foreach (['column', 'old_value', 'new_value', 'description'] as $key) {
+                $payload[$key] = $data[$key] ?? null;
+            }
+            $data['settings']['custom_field_activity_payload'] = true;
+            $data['description'] = wp_json_encode($payload);
+            $data['column'] = Constant::ACTIVITY_CUSTOM_FIELD;
+            $data['old_value'] = null;
+            $data['new_value'] = null;
+        }
+
         return Activity::create($data);
     }
 
@@ -336,10 +349,15 @@ class Helper
         return fluent_boards_page_url() . 'boards/' . $boardId;
     }
 
+    /** Format a CRM contact, avoiding a database lookup for unassociated tasks. */
     public static function crm_contact($id)
     {
         if (!defined('FLUENTCRM')) {
             return '';
+        }
+
+        if (!$id) {
+            return null;
         }
 
         $contact = \FluentCrm\App\Models\Subscriber::with(['tags', 'lists'])->find($id);
@@ -711,6 +729,7 @@ class Helper
         ];
 
         $columnTranslations = [
+            Constant::ACTIVITY_CUSTOM_FIELD => __('custom field', 'fluent-boards'),
             'task'                 => __('task', 'fluent-boards'),
             'description'          => __('description', 'fluent-boards'),
             'board'                => __('board', 'fluent-boards'),

@@ -157,6 +157,36 @@ class PermissionManager
             ->exists();
     }
 
+    /** Filter existing users by board membership or global admin access using bulk lookups. */
+    public static function getUserIdsWithBoardAccess($boardId, array $userIds): array
+    {
+        $boardId = absint($boardId);
+        $userIds = array_values(array_unique(array_filter(array_map('absint', $userIds))));
+        if (!$boardId || !$userIds) {
+            return [];
+        }
+
+        $memberIds = Relation::where('object_id', $boardId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->whereIn('foreign_id', $userIds)
+            ->pluck('foreign_id')->toArray();
+        $adminIds = Meta::where('object_type', Constant::FLUENT_BOARD_ADMIN)
+            ->whereIn('object_id', $userIds)
+            ->pluck('object_id')->toArray();
+        $allowedIds = array_fill_keys(array_merge($memberIds, $adminIds), true);
+
+        // Loading full users primes their metadata together before capability checks.
+        $users = get_users(['include' => $userIds, 'fields' => 'all']);
+        $accessibleIds = [];
+        foreach ($users as $user) {
+            if (isset($allowedIds[$user->ID]) || user_can($user, 'manage_options')) {
+                $accessibleIds[] = (int) $user->ID;
+            }
+        }
+
+        return array_values(array_intersect($userIds, $accessibleIds));
+    }
+
     public static function isFluentBoardsAdmin($userId = null): bool
     {
         if (!$userId) {
@@ -238,12 +268,23 @@ class PermissionManager
             ->exists();
     }
 
+    /**
+     * Check WordPress or Boards admin access, caching by the resolved user ID.
+     */
     public static function isAdmin($userId = null, $useCache = true)
     {
 
         static $cache = [];
 
-        if (isset($cache[$userId]) && $useCache) {
+        if (!$userId) {
+            $userId = get_current_user_id();
+        }
+
+        if (!$userId) {
+            return false;
+        }
+
+        if ($useCache && isset($cache[$userId])) {
             return $cache[$userId];
         }
 
@@ -254,17 +295,6 @@ class PermissionManager
          * if user is WordPress admin then we will allow him
          * if user is FluentBoard admin then we will allow him
          */
-
-        if (!$userId) {
-            $userId = get_current_user_id();
-            if (!$userId) {
-                return false;
-            }
-        }
-
-        if (!$userId) {
-            return false;
-        }
 
         if (user_can($userId, 'manage_options')) { // WordPress Administrator
 
@@ -414,6 +444,10 @@ class PermissionManager
         return !($boardPermissions->settings['is_viewer_only'] ?? false);
     }
 
+    /**
+     * Allow admins, or members with a non-viewer membership when creation is enabled.
+     * The final filter remains available for site-specific permission overrides.
+     */
     public static function userHasBoardCreationPermission($userId = null)
     {
         if (!$userId) {
@@ -429,8 +463,18 @@ class PermissionManager
 
         // Check if "allow members to create boards" setting is enabled
         $generalSettings = fluent_boards_get_option('general_settings', []);
-        if (!empty($generalSettings['allow_members_to_create_boards']) && $generalSettings['allow_members_to_create_boards'] !== 'false' && static::userHasAnyBoardAccess($userId)) {
-            return apply_filters('fluent_boards/can_create_board', true, $userId);
+        if (!empty($generalSettings['allow_members_to_create_boards']) && $generalSettings['allow_members_to_create_boards'] !== 'false') {
+            $memberships = Relation::where('foreign_id', $userId)
+                ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+                ->whereNotNull('object_id')
+                ->get(['settings']);
+
+            // Roles are per board: a viewer elsewhere may still be a member or manager here.
+            foreach ($memberships as $membership) {
+                if (!($membership->settings['is_viewer_only'] ?? false)) {
+                    return apply_filters('fluent_boards/can_create_board', true, $userId);
+                }
+            }
         }
 
         return apply_filters('fluent_boards/can_create_board', false, $userId);

@@ -14,7 +14,9 @@ class PublicBoardPolicy extends BasePolicy
             return false;
         }
 
-        $boardId = absint($request->board_id);
+        // The token and opt-in must belong to the controller's URL board.
+        $routeParams = $request->get_url_params();
+        $boardId = absint($routeParams['board_id'] ?? 0);
         if (!$boardId) {
             return false;
         }

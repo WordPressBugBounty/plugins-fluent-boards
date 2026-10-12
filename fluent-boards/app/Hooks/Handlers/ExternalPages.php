@@ -5,6 +5,7 @@ namespace FluentBoards\App\Hooks\Handlers;
 use FluentBoards\App\Models\CommentImage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Services\AttachmentAccessService;
+use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Services\Libs\FileSystem;
 
 class ExternalPages
@@ -83,14 +84,28 @@ class ExternalPages
 
     public function redirectToPage()
     {
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public redirect endpoint, no sensitive operations
-        $taskId = isset($_GET['taskId']) ? absint(wp_unslash($_GET['taskId'])) : 0;
-        
+        nocache_headers();
+        header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect; current board access is checked below
+        $taskId = isset($_GET['taskId']) && is_scalar($_GET['taskId']) ? absint(wp_unslash($_GET['taskId'])) : 0;
+
         if (!$taskId) {
-            wp_die(esc_html__('Invalid task ID', 'fluent-boards'));
+            wp_die(esc_html__('Task not found', 'fluent-boards'), '', ['response' => 404]);
         }
-        
-        $task = Task::findOrFail($taskId);
+
+        // Authenticate before looking up task metadata, retaining the email link after login.
+        if (!is_user_logged_in()) {
+            $returnUrl = add_query_arg(['redirect' => 'to_task', 'taskId' => $taskId], site_url('/'));
+            // Match WordPress login redirects, including trusted SSO login_url filters.
+            wp_redirect(wp_login_url($returnUrl));
+            exit;
+        }
+
+        $task = Task::find($taskId);
+        if (!$task || !PermissionManager::userHasPermission($task->board_id)) {
+            wp_die(esc_html__('Task not found', 'fluent-boards'), '', ['response' => 404]);
+        }
         if ($this->isFrontendEnabled() == 'no') {
             $urlBase = apply_filters('fluent_boards/app_url', admin_url('admin.php?page=fluent-boards#/'));
             $page_url = $urlBase . 'boards/' . $task->board_id . '/tasks/' . $task->id . '-' .substr($task->title, 0, 10);

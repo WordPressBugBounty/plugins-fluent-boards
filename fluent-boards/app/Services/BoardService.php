@@ -2,6 +2,7 @@
 
 namespace FluentBoards\App\Services;
 
+use FluentBoards\App\Hooks\Handlers\FileHandler;
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\Attachment;
 use FluentBoards\App\Models\Board;
@@ -16,6 +17,7 @@ use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Libs\FileSystem;
 use FluentBoards\App\Services\DescriptionMarkdownConverter;
+use FluentBoardsPro\App\Models\CustomField;
 
 class BoardService
 {
@@ -46,6 +48,37 @@ class BoardService
 
         // Delete time tracking records for all tasks in the board
         (new TaskService())->deleteTimeTrackingRecords($allTaskIdsInBoard->toArray());
+
+        // Task files, task description images and the background image are keyed by
+        // task or board id. Their local files go with the board_<id> directory below;
+        // files on a cloud driver are queued for deletion once the rows are gone.
+        $boardAttachments = function () use ($allTaskIdsInBoard, $boardId) {
+            // One group, so filters chained on the result apply to both branches.
+            return Attachment::where(function ($owned) use ($allTaskIdsInBoard, $boardId) {
+                $owned->where(function ($query) use ($allTaskIdsInBoard) {
+                    $query->whereIn('object_id', $allTaskIdsInBoard)
+                        ->whereIn('object_type', [Constant::TASK_ATTACHMENT, Constant::TASK_DESCRIPTION]);
+                })->orWhere(function ($query) use ($boardId) {
+                    $query->where('object_id', $boardId)
+                        ->where('object_type', Constant::BOARD_BACKGROUND_IMAGE);
+                });
+            });
+        };
+        $remoteFiles = $boardAttachments()
+            ->where('attachment_type', '!=', 'url')
+            ->whereNotNull('driver')
+            ->where('driver', '!=', 'local')
+            ->get(['file_path', 'driver'])
+            ->filter(function ($attachment) {
+                return !empty($attachment->file_path);
+            })
+            ->map(function ($attachment) {
+                return ['file_path' => $attachment->file_path, 'driver' => $attachment->driver];
+            })
+            ->values()
+            ->toArray();
+        $boardAttachments()->delete();
+        $this->queueRemoteAttachmentFileDeletes($remoteFiles);
 
         Task::whereIn('id', $allTaskIdsInBoard)->delete();
         
@@ -94,6 +127,27 @@ class BoardService
         
         $board->delete();
         FileSystem::deleteDir('board_'.$boardId);
+    }
+
+    /**
+     * Hand remote attachment files to the storage add-on in the background.
+     *
+     * A board can hold hundreds of cloud files, one HTTP request each, so they
+     * are deleted by Action Scheduler in batches instead of inside this request.
+     * Without Action Scheduler they are deleted right away.
+     *
+     * @param array $files List of ['file_path' => string, 'driver' => string].
+     * @return void
+     */
+    private function queueRemoteAttachmentFileDeletes($files)
+    {
+        foreach (array_chunk($files, 50) as $batch) {
+            if (function_exists('as_enqueue_async_action')) {
+                as_enqueue_async_action('fluent_boards/delete_remote_attachment_files', [$batch], 'fluent-boards');
+            } else {
+                (new FileHandler())->deleteRemoteAttachmentFiles($batch);
+            }
+        }
     }
 
     public function fetchBoardMeta($boardId)
@@ -354,8 +408,8 @@ class BoardService
 
     public function getActivities($id, $data)
     {
-        $per_page = isset($data['per_page']) ? $data['per_page'] : 40;
-        $page = isset($data['page']) ? $data['page'] : 1;
+        $per_page = Sanitize::perPage($data['per_page'] ?? 40);
+        $page = max(1, (int) ($data['page'] ?? 1));
         $activities = Activity::where('object_id', $id)->where('object_type', Constant::ACTIVITY_BOARD)->with(['user'])
             ->orderBy('id', 'DESC')
             ->paginate($per_page, ['*'], 'page', $page);
@@ -1142,7 +1196,7 @@ class BoardService
     }
 
     /**
-     * Get CRM-associated boards that the current user can access.
+     * Get CRM-associated boards from non-archived task links and board-level contact metadata.
      *
      * @param int $associatedId CRM contact/subscriber id.
      * @param int|null $userId WordPress user id used for board access checks.
@@ -1157,16 +1211,38 @@ class BoardService
             return [];
         }
 
-        $boardIds = Meta::query()->where('value', $associatedId)
+        $taskBoardIds = Task::query()
+            ->select('board_id')
+            ->where('crm_contact_id', $associatedId)
+            ->whereNull('archived_at')
+            ->whereNotNull('board_id')
+            ->distinct()
+            ->pluck('board_id')
+            ->toArray();
+
+        $metaBoardIds = Meta::query()
+            ->select('object_id')
+            ->where('value', $associatedId)
             ->where('object_type', Constant::OBJECT_TYPE_BOARD)
             ->whereIn('key', [
                 Constant::BOARD_ASSOCIATED_CRM_CONTACT,
                 self::LEGACY_BOARD_ASSOCIATED_CRM_CONTACT,
             ])
-            ->pluck('object_id');
+            ->distinct()
+            ->pluck('object_id')
+            ->toArray();
+
+        $boardIds = array_values(array_unique(array_filter(array_map('intval', array_merge(
+            $taskBoardIds,
+            $metaBoardIds
+        )))));
+
+        if (!$boardIds) {
+            return [];
+        }
 
         $boards = Board::query()
-            ->whereIn('id', array_values(array_unique(array_map('intval', $boardIds->toArray()))))
+            ->whereIn('id', $boardIds)
             ->whereNull('archived_at')
             ->byAccessUser($userId)
             ->withCount('completedTasks')
@@ -1202,6 +1278,84 @@ class BoardService
         $this->setCurrentUserPreferencesOnBoardCreate($board);
 
         return $board;
+    }
+
+    /**
+     * Copy board member relations and their role preferences to a duplicated board.
+     */
+    public function copyMembersOfBoard($sourceBoardId, Board $newBoard)
+    {
+        $existingMemberIds = Relation::where('object_id', $newBoard->id)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->pluck('foreign_id')
+            ->toArray();
+
+        $sourceMembers = Relation::where('object_id', $sourceBoardId)
+            ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->get();
+
+        foreach ($sourceMembers as $sourceMember) {
+            if (in_array($sourceMember->foreign_id, $existingMemberIds)) {
+                continue;
+            }
+
+            Relation::create([
+                'object_id'   => $newBoard->id,
+                'foreign_id'  => $sourceMember->foreign_id,
+                'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
+                'settings'    => $sourceMember->settings,
+                'preferences' => $sourceMember->preferences
+            ]);
+
+            $boardMember = User::find($sourceMember->foreign_id);
+            $settings = is_array($sourceMember->settings) ? $sourceMember->settings : [];
+
+            if ($boardMember) {
+                if (!empty($settings['is_viewer_only'])) {
+                    do_action('fluent_boards/board_viewer_added', $newBoard->id, $boardMember);
+                } else {
+                    do_action('fluent_boards/board_member_added', $newBoard->id, $boardMember);
+                }
+
+                if (!empty($settings[Constant::IS_BOARD_ADMIN])) {
+                    do_action('fluent_boards/board_admin_added', $newBoard->id, $sourceMember->foreign_id);
+                }
+            }
+
+            $existingMemberIds[] = $sourceMember->foreign_id;
+        }
+    }
+
+    /**
+     * Copy Pro custom field definitions and return an old-to-new ID map.
+     */
+    public function copyCustomFieldsOfBoard($fromBoardId, $board)
+    {
+        if (!defined('FLUENT_BOARDS_PRO') || !class_exists(CustomField::class)) {
+            return [];
+        }
+
+        $fromBoardId = absint($fromBoardId);
+
+        if (!$fromBoardId || !$board) {
+            return [];
+        }
+
+        $customFieldMap = [];
+        $customFields = CustomField::where('board_id', $fromBoardId)
+            ->whereNull('archived_at')
+            ->orderBy('position', 'asc')
+            ->get();
+
+        foreach ($customFields as $customField) {
+            $newCustomField = $customField->replicate();
+            $newCustomField->board_id = $board->id;
+            $newCustomField->save();
+
+            $customFieldMap[(int) $customField->id] = $newCustomField->id;
+        }
+
+        return $customFieldMap;
     }
 
     public function archiveBoard($boardId)

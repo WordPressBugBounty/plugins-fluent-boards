@@ -1,6 +1,7 @@
 <?php
 
 use FluentBoards\App\App;
+use FluentBoards\App\Services\Constant;
 
 // $app is available
 
@@ -28,6 +29,17 @@ if (!function_exists('fluent_boards_sanitize_description')) {
             return $url ? '[' . $url . '](' . str_replace(')', '%29', $url) . ')' : $matches[0];
         }, (string) $description);
 
+        // Markdown email autolinks otherwise look like disallowed HTML to KSES.
+        $description = preg_replace_callback('/<(?:mailto:)?([^<>\s]+@[^<>\s]+)>/i', function ($matches) {
+            $email = html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            if (!is_email($email)) {
+                return $matches[0];
+            }
+
+            $label = str_replace(['*', '_', '`'], ['\\*', '\\_', '\\`'], $email);
+            return '[' . $label . '](mailto:' . $email . ')';
+        }, $description);
+
         // KSES encodes standalone > characters, which breaks Markdown quotes.
         // Protect only quote prefixes; all HTML still passes through KSES.
         $quotePrefix = 'fbs-quote-' . wp_generate_uuid4() . '-';
@@ -48,7 +60,7 @@ if (!function_exists('fluent_boards_user_avatar')) {
         $user = get_user_by('email', $email);
 
         if ($user) {
-            $photo_url = get_user_meta($user->ID, 'fbs_profile_photo', true);
+            $photo_url = get_user_meta($user->ID, Constant::PROFILE_PHOTO_META_KEY, true);
             if ($photo_url) {
                 return apply_filters('fluent_boards/get_avatar', $photo_url, $email);
             }

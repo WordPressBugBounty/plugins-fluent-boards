@@ -3,6 +3,7 @@
 namespace FluentBoards\App\Http\Controllers;
 
 use FluentBoards\App\Modules\MCP\MCPInit;
+use FluentBoards\App\Services\MCPAccessService;
 use FluentBoards\Framework\Http\Request\Request;
 
 /**
@@ -46,12 +47,12 @@ class MCPSettingsController extends Controller
             'endpoint_url'                   => MCPInit::getEndpointUrl(),
             'tools_count'                    => $abilitiesAvailable ? MCPInit::getToolsCount() : 0,
             'mcp_enabled'                    => fluent_boards_get_option('mcp_enabled', 'yes') === 'yes',
-            'app_passwords_url'              => admin_url('profile.php#application-passwords-section'),
+            'mcp_member_access'              => MCPAccessService::isMemberAccessEnabled(),
             'plugins_url'                    => admin_url('plugins.php'),
             'can_auto_install_adapter'       => $canAutoInstall,
             'toolkit_download_url'           => 'https://github.com/WPManageNinja/fluent-toolkit',
             'current_user_login'             => $currentUser ? $currentUser->user_login : '',
-            'is_local_dev'                   => self::detectLocalDevEnvironment(),
+            'is_local_dev'                   => MCPAccessService::isLocalDev(),
         ]);
     }
 
@@ -68,6 +69,25 @@ class MCPSettingsController extends Controller
             'message'     => $enabled
                 ? __('MCP tools enabled. New requests will see the Fluent Boards abilities.', 'fluent-boards')
                 : __('MCP tools disabled. The adapter will no longer report Fluent Boards abilities.', 'fluent-boards'),
+        ]);
+    }
+
+    /**
+     * All-or-none switch: when on, every board member can use MCP and create keys from Account.
+     * Turning it off blocks members immediately; their keys are kept but stop working.
+     */
+    public function toggleMemberAccess(Request $request)
+    {
+        $value = $request->get('mcp_member_access');
+        $enabled = is_string($value) ? in_array($value, ['yes', 'true', '1'], true) : (bool) $value;
+
+        fluent_boards_update_option('mcp_member_access', $enabled ? 'yes' : 'no');
+
+        return $this->sendSuccess([
+            'mcp_member_access' => $enabled,
+            'message'           => $enabled
+                ? __('Board members can now create their own MCP connections.', 'fluent-boards')
+                : __('MCP is now limited to administrators. Member connections are blocked.', 'fluent-boards'),
         ]);
     }
 
@@ -119,139 +139,6 @@ class MCPSettingsController extends Controller
             'toolkit_adapter_available' => $toolkitAdapterAvailable,
             'message'                   => $message,
         ]);
-    }
-
-    public function getConfigSnippet(Request $request)
-    {
-        $client = sanitize_key((string) $request->get('client', 'claude-code'));
-        $endpoint = MCPInit::getEndpointUrl();
-        $isLocalDev = $this->resolveLocalDevOverride($request);
-
-        $basicPlaceholder = '<base64(your-username:application-password)>';
-        $usernamePlaceholder = '<your-username>';
-        $passwordPlaceholder = '<your-application-password>';
-        $appPasswordsUrl = admin_url('profile.php#application-passwords-section');
-
-        switch ($client) {
-            case 'codex':
-                $snippet = sprintf(
-                    "Settings > Connect to a custom MCP\n\nName:        fluent-boards\nTransport:   Streamable HTTP\n\nURL:         %s\n\nHeader:\n  Key:       Authorization\n  Value:     Basic %s\n\nClick Save.",
-                    $endpoint,
-                    $basicPlaceholder
-                );
-                $instructions = sprintf(
-                    __('Open OpenAI Codex settings, connect to a custom MCP, choose Streamable HTTP, then use a WordPress Application Password from %s.', 'fluent-boards'),
-                    $appPasswordsUrl
-                );
-                break;
-
-            case 'cursor':
-                $snippet = wp_json_encode([
-                    'mcpServers' => [
-                        'fluent-boards' => [
-                            'url'     => $endpoint,
-                            'type'    => 'http',
-                            'headers' => [
-                                'Authorization' => 'Basic ' . $basicPlaceholder,
-                            ],
-                        ],
-                    ],
-                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-                $instructions = __('Paste this into Cursor Settings > MCP, then restart Cursor.', 'fluent-boards');
-                break;
-
-            case 'generic':
-                $snippet = sprintf(
-                    "URL:   %s\nAuth:  Authorization: Basic %s\n\n# Quick test\ncurl -s -u '%s:%s' \\\n  -X POST %s \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'",
-                    $endpoint,
-                    $basicPlaceholder,
-                    $usernamePlaceholder,
-                    $passwordPlaceholder,
-                    $endpoint
-                );
-                $instructions = __('Use the URL and Basic Auth header with any HTTP MCP client. The endpoint speaks MCP over JSON-RPC.', 'fluent-boards');
-                break;
-
-            case 'claude-desktop':
-                $env = [
-                    'WP_API_URL'                   => $endpoint,
-                    'WP_API_USERNAME'              => $usernamePlaceholder,
-                    'WP_API_PASSWORD'              => $passwordPlaceholder,
-                    'OAUTH_ENABLED'                => 'false',
-                    'NODE_TLS_REJECT_UNAUTHORIZED' => '0',
-                ];
-
-                $snippet = wp_json_encode([
-                    'mcpServers' => [
-                        'fluent-boards' => [
-                            'command' => 'npx',
-                            'args'    => ['-y', '@automattic/mcp-wordpress-remote@latest'],
-                            'env'     => $env,
-                        ],
-                    ],
-                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-
-                $instructions = __('Paste into the Claude Desktop config file, then restart Claude Desktop.', 'fluent-boards');
-                break;
-
-            case 'claude-code':
-            default:
-                $snippet = sprintf(
-                    "claude mcp add \\\n  --transport http \\\n  fluent-boards %s \\\n  --header \"Authorization: Basic %s\"",
-                    $endpoint,
-                    $basicPlaceholder
-                );
-                $instructions = __('Fill in your username and application password above, then paste the command into your terminal.', 'fluent-boards');
-                $client = 'claude-code';
-                break;
-        }
-
-        return $this->sendSuccess([
-            'client'            => $client,
-            'snippet'           => $snippet,
-            'instructions'      => $instructions,
-            'endpoint'          => $endpoint,
-            'app_passwords_url' => $appPasswordsUrl,
-            'is_local_dev'      => $isLocalDev,
-        ]);
-    }
-
-    private function resolveLocalDevOverride(Request $request)
-    {
-        $forceLocalDev = $request->get('local_dev');
-        if ($forceLocalDev === 'yes' || $forceLocalDev === '1' || $forceLocalDev === 'true') {
-            return true;
-        }
-
-        if ($forceLocalDev === 'no' || $forceLocalDev === '0' || $forceLocalDev === 'false') {
-            return false;
-        }
-
-        return self::detectLocalDevEnvironment();
-    }
-
-    private static function detectLocalDevEnvironment()
-    {
-        $host = wp_parse_url(home_url(), PHP_URL_HOST);
-        $host = strtolower((string) $host);
-
-        $isDev = false;
-        foreach (['.test', '.lab', '.local', '.localhost', '.docker', '.dev'] as $tld) {
-            if (substr($host, -strlen($tld)) === $tld) {
-                $isDev = true;
-                break;
-            }
-        }
-
-        if (!$isDev && ($host === 'localhost' || $host === '127.0.0.1' || $host === '::1')) {
-            $isDev = true;
-        }
-
-        if (!$isDev && filter_var($host, FILTER_VALIDATE_IP)) {
-            $isDev = !filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
-        }
-
-        return (bool) apply_filters('fluent_boards/mcp_is_local_dev', $isDev, $host);
     }
 
     private function isAdapterPresent()

@@ -63,8 +63,10 @@ class TaskController extends Controller
         ];
     }
 
+    /** Return all board tasks with a cursor captured before reading their state. */
     public function getTasksByBoard(Request $request, $board_id)
     {
+        $syncStartedAt = current_time('mysql');
         $board_id = absint($board_id);
         $board = Board::findOrFail($board_id);
         $includeArchived = $request->getSafe('include_archived', 'boolval', false);
@@ -94,11 +96,14 @@ class TaskController extends Controller
 
         return [
             'tasks' => $tasks,
+            'synced_at' => $syncStartedAt,
         ];
     }
 
+    /** Fetch each stage's first page, then batch metadata for the combined card list. */
     public function getTasksByBoardStage(Request $request, $board_id)
     {
+        $syncStartedAt = current_time('mysql');
         $board_id = absint($board_id);
         $board = Board::findOrFail($board_id);
         $includeArchived = $request->getSafe('include_archived', 'boolval', false);
@@ -118,13 +123,7 @@ class TaskController extends Controller
                 ->limit(20)
                 ->get();
 
-            // Process each stage's tasks
-            $this->processTasks($stageTasks, $board, [
-                'includeContact' => false,
-                'includeObserverState' => false,
-                'includeRoadmapPopularity' => false,
-            ]);
-            $tasks = array_merge($tasks, $stageTasks->toArray()); // Merge with the main task list
+            $tasks = array_merge($tasks, $stageTasks->all());
 
             $startCursor = $stageTasks->count() ? (float) $stageTasks->first()->position : null;
             $endCursor = $stageTasks->count() ? (float) $stageTasks->last()->position : null;
@@ -145,12 +144,20 @@ class TaskController extends Controller
             ];
         }
 
+        $this->processTasks($tasks, $board, [
+            'includeContact' => false,
+            'includeObserverState' => false,
+            'includeRoadmapPopularity' => false,
+        ]);
+
         return [
-            'tasks' => $tasks,
+            'tasks' => (new Task())->newCollection($tasks)->toArray(),
             'pagination_by_stage' => $paginationByStage,
+            'synced_at' => $syncStartedAt,
         ];
     }
 
+    /** Return paginated tasks matching the board filters, including recurrence and templates. */
     public function getTableTasks(Request $request, $board_id)
     {
         $board_id = absint($board_id);
@@ -164,6 +171,8 @@ class TaskController extends Controller
             'include_archived' => $request->getSafe('include_archived', 'boolval', false),
             'stage' => $request->get('stage', []),
             'task_status' => $request->get('task_status', []),
+            'recurring' => $request->get('recurring', []),
+            'template' => $request->get('template', []),
             'priority' => $request->get('priority', []),
             'assignee' => $request->get('assignee', []),
             'labels' => $request->get('labels', []),
@@ -192,6 +201,7 @@ class TaskController extends Controller
         ], 200);
     }
 
+    /** Return board tasks matching the requested filters, including recurrence and templates. */
     public function getFilteredBoardTasks(Request $request, $board_id)
     {
         $board_id = absint($board_id);
@@ -201,6 +211,8 @@ class TaskController extends Controller
             'include_archived' => $request->getSafe('include_archived', 'boolval', false),
             'stage' => $request->get('stage', []),
             'task_status' => $request->get('task_status', []),
+            'recurring' => $request->get('recurring', []),
+            'template' => $request->get('template', []),
             'priority' => $request->get('priority', []),
             'assignee' => $request->get('assignee', []),
             'labels' => $request->get('labels', []),
@@ -410,6 +422,8 @@ class TaskController extends Controller
      */
     private function processTasks($tasks, $board, $options = [])
     {
+        $this->taskService->loadTaskListMetadata($tasks);
+
         $includeContact = Arr::get($options, 'includeContact', true);
         $includeObserverState = Arr::get($options, 'includeObserverState', true);
         $includeRoadmapPopularity = Arr::get($options, 'includeRoadmapPopularity', true);

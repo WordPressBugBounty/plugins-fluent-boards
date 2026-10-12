@@ -35,6 +35,45 @@ class BoardHandler
 
         Helper::createActivity($data);
     }
+    /** Record the creation of a board's custom-field definition. */
+    public function customFieldCreated($customField)
+    {
+        $this->createLogActivity(
+            $customField->board_id,
+            Constant::ACTIVITY_ACTION_CREATED,
+            Constant::ACTIVITY_CUSTOM_FIELD,
+            null,
+            $customField->title,
+            null,
+            ['custom_field_id' => $customField->id, 'custom_field_type' => $customField->settings['custom_field_type']]
+        );
+    }
+
+    /** Record changed names and options using snapshots taken before the definition was saved. */
+    public function customFieldUpdated($customField, $oldCustomField)
+    {
+        $settings = [
+            'custom_field_id' => $customField->id,
+            'custom_field_title' => $customField->title,
+            'custom_field_type' => $customField->settings['custom_field_type']
+        ];
+        if ($oldCustomField->title !== $customField->title) {
+            $this->createLogActivity($customField->board_id, Constant::ACTIVITY_ACTION_UPDATED,
+                Constant::ACTIVITY_CUSTOM_FIELD, $oldCustomField->title, $customField->title, null, $settings);
+        }
+
+        $oldOptions = $oldCustomField->settings['select_options'] ?? [];
+        $newOptions = $customField->settings['select_options'] ?? [];
+        if ($oldOptions !== $newOptions) {
+            $this->createLogActivity($customField->board_id, Constant::ACTIVITY_ACTION_UPDATED,
+                /* translators: %s is the custom field title */
+                sprintf(__('custom field options for %s', 'fluent-boards'), $customField->title),
+                $oldOptions ? implode(', ', $oldOptions) : __('empty', 'fluent-boards'),
+                $newOptions ? implode(', ', $newOptions) : __('empty', 'fluent-boards'),
+                null, $settings);
+        }
+    }
+
     public function getAllBoards($sortBy = 'ASC')
     {
         $boards = Board::orderBy('created_at', $sortBy)->get();
@@ -239,6 +278,7 @@ class BoardHandler
     public function tasksMovedBetweenStages($boardId, $sourceStage, $targetStage, $taskCount)
     {
         $description = sprintf(
+            /* translators: %d is the number of tasks moved */
             _n('%d task moved', '%d tasks moved', $taskCount, 'fluent-boards'),
             $taskCount
         );

@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.1.0
+Stable tag: 2.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,33 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v2.2.0 (Date: October 12, 2026) =
+
+- New: Browse, preview, and create boards from built-in templates, or save them for reuse
+- New: Ready-to-use board background images
+- New: OpenRouter support for AI writing assistance
+- New: Create MCP connection keys from your account, with admin-managed access
+- New: Import Fluent Boards exports without Pro
+- New: Filter recurring tasks and task templates
+- New: Drag and drop boards into folders
+- Improvement: Update your profile name and photo from your account
+- Improvement: Redesigned notification emails with light and dark mode support
+- Improvement: Easier member access management across multiple boards
+- Improvement: Preserve more task data when duplicating boards, importing, and using templates
+- Improvement: Richer comment formatting, slash commands, and easier description copying
+- Improvement: Clearer recurring schedules, links to generated tasks, and custom-field activity history
+- Improvement: Faster board lists, task activity feeds, and bulk stage moves
+- Improvement: Simpler AI setup, updated model choices, and better translations
+- Fixed: Assignment notifications, comment email links, and incorrect archive emails when restoring tasks
+- Fixed: Bulk task moves now apply stage defaults and trigger notifications and webhooks
+- Fixed: Task and board deletion now cleans up related data and local or cloud attachments
+- Fixed: Search and filters now work together, and failed status updates preserve the previous status
+- Fixed: Recurring tasks retain custom fields and correctly update task counts and creation webhooks
+- Fixed: Time-log dates, custom date fields, timesheet access, and CSV exports
+- Fixed: Webhook event selection, task completion events, and missing-data handling
+- Fixed: FluentCRM task assignments, template data, and contact-board associations
+- Fixed: Task navigation, upload protection, and board permission checks
 
 = v2.1.0 (Date: September 17, 2026) =
 

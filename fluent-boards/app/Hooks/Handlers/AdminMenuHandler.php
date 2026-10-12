@@ -158,9 +158,6 @@ class AdminMenuHandler
 
         do_action('fluent_boards/rendering_app');
 
-        // For subtask sync
-        UpdateHandler::maybeSubtaskGroupSync();
-
         App::make('view')->render('admin.menu', [
             'name'         => $name,
             'slug'         => $slug,
@@ -418,6 +415,8 @@ class AdminMenuHandler
             'is_new'                          => Board::count() == 0 ? 'yes' : 'no',
             'is_onboarded'                    => $onboardingValue,
             'render_in'                       => is_admin() ? 'admin' : 'front',
+            // Gates wp-admin links (WP profile, CRM, application passwords) so the frontend portal shows no admin traces.
+            'can_access_wp_admin'             => (bool) apply_filters('fluent_boards/can_access_wp_admin', is_admin() || current_user_can('manage_options'), $currentUser),
             'dashboard_notices'               => apply_filters('fluent_boards/dashboard_notices', []),
             'is_beta'                         => defined('FLUENT_BOARDS_PRO_VERSION') && !defined('FLUENT_BOARDS_PRO_LIVE'),
             'advanced_modules'                => fluent_boards_get_pref_settings(),

@@ -5,9 +5,15 @@ namespace FluentBoards\App\Hooks\Handlers;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\TaskMeta;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\IndexUpgradeService;
 
 class UpdateHandler
 {
+    public function maybeUpgradeIndexes()
+    {
+        return (new IndexUpgradeService())->maybeUpgrade();
+    }
+
     public static function maybeSubtaskGroupSync()
     {
         $lastDbVersion = get_option('_fluent_boards_db_version');

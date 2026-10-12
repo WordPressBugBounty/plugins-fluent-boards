@@ -8,16 +8,13 @@
             '_descriptionToPlainText.js'
         ],
         'dynamicImports' => [
-            '_vendor.js',
+            'node_modules/.pnpm/mermaid@11.17.2/node_modules/mermaid/dist/mermaid.core.mjs',
             'resources/admin/Components/Report/Reports.vue',
             'resources/admin/Components/Report/Overview/Overview.vue',
             'resources/admin/Components/Report/Tasks/Tasks.vue',
             'resources/admin/Components/Report/Timesheet/Timesheet.vue',
             'resources/admin/Components/Report/Activity/Activity.vue',
             'resources/admin/Components/Report/Roadmap/Roadmap.vue'
-        ],
-        'css' => [
-            'admin/UpgradeUrl.css'
         ]
     ],
     '__AssigneeProgressList.js' => [
@@ -91,8 +88,8 @@
         'file' => 'descriptionToPlainText.js',
         'name' => 'descriptionToPlainText',
         'imports' => [
-            '_vendor-element-plus.js',
-            '_vendor.js'
+            '_vendor.js',
+            '_vendor-element-plus.js'
         ]
     ],
     '_reportHelpers.js' => [
@@ -116,17 +113,19 @@
         'name' => 'vendor-element-plus',
         'imports' => [
             '_vendor.js'
-        ],
-        'css' => [
-            'admin/vendor-element-plus.css'
         ]
     ],
     '_vendor.js' => [
         'file' => 'vendor.js',
-        'name' => 'vendor',
+        'name' => 'vendor'
+    ],
+    'node_modules/.pnpm/mermaid@11.17.2/node_modules/mermaid/dist/mermaid.core.mjs' => [
+        'file' => 'vendor-mermaid.js',
+        'name' => 'vendor-mermaid',
+        'src' => 'node_modules/.pnpm/mermaid@11.17.2/node_modules/mermaid/dist/mermaid.core.mjs',
         'isDynamicEntry' => true,
-        'css' => [
-            'admin/vendor.css'
+        'imports' => [
+            '_vendor.js'
         ]
     ],
     'resources/admin/Components/Report/Activity/Activity.vue' => [

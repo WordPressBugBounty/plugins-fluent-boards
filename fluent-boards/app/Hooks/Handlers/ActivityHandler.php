@@ -256,12 +256,12 @@ class ActivityHandler
         $newStage = $stageContext['target'] ?? null;
 
         if (!$oldStage instanceof Stage || !$newStage instanceof Stage) {
-            $oldStage = Stage::findOrFail($oldStageId);
+            $oldStage = Stage::find($oldStageId);
             $newStage = Stage::findOrFail($task->stage_id);
         }
 
-        if($oldStage && $newStage){
-            $this->createLogActivity($task->id, 'changed', 'stage', $oldStage->title, $newStage->title);
+        if ($newStage) {
+            $this->createLogActivity($task->id, 'changed', 'stage', $oldStage ? $oldStage->title : null, $newStage->title);
         }
     }
 
@@ -372,6 +372,7 @@ class ActivityHandler
         }
     }
 
+    /** Record both recurrence links, retaining the full generated title in the source entry's settings. */
     public function logRepeatTaskCreatedActivity($newTask, $parentTask)
     {
         $this->createLogActivity(
@@ -382,6 +383,21 @@ class ActivityHandler
             $parentTask->title,
             null,
             $parentTask
+        );
+
+        // new_value is VARCHAR(50); keep a Unicode-safe preview and render settings.title.
+        $this->createLogActivity(
+            $parentTask->id,
+            'created',
+            'repeat task',
+            null,
+            mb_substr($newTask->title, 0, 50, 'UTF-8'),
+            null,
+            [
+                'id' => $newTask->id,
+                'board_id' => $newTask->board_id,
+                'title' => $newTask->title,
+            ]
         );
     }
 
@@ -411,60 +427,78 @@ class ActivityHandler
         $this->createLogActivity($task->id, 'moved', 'board', $oldBoard->title, $newBoard->title);
     }
 
+    /** Log meaningful task value additions, changes and removals, preserving zero and false. */
     public function logCustomFieldActivity($taskId, $customField, $oldValue, $newValue, $isNewCustomField)
     {
-        // Format values for display in activity
-        $displayNewValue = $this->formatValueForDisplay($newValue, $customField->settings['custom_field_type']);
-        
-        $action = 'changed';
-        $column = $customField->title;
-        
-        // Ensure we have a value to display
-        if (empty($displayNewValue)) {
-            $displayNewValue = 'empty';
+        $fieldType = $customField->settings['custom_field_type'];
+        $oldValue = $this->normalizeCustomFieldActivityValue($isNewCustomField ? null : $oldValue, $fieldType);
+        $newValue = $this->normalizeCustomFieldActivityValue($newValue, $fieldType);
+
+        if ($oldValue === $newValue) {
+            return;
         }
 
-        // Handle old value display logic
-        $displayOldValue = null;
-        if (!$isNewCustomField && $oldValue !== null && $oldValue !== '') {
-            // Format old value for display if it exists
-            $displayOldValue = $this->formatValueForDisplay($oldValue, $customField->settings['custom_field_type']);
+        $action = Constant::ACTIVITY_ACTION_CHANGED;
+        if ($oldValue === null) {
+            $action = Constant::ACTIVITY_ACTION_ADDED;
+        } elseif ($newValue === null) {
+            $action = Constant::ACTIVITY_ACTION_REMOVED;
         }
 
         $settings = [
             'custom_field_id' => $customField->id,
             'custom_field_title' => $customField->title,
-            'custom_field_type' => $customField->settings['custom_field_type']
+            'custom_field_type' => $fieldType
         ];
 
-        $this->createLogActivity($taskId, $action, $column, $displayOldValue, $displayNewValue, null, $settings);
+        $this->createLogActivity(
+            $taskId,
+            $action,
+            /* translators: %s is the custom field title */
+            sprintf(__('custom field %s', 'fluent-boards'), $customField->title),
+            $this->formatValueForDisplay($oldValue, $fieldType),
+            $this->formatValueForDisplay($newValue, $fieldType),
+            null,
+            $settings
+        );
     }
 
-    /**
-     * Format custom field value for display in activity logs
-     */
+    /** Compare logical values independently of transport types and selection order. */
+    private function normalizeCustomFieldActivityValue($value, $fieldType)
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return null;
+        }
+        if ($fieldType === 'checkbox') {
+            return rest_sanitize_boolean($value);
+        }
+        if ($fieldType === 'multi-select') {
+            $value = array_values(array_unique(array_map('strval', (array) $value)));
+            sort($value, SORT_STRING);
+            return $value;
+        }
+        if ($fieldType === 'number' && is_numeric($value)) {
+            return (string) (0 + $value);
+        }
+        return (string) $value;
+    }
+
+    /** Format custom-field values without treating zero or an unchecked box as empty. */
     private function formatValueForDisplay($value, $fieldType)
     {
-        if ($value === null || $value === '') {
-            return 'empty';
+        if ($value === null) {
+            return null;
         }
-
-        switch ($fieldType) {
-            case 'checkbox':
-                return $value ? 'checked' : 'unchecked';
-            case 'date':
-                // If it's already formatted as Y-m-d H:i:s, convert to readable format
-                if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) {
-                    return gmdate('M j, Y g:i A', strtotime($value));
-                }
-                return $value;
-            case 'select':
-            case 'text':
-            case 'textarea':
-            case 'number':
-            default:
-                return (string) $value;
+        if ($fieldType === 'checkbox') {
+            return $value ? __('checked', 'fluent-boards') : __('unchecked', 'fluent-boards');
         }
+        if ($fieldType === 'multi-select') {
+            return implode(', ', $value);
+        }
+        if ($fieldType === 'date' && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) {
+            return mysql2date('M j, Y g:i A', $value);
+        }
+        return (string) $value;
     }
     public function taskCloned($originalTask, $clonedTask)
     {

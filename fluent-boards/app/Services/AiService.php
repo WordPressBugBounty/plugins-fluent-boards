@@ -11,8 +11,8 @@ use FluentBoards\Framework\Support\Arr;
  * credentials are shared across the suite via the global `_fluent_ai_creds`
  * option, while Fluent Boards keeps its own writing preferences.
  *
- * Providers supported: OpenAI, Anthropic (Claude), Google Gemini and the
- * WordPress-native AI client. All provider calls are blocking wp_remote_post
+ * Providers supported: OpenAI, Anthropic (Claude), Google Gemini, OpenRouter
+ * and the WordPress-native AI client. All provider calls are blocking wp_remote_post
  * requests (no streaming).
  */
 class AiService
@@ -37,16 +37,22 @@ class AiService
 
     private $providerModels = [
         'wordpress' => ['wordpress'],
-        'open_ai'   => ['auto', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini'],
-        'claude'    => ['auto', 'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-opus-4-6'],
-        'gemini'    => ['auto', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
+        'open_ai' => ['auto', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini'],
+        'claude'  => ['auto', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1', 'claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5-20251001', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-opus-4-6'],
+        'gemini'  => ['auto', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
+        'openrouter' => [],
     ];
 
+    /**
+     * Auto picks the newest model first, then a widely available stable one.
+     * Newer models are often gated by account tier, verification or region, so
+     * fallback requires a typed 404 identifying the unavailable model.
+     */
     private $autoProviderModels = [
-        'open_ai'   => 'gpt-5.4',
-        'claude'    => 'claude-sonnet-4-6',
-        'gemini'    => 'gemini-3.5-flash',
-        'wordpress' => 'wordpress',
+        'open_ai'   => ['gpt-6.1-sol', 'gpt-5.6-terra'],
+        'claude'    => ['claude-sonnet-5-5', 'claude-sonnet-5'],
+        'gemini'    => ['gemini-3.8-flash', 'gemini-3.5-flash'],
+        'wordpress' => ['wordpress'],
     ];
 
     /**
@@ -122,6 +128,12 @@ class AiService
         $existingProvider = (string) Arr::get($existing, 'provider', '');
         $existingModel    = (string) Arr::get($existing, 'model', '');
 
+        if ($provider && $provider !== $existingProvider && $provider !== 'wordpress'
+            && (!$apiKey || strpos($apiKey, '****') === 0)
+        ) {
+            return new \WP_Error('missing_api_key', __('Please enter an API key for the selected provider.', 'fluent-boards'));
+        }
+
         // Only a real, non-masked value replaces the stored key.
         $plainApiKey = $existingKey;
         if ($apiKey !== '' && strpos($apiKey, '****') !== 0) {
@@ -132,14 +144,20 @@ class AiService
         if (!$provider) {
             $provider = $existingProvider;
         }
+        // A stored model only carries over when the provider is unchanged; another
+        // provider's model would otherwise be saved against the new provider.
         if (!$model) {
-            $model = $existingModel ?: 'auto';
+            $model = ($provider === $existingProvider && $existingModel) ? $existingModel : 'auto';
         }
 
         // Never persist a model the selected provider does not support, otherwise
         // every later generation resolves it as-is and keeps calling the provider
         // with an invalid model.
-        if ($provider && !in_array($model, Arr::get($this->providerModels, $provider, []), true)) {
+        if ($provider === 'openrouter') {
+            if (!$model || $model === 'auto') {
+                return new \WP_Error('invalid_model', __('Please select an OpenRouter model.', 'fluent-boards'));
+            }
+        } elseif ($provider && !in_array($model, Arr::get($this->providerModels, $provider, []), true)) {
             return new \WP_Error('invalid_model', __('Invalid AI model selected for this provider.', 'fluent-boards'));
         }
 
@@ -175,14 +193,28 @@ class AiService
      * Model dropdown options for a provider.
      *
      * @param string $provider
+     * @param string $apiKey only used by OpenRouter; a masked value falls back to the stored key
      * @return array|\WP_Error
      */
-    public function getModelOptions($provider)
+    public function getModelOptions($provider, $apiKey = '')
     {
         $provider = $this->normalizeProvider($provider);
 
         if (!$provider || !in_array($provider, array_keys($this->providerModels), true)) {
             return new \WP_Error('invalid_provider', __('Invalid AI provider selected.', 'fluent-boards'));
+        }
+
+        if ($provider === 'openrouter') {
+            if (!$apiKey || strpos($apiKey, '****') === 0) {
+                $credentials = $this->getSavedCredentials();
+                $apiKey = $credentials['provider'] === $provider ? $credentials['api_key'] : '';
+            }
+
+            if (!$apiKey) {
+                return new \WP_Error('missing_api_key', __('Please enter an OpenRouter API key first.', 'fluent-boards'));
+            }
+
+            return $this->getOpenRouterModels($apiKey);
         }
 
         $models = [];
@@ -218,14 +250,15 @@ class AiService
 
         // Use the stored key when the field still shows the masked value.
         if (!$apiKey || strpos($apiKey, '****') === 0) {
-            $apiKey = Arr::get($this->getSavedSettings(), 'api_key', '');
+            $credentials = $this->getSavedCredentials();
+            $apiKey = $credentials['provider'] === $provider ? $credentials['api_key'] : '';
         }
 
         if ($provider !== 'wordpress' && !$apiKey) {
             return new \WP_Error('missing_api_key', __('Please enter an API key.', 'fluent-boards'));
         }
 
-        $resolvedModel = $this->resolveModel($provider, $model);
+        $resolvedModel = $this->resolveModels($provider, $model);
         if (!$resolvedModel) {
             return new \WP_Error('missing_model', __('AI model is not configured. Please set it in Settings.', 'fluent-boards'));
         }
@@ -508,7 +541,7 @@ class AiService
     }
 
     /**
-     * @return array{provider:string,model:string,api_key:string}|\WP_Error
+     * @return array{provider:string,model:string[],api_key:string}|\WP_Error
      */
     private function validateGenerationConfig($settings)
     {
@@ -528,7 +561,7 @@ class AiService
             return new \WP_Error('missing_api_key', __('AI API key is not configured. Please add it in Settings.', 'fluent-boards'));
         }
 
-        $resolvedModel = $this->resolveModel($provider, $model);
+        $resolvedModel = $this->resolveModels($provider, $model);
         if (!$resolvedModel) {
             return new \WP_Error('missing_model', __('AI model is not configured. Please set it in Settings.', 'fluent-boards'));
         }
@@ -616,7 +649,44 @@ class AiService
      * Provider dispatch
      * ---------------------------------------------------------------------- */
 
-    private function callProviderApi($provider, $model, $apiKey, $userPrompt, $systemPrompt = '', $timeout = 30)
+    /**
+     * @param string|string[] $models candidates in order; the next one is tried
+     *                                only when the provider rejects the model
+     */
+    private function callProviderApi($provider, $models, $apiKey, $userPrompt, $systemPrompt = '', $timeout = 30)
+    {
+        $result = null;
+        foreach ((array) $models as $model) {
+            $result = $this->callProviderModel($provider, $model, $apiKey, $userPrompt, $systemPrompt, $timeout);
+            if (!$this->isModelUnavailableError($provider, $model, $result)) {
+                return $result;
+            }
+        }
+
+        return $result;
+    }
+
+    /** Fail closed: generic 404s and all auth, quota, permission and parameter errors do not retry. */
+    private function isModelUnavailableError($provider, $model, $error)
+    {
+        if (!is_wp_error($error)) {
+            return false;
+        }
+        $data = (array) $error->get_error_data();
+        if ((int) Arr::get($data, 'status') !== 404) {
+            return false;
+        }
+        $code = Arr::get($data, 'provider_error');
+        if ($provider === 'open_ai') {
+            return $code === 'model_not_found';
+        }
+        // Claude/Gemini use resource-wide codes, so also require the requested model ID.
+        $expected = ['claude' => 'not_found_error', 'gemini' => 'NOT_FOUND'];
+        return isset($expected[$provider]) && $code === $expected[$provider]
+            && strpos($error->get_error_message(), $model) !== false;
+    }
+
+    private function callProviderModel($provider, $model, $apiKey, $userPrompt, $systemPrompt, $timeout)
     {
         switch ($provider) {
             case 'open_ai':
@@ -625,6 +695,8 @@ class AiService
                 return $this->callClaude($model, $apiKey, $userPrompt, $systemPrompt, $timeout);
             case 'gemini':
                 return $this->callGemini($model, $apiKey, $userPrompt, $systemPrompt, $timeout);
+            case 'openrouter':
+                return $this->callOpenRouter($model, $apiKey, $userPrompt, $systemPrompt, $timeout);
             case 'wordpress':
                 return $this->callWordPress($model, $userPrompt, $systemPrompt, $timeout);
             default:
@@ -671,28 +743,38 @@ class AiService
         }
         $messages[] = ['role' => 'user', 'content' => $userPrompt];
 
+        $data = [
+            'model' => $model,
+            'messages' => $messages,
+            'max_completion_tokens' => 2048,
+        ];
+        // Astra and 6.1 Sol require reasoning; reserve room for reasoning and text.
+        if (in_array($model, ['gpt-6-astra', 'gpt-6.1-sol'], true)) {
+            $data['reasoning_effort'] = 'low';
+            $data['max_completion_tokens'] = 8192;
+        } elseif ($model === 'gpt-6-luna') {
+            $data['reasoning_effort'] = 'none';
+        }
+
         $response = wp_remote_post('https://api.openai.com/v1/chat/completions', [
             'timeout' => $timeout,
             'headers' => [
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type'  => 'application/json',
             ],
-            'body' => wp_json_encode([
-                'model'                 => $model,
-                'messages'              => $messages,
-                'max_completion_tokens' => 2048,
-            ]),
+            'body' => wp_json_encode($data),
         ]);
 
         if (is_wp_error($response)) {
-            return new \WP_Error('api_error', __('Failed to connect to OpenAI: ', 'fluent-boards') . $response->get_error_message());
+            /* translators: %s is the error message returned by the AI provider */
+            return new \WP_Error('api_error', sprintf(__('Failed to connect to OpenAI: %s', 'fluent-boards'), $response->get_error_message()));
         }
 
         $code = wp_remote_retrieve_response_code($response);
         $body = json_decode(wp_remote_retrieve_body($response), true);
 
         if ($code !== 200) {
-            return new \WP_Error('api_error', Arr::get($body, 'error.message', __('Unknown error from OpenAI.', 'fluent-boards')));
+            return new \WP_Error('api_error', Arr::get($body, 'error.message', __('Unknown error from OpenAI.', 'fluent-boards')), ['status' => $code, 'provider_error' => Arr::get($body, 'error.code')]);
         }
 
         $content = Arr::get($body, 'choices.0.message.content', '');
@@ -713,6 +795,18 @@ class AiService
             ],
         ];
 
+        // These models think by default. Keep short Boards writing requests bounded.
+        if ($model === 'claude-sonnet-5-5') {
+            $data['thinking'] = ['type' => 'between_tools'];
+            $data['output_config'] = ['effort' => 'low'];
+        } elseif ($model === 'claude-haiku-5-5') {
+            $data['thinking'] = ['type' => 'disabled'];
+            $data['output_config'] = ['effort' => 'low'];
+        } elseif (in_array($model, ['claude-opus-5-5', 'claude-fable-5-1'], true)) {
+            $data['output_config'] = ['effort' => 'low'];
+            $data['max_tokens'] = 8192;
+        }
+
         if ($systemPrompt) {
             $data['system'] = $systemPrompt;
         }
@@ -728,17 +822,25 @@ class AiService
         ]);
 
         if (is_wp_error($response)) {
-            return new \WP_Error('api_error', __('Failed to connect to Claude: ', 'fluent-boards') . $response->get_error_message());
+            /* translators: %s is the error message returned by the AI provider */
+            return new \WP_Error('api_error', sprintf(__('Failed to connect to Claude: %s', 'fluent-boards'), $response->get_error_message()));
         }
 
         $code = wp_remote_retrieve_response_code($response);
         $body = json_decode(wp_remote_retrieve_body($response), true);
 
         if ($code !== 200) {
-            return new \WP_Error('api_error', Arr::get($body, 'error.message', __('Unknown error from Claude.', 'fluent-boards')));
+            return new \WP_Error('api_error', Arr::get($body, 'error.message', __('Unknown error from Claude.', 'fluent-boards')), ['status' => $code, 'provider_error' => Arr::get($body, 'error.type')]);
         }
 
-        $content = Arr::get($body, 'content.0.text', '');
+        // Thinking-enabled models can return non-text blocks before the answer.
+        $textBlocks = [];
+        foreach ((array) Arr::get($body, 'content', []) as $block) {
+            if (Arr::get($block, 'type') === 'text') {
+                $textBlocks[] = Arr::get($block, 'text', '');
+            }
+        }
+        $content = implode("\n", $textBlocks);
         if (empty($content)) {
             return new \WP_Error('empty_response', __('No content generated. Please try again.', 'fluent-boards'));
         }
@@ -759,6 +861,12 @@ class AiService
             ],
         ];
 
+        // Gemini 3.8 does not support minimal thinking; budget for low thinking plus text.
+        if ($model === 'gemini-3.8-flash') {
+            $data['generationConfig']['thinkingConfig'] = ['thinkingLevel' => 'low'];
+            $data['generationConfig']['maxOutputTokens'] = 8192;
+        }
+
         if ($systemPrompt) {
             $data['system_instruction'] = ['parts' => [['text' => $systemPrompt]]];
         }
@@ -773,14 +881,15 @@ class AiService
         ]);
 
         if (is_wp_error($response)) {
-            return new \WP_Error('api_error', __('Failed to connect to Gemini: ', 'fluent-boards') . $response->get_error_message());
+            /* translators: %s is the error message returned by the AI provider */
+            return new \WP_Error('api_error', sprintf(__('Failed to connect to Gemini: %s', 'fluent-boards'), $response->get_error_message()));
         }
 
         $code = wp_remote_retrieve_response_code($response);
         $body = json_decode(wp_remote_retrieve_body($response), true);
 
         if ($code !== 200) {
-            return new \WP_Error('api_error', Arr::get($body, 'error.message', __('Unknown error from Gemini.', 'fluent-boards')));
+            return new \WP_Error('api_error', Arr::get($body, 'error.message', __('Unknown error from Gemini.', 'fluent-boards')), ['status' => $code, 'provider_error' => Arr::get($body, 'error.status')]);
         }
 
         $content = Arr::get($body, 'candidates.0.content.parts.0.text', '');
@@ -789,6 +898,84 @@ class AiService
         }
 
         return $content;
+    }
+
+    private function callOpenRouter($model, $apiKey, $userPrompt, $systemPrompt, $timeout)
+    {
+        $messages = [];
+        if ($systemPrompt) {
+            $messages[] = ['role' => 'system', 'content' => $systemPrompt];
+        }
+        $messages[] = ['role' => 'user', 'content' => $userPrompt];
+
+        $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', [
+            'timeout' => $timeout,
+            'headers' => [
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type'  => 'application/json',
+            ],
+            'body'    => wp_json_encode([
+                'model'                 => $model,
+                'messages'              => $messages,
+                'max_completion_tokens' => 2048,
+            ]),
+        ]);
+
+        if (is_wp_error($response)) {
+            /* translators: %1$s: AI provider name, %2$s: error message returned by the provider */
+            return new \WP_Error('api_error', sprintf(__('Failed to connect to %1$s: %2$s', 'fluent-boards'), 'OpenRouter', $response->get_error_message()));
+        }
+
+        $code = wp_remote_retrieve_response_code($response);
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if ($code !== 200) {
+            return new \WP_Error('api_error', Arr::get($body, 'error.message', __('Unknown error from OpenRouter.', 'fluent-boards')), ['status' => $code]);
+        }
+
+        $content = Arr::get($body, 'choices.0.message.content', '');
+        if (empty($content)) {
+            return new \WP_Error('empty_response', __('No content generated. Please try again.', 'fluent-boards'));
+        }
+
+        return $content;
+    }
+
+    private function getOpenRouterModels($apiKey)
+    {
+        $response = wp_remote_get('https://openrouter.ai/api/v1/models?output_modalities=text', [
+            'timeout' => 15,
+            'headers' => ['Authorization' => 'Bearer ' . $apiKey],
+        ]);
+
+        if (is_wp_error($response)) {
+            /* translators: %s: error message returned by OpenRouter */
+            return new \WP_Error('api_error', sprintf(__('Failed to load OpenRouter models: %s', 'fluent-boards'), $response->get_error_message()));
+        }
+
+        $code = wp_remote_retrieve_response_code($response);
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if ($code !== 200) {
+            return new \WP_Error('api_error', Arr::get($body, 'error.message', __('Could not load OpenRouter models.', 'fluent-boards')));
+        }
+
+        $models = [];
+        foreach ((array) Arr::get($body, 'data', []) as $model) {
+            $id = sanitize_text_field(Arr::get($model, 'id', ''));
+            if (!$id) {
+                continue;
+            }
+
+            $models[] = [
+                'value' => $id,
+                'label' => sanitize_text_field(Arr::get($model, 'name', $id)),
+            ];
+        }
+
+        if (!$models) {
+            return new \WP_Error('empty_models', __('OpenRouter returned no text models for this API key.', 'fluent-boards'));
+        }
+
+        return $models;
     }
 
     /* -------------------------------------------------------------------------
@@ -817,11 +1004,19 @@ class AiService
             $credentials = [];
         }
 
-        $model = sanitize_text_field(Arr::get($credentials, 'model', 'auto'));
+        $provider = $this->normalizeProvider(Arr::get($credentials, 'provider', ''));
+        $model    = sanitize_text_field(Arr::get($credentials, 'model', 'auto')) ?: 'auto';
+
+        // A retired model (removed from the list, or saved by another Fluent plugin
+        // that still offers it) falls back to Auto instead of failing every request.
+        $knownModels = Arr::get($this->providerModels, $provider, []);
+        if ($knownModels && !in_array($model, $knownModels, true)) {
+            $model = 'auto';
+        }
 
         return [
-            'provider'   => $this->normalizeProvider(Arr::get($credentials, 'provider', '')),
-            'model'      => $model ?: 'auto',
+            'provider'   => $provider,
+            'model'      => $model,
             'api_key'    => sanitize_text_field(Arr::get($credentials, 'api_key', '')),
             'created_by' => sanitize_text_field(Arr::get($credentials, 'created_by', '')),
         ];
@@ -848,15 +1043,20 @@ class AiService
         return $provider === 'openai' ? 'open_ai' : $provider;
     }
 
-    private function resolveModel($provider, $model)
+    /**
+     * Candidate models to try, in order. An explicit choice is used as-is.
+     *
+     * @return string[]
+     */
+    private function resolveModels($provider, $model)
     {
         $model = $model ?: 'auto';
 
         if ($model !== 'auto') {
-            return $model;
+            return [$model];
         }
 
-        return Arr::get($this->autoProviderModels, $provider, '');
+        return Arr::get($this->autoProviderModels, $provider, []);
     }
 
     /**

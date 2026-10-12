@@ -33,21 +33,37 @@ class FileHandler
     }
 
     /**
-     * Delete a local attachment only when its stored path belongs to Fluent Boards.
+     * Delete an attachment's stored file once no attachment row references it.
      *
-     * @param mixed $attachment
+     * Local files are removed here, but only when the stored path belongs to
+     * Fluent Boards. Files on a cloud driver are handed to the storage add-on
+     * through the `fluent_boards/delete_remote_attachment_file` action, because
+     * the core plugin holds no bucket credentials.
+     *
+     * @param mixed $attachment Attachment row or snapshot (driver, file_path, attachment_type).
      * @param int|null $boardId
+     * @param array|null $sharedReferences Preloaded local references from getSharedLocalReferences().
      * @return bool
      */
-    public function deleteAttachmentFile($attachment, $boardId = null)
+    public function deleteAttachmentFile($attachment, $boardId = null, $sharedReferences = null)
     {
         if (
             !$attachment ||
             $attachment->attachment_type === 'url' ||
-            (!empty($attachment->driver) && $attachment->driver !== 'local') ||
             empty($attachment->file_path)
         ) {
             return false;
+        }
+
+        if (!empty($attachment->driver) && $attachment->driver !== 'local') {
+            // Cloned tasks share the remote object, so keep it while another row points at it.
+            if (Attachment::where('file_path', $attachment->file_path)->exists()) {
+                return false;
+            }
+
+            do_action('fluent_boards/delete_remote_attachment_file', $attachment);
+
+            return true;
         }
 
         $storedFilename = rawurldecode((string) $attachment->file_path);
@@ -64,17 +80,78 @@ class FileHandler
         if ($isBareFilename) {
             if (
                 empty($attachment->full_url) ||
-                Attachment::where('full_url', $attachment->full_url)->exists()
+                $this->hasSharedLocalReference('full_url', $attachment->full_url, $sharedReferences)
             ) {
                 return false;
             }
-        } elseif (Attachment::where('file_path', $attachment->file_path)->exists()) {
+        } elseif ($this->hasSharedLocalReference('file_path', $attachment->file_path, $sharedReferences)) {
             return false;
         }
 
         return (bool) wp_delete_file($filePath);
     }
 
+    /**
+     * Batch the shared-reference lookups deleteAttachmentFile() makes for local files.
+     *
+     * @param iterable $attachments Deleted attachment rows or snapshots.
+     * @return array ['file_path' => [value => true], 'full_url' => [value => true]]
+     */
+    public function getSharedLocalReferences($attachments)
+    {
+        $values = ['file_path' => [], 'full_url' => []];
+        foreach ($attachments as $attachment) {
+            if (!empty($attachment->file_path)) {
+                $values['file_path'][] = (string) $attachment->file_path;
+            }
+            if (!empty($attachment->full_url)) {
+                $values['full_url'][] = (string) $attachment->full_url;
+            }
+        }
+
+        $references = ['file_path' => [], 'full_url' => []];
+        foreach ($values as $column => $columnValues) {
+            foreach (array_chunk(array_values(array_unique($columnValues)), 200) as $chunk) {
+                foreach (Attachment::whereIn($column, $chunk)->pluck($column)->toArray() as $value) {
+                    $references[$column][(string) $value] = true;
+                }
+            }
+        }
+
+        return $references;
+    }
+
+    private function hasSharedLocalReference($column, $value, $sharedReferences)
+    {
+        if (is_array($sharedReferences)) {
+            return isset($sharedReferences[$column][(string) $value]);
+        }
+
+        return Attachment::where($column, $value)->exists();
+    }
+
+
+    /**
+     * Action Scheduler callback: delete the remote files of attachment rows that
+     * were removed in bulk (a deleted board), outside the request that deleted them.
+     *
+     * @param array $files List of ['file_path' => string, 'driver' => string].
+     * @return void
+     */
+    public function deleteRemoteAttachmentFiles($files)
+    {
+        foreach ((array) $files as $file) {
+            if (!is_array($file) || empty($file['file_path']) || empty($file['driver'])) {
+                continue;
+            }
+
+            $this->deleteAttachmentFile((object) [
+                'attachment_type' => 'file',
+                'driver'          => sanitize_key($file['driver']),
+                'file_path'       => (string) $file['file_path'],
+            ]);
+        }
+    }
 
     /**
      * Summary of isFileTypeSupported checking file type it will allow only file which is readable by browser

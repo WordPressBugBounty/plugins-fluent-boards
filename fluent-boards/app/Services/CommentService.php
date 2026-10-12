@@ -38,6 +38,7 @@ class CommentService
      */
     public function getComments($id, $per_page, $filter, $boardId = null)
     {
+        $per_page = Sanitize::perPage($per_page);
         $task = $boardId ? (new TaskService())->findTaskOnBoard($id, $boardId) : Task::findOrFail($id);
 
         $commentsQuery = $task->comments()->whereNull('parent_id')
@@ -95,7 +96,7 @@ class CommentService
         return $comment;
     }
 
-    /** Allow only paragraph content and the comment editor's five inline formats. */
+    /** Preserve comment formatting while stripping executable HTML and unsafe attributes. */
     public function sanitizeContent($content)
     {
         if (!is_string($content) || trim(wp_strip_all_tags($content)) === '') {
@@ -106,6 +107,9 @@ class CommentService
             'p' => [], 'br' => [], 'strong' => [], 'b' => [],
             'em' => [], 'i' => [], 'del' => [], 's' => [], 'code' => [],
             'a' => ['href' => true, 'title' => true],
+            'ul' => [], 'ol' => ['start' => true], 'li' => [],
+            'h1' => [], 'h2' => [], 'h3' => [], 'h4' => [], 'h5' => [], 'h6' => [],
+            'blockquote' => [], 'pre' => ['data-language' => true],
         ]));
     }
 
@@ -115,7 +119,7 @@ class CommentService
         $parts = wp_html_split($this->sanitizeContent($content));
         $skipDepth = 0;
         foreach ($parts as &$part) {
-            if (preg_match('~^</?(a|code)\b~i', $part)) {
+            if (preg_match('~^</?(a|code|pre)\b~i', $part)) {
                 $skipDepth += strpos($part, '</') === 0 ? -1 : 1;
                 $skipDepth = max(0, $skipDepth);
             } elseif ($skipDepth === 0 && $part !== '' && $part[0] !== '<') {

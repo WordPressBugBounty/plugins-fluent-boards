@@ -33,6 +33,7 @@ class BoardTermMigrator
                 `archived_at` TIMESTAMP NULL,
                 `created_at` TIMESTAMP NULL,
                 `updated_at` TIMESTAMP NULL,
+                KEY `fbs_board_type` (`board_id`, `type`),
                 KEY `title` (`title`),
                 KEY `type` (`type`),
                 KEY `position` (`position`),

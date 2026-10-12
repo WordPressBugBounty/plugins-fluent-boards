@@ -5,6 +5,7 @@ namespace FluentBoards\App\Http\Controllers;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Helper;
+use FluentBoards\App\Services\MCPAccessService;
 use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Services\UserService;
 use FluentBoards\Framework\Http\Request\Request;
@@ -189,148 +190,73 @@ class UserController extends Controller
         );
     }
 
+    /** Update the authenticated member's display name. */
     public function updateDisplayName(Request $request, $user_id)
     {
-        $user_id = absint($user_id);
-        $currentUserId = get_current_user_id();
+        try {
+            return $this->sendSuccess([
+                'message' => __('Display name has been updated', 'fluent-boards'),
+                'user' => $this->userService->updateDisplayName($user_id, $request->get('display_name')),
+            ]);
+        } catch (\Exception $e) {
+            return $this->sendError(['message' => $e->getMessage()], $e->getCode() === 403 ? 403 : 400);
+        }
+    }
 
-        if ($currentUserId !== $user_id && !PermissionManager::isAdmin($currentUserId)) {
-            return $this->sendError(
-                __('You do not have permission to update this display name', 'fluent-boards'),
-                403
-            );
+    /** Upload a profile photo for the authenticated member. */
+    public function updateProfilePhoto(Request $request, $user_id)
+    {
+        try {
+            return $this->sendSuccess([
+                'message' => __('Profile photo has been updated', 'fluent-boards'),
+                'user' => $this->userService->updateProfilePhoto($user_id, $_FILES['photo'] ?? []),
+            ]);
+        } catch (\Exception $e) {
+            return $this->sendError(['message' => $e->getMessage()], $e->getCode() === 403 ? 403 : 400);
+        }
+    }
+
+    public function getMcpConnections(Request $request, $id)
+    {
+        if (!current_user_can('list_app_passwords', (int) $id)) {
+            return $this->sendError(['message' => __('You are not allowed to list application passwords.', 'fluent-boards')], 403);
         }
 
-        $displayName = $request->getSafe('display_name', 'sanitize_text_field');
+        return $this->sendSuccess(MCPAccessService::getProfileState((int) $id));
+    }
 
-        if(!$displayName) {
-            return $this->sendError('Display name is required', 400);
+    /**
+     * Create an MCP connection key. The password is only ever in this response.
+     */
+    public function createMcpConnection(Request $request, $id)
+    {
+        $result = MCPAccessService::createConnection((int) $id, (string) $request->get('name'));
+
+        if (is_wp_error($result)) {
+            $data = $result->get_error_data();
+            return $this->sendError(['message' => $result->get_error_message()], $data['status'] ?? 400);
         }
 
-        $updateResult = wp_update_user([
-            'ID' => $user_id,
-            'display_name' => $displayName,
-        ]);
+        nocache_headers();
 
-        if (is_wp_error($updateResult)) {
-        return $this->sendError(
-            $updateResult->get_error_message(),
-            400
-        );
+        return $this->sendSuccess($result);
+    }
+
+    public function revokeMcpConnection(Request $request, $id, $uuid)
+    {
+        if (!current_user_can('delete_app_password', (int) $id, $uuid)) {
+            return $this->sendError(['message' => __('You are not allowed to delete this application password.', 'fluent-boards')], 403);
         }
 
-        $user = User::findOrFail($user_id);
-        $user = Helper::sanitizeUserCollections($user);
-        $user->fbs_role = PermissionManager::isFluentBoardsAdmin($user_id) ? 'fbs_admin' : 'member';
-        $user->is_wp_admin = user_can($user_id, 'manage_options') ? 'yes' : 'no';
+        $result = MCPAccessService::revokeConnection((int) $id, sanitize_text_field($uuid));
 
-        if (defined('FLUENTCRM')) {
-        $subscriber = Subscriber::where('user_id', $user_id)->first();
-        $user->fluentcrm_subscriber = $subscriber ?? null;
+        if (is_wp_error($result)) {
+            $data = $result->get_error_data();
+            return $this->sendError(['message' => $result->get_error_message()], $data['status'] ?? 400);
         }
 
         return $this->sendSuccess([
-            'message' => __('Display name has been updated', 'fluent-boards'),
-            'user'    => $user,
-        ], 200);
-
+            'message' => __('Connection revoked.', 'fluent-boards'),
+        ]);
     }
-
-    public function updateProfilePhoto(Request $request, $user_id)
-{
-    $user_id = absint($user_id);
-    $currentUserId = get_current_user_id();
-
-    // Only the user themself OR an admin can change the profile picture
-    if ($currentUserId !== $user_id && !PermissionManager::isAdmin($currentUserId)) {
-        return $this->sendError(
-            __('You do not have permission to update this profile photo', 'fluent-boards'),
-            403
-        );
-    }
-
-    // We’ll use native WordPress upload handling
-    if (empty($_FILES['photo']) || !empty($_FILES['photo']['error'])) {
-        return $this->sendError(
-            __('No photo uploaded or upload error', 'fluent-boards'),
-            400
-        );
-    }
-
-    // Limit file size to 2MB for profile photos
-    $maxSize = 2 * 1024 * 1024;
-    if ($_FILES['photo']['size'] > $maxSize) {
-        return $this->sendError(
-            __('Photo must be under 2MB', 'fluent-boards'),
-            400
-        );
-    }
-
-    $file = $_FILES['photo'];
-
-    // Validate MIME type server-side (client-sent type is spoofable)
-    $fileType = wp_check_filetype($file['name'], [
-        'jpg|jpeg|jpe' => 'image/jpeg',
-        'gif'          => 'image/gif',
-        'png'          => 'image/png',
-        'webp'         => 'image/webp',
-    ]);
-
-    if (!$fileType['type']) {
-        return $this->sendError(
-            __('Invalid image type', 'fluent-boards'),
-            400
-        );
-    }
-
-    // Load WordPress upload helpers
-    if (!function_exists('wp_handle_upload')) {
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-    }
-
-    $overrides = [
-        'test_form' => false,
-        'mimes'     => [
-            'jpg|jpeg|jpe' => 'image/jpeg',
-            'gif'          => 'image/gif',
-            'png'          => 'image/png',
-            'webp'         => 'image/webp',
-        ],
-    ];
-
-    $uploaded = wp_handle_upload($file, $overrides);
-
-    if (isset($uploaded['error'])) {
-        return $this->sendError(
-            $uploaded['error'],
-            400
-        );
-    }
-
-    $photoUrl = esc_url_raw($uploaded['url']);
-
-    // Store custom profile photo in user meta
-    update_user_meta($user_id, 'fbs_profile_photo', $photoUrl);
-
-    // Reload user and sanitize same as in getMemberInfo()
-    $user = User::findOrFail($user_id);
-    $user = Helper::sanitizeUserCollections($user);
-
-    // Override photo field if your sanitizer does not already use the meta
-    $user->photo = $photoUrl;
-
-    $user->fbs_role = PermissionManager::isFluentBoardsAdmin($user_id) ? 'fbs_admin' : 'member';
-    $user->is_wp_admin = user_can($user_id, 'manage_options') ? 'yes' : 'no';
-
-    if (defined('FLUENTCRM')) {
-        $subscriber = Subscriber::where('user_id', $user_id)->first();
-        $user->fluentcrm_subscriber = $subscriber ?? null;
-    }
-
-    return $this->sendSuccess([
-        'message'   => __('Profile photo has been updated', 'fluent-boards'),
-        'photo_url' => $photoUrl,
-        'user'      => $user,
-    ], 200);
-}
 }

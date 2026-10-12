@@ -1,106 +1,76 @@
-<?php
+<?php if (!defined('ABSPATH')) exit; // if accessed directly exit
 /**
- * @var $body string
- * @var $pre_header string
- * @var $show_footer bool
- * @var $task object
- * @var $parent_task object
- * @var $board object
- * @var $task_url string
- * @var $site_url string
- * @var $site_title string
- * @var $site_logo string
+ * Task and subtask reminder email (sent by Fluent Boards Pro).
+ *
+ * @var object $task        Task or subtask being reminded about
+ * @var object $parent_task Parent task (the task itself for top-level tasks)
+ * @var object $board
+ * @var string $stage       Stage title
+ * @var string $task_url
+ * @var object $user        Recipient (optional; older senders omit it)
  */
 
-ob_start(); // Start output buffering
-?>
+$fluent_boards_is_subtask = !empty($task->parent_id);
 
-
-<div style="font-family: Arial, sans-serif; color:#333; line-height:1.5; background: #ffff !important;">
-    <?php
-    // Resolve a safe recipient name to avoid broken greeting when $user is missing
-    $fluent_boards_recipient_name = '';
-    if (isset($user) && is_object($user)) {
-        $fluent_boards_recipient_name = $user->display_name ?? '';
-        if (!$fluent_boards_recipient_name && !empty($user->user_nicename)) {
-            $fluent_boards_recipient_name = $user->user_nicename;
-        }
-        if (!$fluent_boards_recipient_name && !empty($user->user_login)) {
-            $fluent_boards_recipient_name = $user->user_login;
+// Resolve a safe recipient name to avoid a broken greeting when $user is missing.
+$fluent_boards_recipient_name = '';
+if (isset($user) && is_object($user)) {
+    foreach (['display_name', 'user_nicename', 'user_login'] as $fluent_boards_name_field) {
+        if (!empty($user->{$fluent_boards_name_field})) {
+            $fluent_boards_recipient_name = $user->{$fluent_boards_name_field};
+            break;
         }
     }
-    if (!$fluent_boards_recipient_name) {
-        $fluent_boards_recipient_name = __('there', 'fluent-boards');
-    }
-    ?>
-    <p style="font-size:16px; font-weight:600; margin:0 0 10px 0;background: #fff !important;">
-        <?php
-        // translators: %s is the recipient's name
-        printf(esc_html__('Hey %s,', 'fluent-boards'), esc_html($fluent_boards_recipient_name));
-        ?>
-    </p>
+}
 
-    <p style="margin:0 0 15px 0; font-size:14px; color:#555; background: #fff !important;">
-        <?php echo wp_kses_post($body); ?>
-    </p>
+if ($fluent_boards_recipient_name) {
+    $heading = $fluent_boards_is_subtask
+        /* translators: %s is the recipient's name */
+        ? sprintf(__('Hi %s, a subtask is due soon', 'fluent-boards'), $fluent_boards_recipient_name)
+        /* translators: %s is the recipient's name */
+        : sprintf(__('Hi %s, a task is due soon', 'fluent-boards'), $fluent_boards_recipient_name);
+} else {
+    $heading = $fluent_boards_is_subtask
+        ? __('A subtask is due soon', 'fluent-boards')
+        : __('A task is due soon', 'fluent-boards');
+}
 
-    <div style="margin: 15px 0; padding: 15px; border:1px solid #eee; border-radius: 8px;">
-        <h4 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">
-            <?php echo $task->parent_id ? esc_html__('Subtask Details:', 'fluent-boards') : esc_html__('Task Details:', 'fluent-boards'); ?>
-        </h4>
-        
-        <p style="margin: 5px 0; font-size:14px;">
-            <strong><?php echo $task->parent_id ? esc_html__('Subtask:', 'fluent-boards') : esc_html__('Task:', 'fluent-boards'); ?></strong> 
-            <?php echo esc_html($task->title); ?>
-        </p>
-        
-        <?php if ($task->parent_id && $parent_task): ?>
-        <p style="margin: 5px 0; font-size:14px;">
-            <strong><?php echo esc_html__('Parent Task:', 'fluent-boards'); ?></strong> 
-            <?php echo esc_html($parent_task->title); ?>
-        </p>
-        <?php endif; ?>
-        
-        <p style="margin: 5px 0; font-size:14px;">
-            <strong><?php echo esc_html__('Board:', 'fluent-boards'); ?></strong> 
-            <?php echo esc_html($board->title); ?>
-        </p>
+$badge = [
+    'label' => __('Reminder', 'fluent-boards'),
+    'tone'  => 'warn',
+];
 
-        <p style="margin: 5px 0; font-size:14px;">
-            <strong><?php echo esc_html__('Stage:', 'fluent-boards'); ?></strong> 
-            <?php echo esc_html($stage); ?>
-        </p>
-        
-        <?php if ($task->due_at): ?>
-        <p style="margin: 5px 0; font-size:14px;">
-            <strong><?php echo esc_html__('Due Date:', 'fluent-boards'); ?></strong> 
-            <?php echo esc_html(gmdate('M j, Y g:i A', strtotime($task->due_at))); ?>
-        </p>
-        <?php endif; ?>
-        
-        <?php if ($task->description): ?>
-        <p style="margin: 10px 0 5px 0; font-size:14px;">
-            <strong><?php echo esc_html__('Description:', 'fluent-boards'); ?></strong>
-        </p>
-    <div style="margin: 5px 0; padding: 10px; border-radius: 4px; font-size: 14px;">
-            <?php echo wp_kses_post(wp_trim_words($task->description, 30)); ?>
-        </div>
-        <?php endif; ?>
-    </div>
-    
-    <div style="margin-top:20px; background: #fff !important;">
-        <a href="<?php echo esc_url($task_url); ?>" 
-           target="_blank"
-           style="background: #6268F1; color: #FFF; padding:7px 12px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500; font-size:14px;">
-            <?php echo $task->parent_id ? esc_html__('View Subtask', 'fluent-boards') : esc_html__('View Task', 'fluent-boards'); ?>
-        </a>
-    </div>
-</div>
+$fluent_boards_rows = [
+    [__('Board', 'fluent-boards'), esc_html($board->title)],
+];
+if (!empty($stage)) {
+    $fluent_boards_rows[] = [__('Stage', 'fluent-boards'), esc_html($stage)];
+}
+if (!empty($task->due_at)) {
+    $fluent_boards_rows[] = [
+        __('Due', 'fluent-boards'),
+        '<strong class="fbs_email_warn_text" style="color: #7A4D00;">' . esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($task->due_at))) . '</strong>',
+    ];
+}
 
+$task_card = [
+    'title'        => $task->title,
+    'parent_title' => ($fluent_boards_is_subtask && !empty($parent_task)) ? $parent_task->title : '',
+    'parent_url'   => $fluent_boards_is_subtask ? $task_url : '',
+    'rows'         => $fluent_boards_rows,
+    'description'  => !empty($task->description) ? wp_trim_words($task->description, 30) : '',
+];
 
-<!--end your code here -->
+$cta = [
+    'label' => $fluent_boards_is_subtask ? __('Open subtask', 'fluent-boards') : __('Open task', 'fluent-boards'),
+    'url'   => $task_url,
+];
 
-<?php
-$fluent_boards_email_content = ob_get_clean();
-include 'template.php';
-?>
+if (empty($email_reason)) {
+    $email_reason = __('You’re getting this because you’re assigned and reminders are on.', 'fluent-boards');
+}
+
+// The sender's $body repeats the heading; the structured card replaces it.
+$body = '';
+
+include __DIR__ . '/notification.php';

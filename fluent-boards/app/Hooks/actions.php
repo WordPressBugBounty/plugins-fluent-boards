@@ -3,6 +3,7 @@
 if (!defined('ABSPATH')) exit;
 
 use FluentBoards\App\Services\Helper;
+use FluentBoards\App\Services\Libs\FileSystem;
 
 /**
  * All registered action's handlers should be in app\Hooks\Handlers,
@@ -18,6 +19,38 @@ use FluentBoards\App\Services\Helper;
  */
 
 (new \FluentBoards\App\Hooks\Handlers\AdminMenuHandler())->register();
+$app->addAction('admin_init', 'UpdateHandler@maybeUpgradeIndexes', 10, 0);
+
+add_action('fluent_boards/check_upload_protection', function () {
+    FileSystem::checkUploadProtection();
+});
+
+// Cover existing uploads after updates, even before another file is uploaded.
+add_action('admin_init', function () {
+    if (!current_user_can('manage_options') || wp_doing_ajax()) {
+        return;
+    }
+
+    $protectionReady = FileSystem::installUploadProtectionRules(false);
+    $blocked = FileSystem::checkUploadProtection(false);
+    if (!$protectionReady || $blocked !== true) {
+        add_action('admin_notices', function () use ($protectionReady, $blocked) {
+            if ($blocked === false) {
+                $message = __('Fluent Boards uploads are accessible by direct URL without a login. Ask your hosting provider to block direct web access to this directory and its subdirectories.', 'fluent-boards');
+            } elseif (!$protectionReady) {
+                $message = __('Fluent Boards could not prepare upload-directory protection. Ask your hosting provider to check filesystem permissions and block direct access to uploads.', 'fluent-boards');
+            } else {
+                $message = __('Fluent Boards could not verify upload-directory protection. Writing .htaccess rules does not confirm that your web server enforces them.', 'fluent-boards');
+            }
+            $uploads = wp_upload_dir();
+            $folder = apply_filters('fluent_boards/upload_folder_name', FLUENT_BOARDS_UPLOAD_DIR);
+            $url = trailingslashit($uploads['baseurl']) . trim($folder, '/');
+            echo '<div class="notice notice-warning"><p>' . esc_html($message) . '</p><p>'
+                . esc_html__('Nginx requires a server rule denying this upload URL and every path beneath it. Apache must honor the generated .htaccess authorization rules. Verify that direct file requests return 403 or 404. This check retries every five minutes.', 'fluent-boards')
+                . '</p><p><code>' . esc_html($url) . '</code></p></div>';
+        });
+    }
+});
 
 /*
  * Add custom CSS for fbs_notice.
@@ -63,7 +96,9 @@ $app->addCustomAction('task_created', 'ActivityHandler@logTaskCreationActivity',
 $app->addCustomAction('task_content_updated', 'ActivityHandler@logTaskContentUpdatedActivity', 10, 3);
 $app->addCustomAction('task_deleted', 'TaskHandler@taskDeleted', 10, 1);
 $app->addCustomAction('task_archived', 'ActivityHandler@taskArchived', 10, 1);
-//$app->addCustomAction('task_custom_field_changed', 'ActivityHandler@logCustomFieldActivity', 10, 5); // commented for now, will implement later
+$app->addCustomAction('task_custom_field_changed', 'ActivityHandler@logCustomFieldActivity', 10, 5);
+$app->addCustomAction('board_custom_field_created', 'BoardHandler@customFieldCreated', 10, 1);
+$app->addCustomAction('board_custom_field_updated', 'BoardHandler@customFieldUpdated', 10, 2);
 
 $app->addCustomAction('board_created', 'BoardHandler@boardCreated', 10, 1);
 $app->addCustomAction('board_created_from_automation', 'BoardHandler@boardCreatedFromAutomation', 10, 1);
@@ -128,6 +163,7 @@ $app->addCustomAction('task_attachment_deleted', 'ActivityHandler@taskAttachment
 $app->addCustomAction('task_attachment_deleted', 'TaskHandler@taskAttachmentDeleted', 10, 2);
 // Removed: direct call is made from Comment::deleting to TaskHandler@commentImageDeleted
 $app->addAction('deleted_user', 'BoardHandler@deleteUserRelatedData', 10, 3);
+$app->addAction('fluent_boards/delete_remote_attachment_files', 'FileHandler@deleteRemoteAttachmentFiles', 10, 1);
 
 $app->addCustomAction('task_created', 'TaskHandler@onTaskCreated', 10, 1);
 $app->addCustomAction('comment_created', 'TaskHandler@onCommentCreated', 10, 1);
@@ -214,6 +250,8 @@ add_filter('fluent_kit/mcp_toggle_handlers', function ($handlers) {
 
     return $handlers;
 });
+
+\FluentBoards\App\Services\MCPAccessService::registerHooks();
 
 add_action('init', function () {
     if (!function_exists('wp_register_ability')) {

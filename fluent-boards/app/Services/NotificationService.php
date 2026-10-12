@@ -13,6 +13,8 @@ class NotificationService
 {
     public function getAllNotifications($per_page, $page, $action = 'all')
     {
+        $per_page = Sanitize::perPage($per_page);
+        $page = max(1, (int) $page);
         $user = wp_get_current_user();
 
         $query = Notification::where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
@@ -41,6 +43,8 @@ class NotificationService
      */
     public function getAllUnreadNotifications($per_page, $page)
     {
+        $per_page = Sanitize::perPage($per_page);
+        $page = max(1, (int) $page);
         $userId = get_current_user_id();
         if (!$userId) {
             throw new \Exception(esc_html__('You are not allowed to do that', 'fluent-boards'), 403);
@@ -244,19 +248,18 @@ class NotificationService
         $watchers = $task->watchers;
         $currentUserId = get_current_user_id();
 
-        $wathersToSendEmail = array();
+        $watcherIds = array_diff($watchers->pluck('ID')->toArray(), [$currentUserId]);
+        $eligibleIds = $this->getEmailEnabledUserIds($task->board_id, $watcherIds, $emailPurpose);
+        $eligibleLookup = array_fill_keys($eligibleIds, true);
+        $watchersToSendEmail = [];
 
-        foreach ($watchers as $watcher){
-            if($watcher->ID != $currentUserId)
-            {
-                if($this->checkIfEmailEnable($watcher->ID, $emailPurpose, $task->board_id))
-                {
-                    $wathersToSendEmail[] = $watcher->user_email;
-                }
+        foreach ($watchers as $watcher) {
+            if (isset($eligibleLookup[$watcher->ID])) {
+                $watchersToSendEmail[] = $watcher->user_email;
             }
         }
 
-        return $wathersToSendEmail;
+        return $watchersToSendEmail;
     }
 
     /**
@@ -269,14 +272,15 @@ class NotificationService
     {
         $task = Task::findOrFail(absint($taskId));
         $currentUserId = get_current_user_id();
+        $watchers = $task->watchers;
+        $watcherIds = array_diff($watchers->pluck('ID')->toArray(), [$currentUserId]);
+        $eligibleIds = $this->getEmailEnabledUserIds($task->board_id, $watcherIds, Constant::BOARD_EMAIL_COMMENT);
+        $eligibleLookup = array_fill_keys($eligibleIds, true);
         $recipientUserIds = [];
 
-        foreach ($task->watchers as $watcher) {
+        foreach ($watchers as $watcher) {
             $watcherId = absint($watcher->ID);
-            if (
-                $watcherId !== $currentUserId &&
-                $this->checkIfEmailEnable($watcherId, Constant::BOARD_EMAIL_COMMENT, $task->board_id)
-            ) {
+            if (isset($eligibleLookup[$watcherId])) {
                 $recipientUserIds[] = $watcherId;
             }
         }
@@ -293,6 +297,36 @@ class NotificationService
         }else{
             return false;
         }
+    }
+
+    /**
+     * Resolve board email recipients in one query; missing preference keys default to enabled without writes.
+     */
+    public function getEmailEnabledUserIds($boardId, $userIds, $purpose)
+    {
+        $boardId = absint($boardId);
+        $userIds = array_values(array_unique(array_filter(array_map('intval', (array) $userIds))));
+        if (!$boardId || !$userIds) {
+            return [];
+        }
+
+        // Match the first membership used by individual checks, including old duplicates.
+        $relations = Relation::where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+            ->where('object_id', $boardId)
+            ->whereIn('foreign_id', $userIds)
+            ->orderBy('id', 'ASC')
+            ->get(['foreign_id', 'preferences'])
+            ->unique('foreign_id');
+
+        $enabledUserIds = [];
+        foreach ($relations as $relation) {
+            $preferences = (array) maybe_unserialize($relation->preferences);
+            if (!array_key_exists($purpose, $preferences) || $preferences[$purpose]) {
+                $enabledUserIds[] = (int) $relation->foreign_id;
+            }
+        }
+
+        return array_values(array_unique($enabledUserIds));
     }
 
     public function checkIfEmailEnabled($boardId, $userId, $purpose)
@@ -368,6 +402,10 @@ class NotificationService
 
     public function sendMailAfterMention($commentId, $recipientUserIds)
     {
+        if (empty($recipientUserIds)) {
+            return;
+        }
+
         $current_user_id = get_current_user_id();
 
         /* this will run in background as soon as possible */

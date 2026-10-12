@@ -48,6 +48,8 @@ class TaskMigrator
                 `archived_at` TIMESTAMP NULL,
                 `created_at` TIMESTAMP NULL,
                 `updated_at` TIMESTAMP NULL,
+                KEY `fbs_stage_id` (`stage_id`),
+                KEY `fbs_parent_id` (`parent_id`),
                 KEY `type` (`type`),
                 KEY `board_id` (`board_id`),
                 KEY `slug` (`slug`),

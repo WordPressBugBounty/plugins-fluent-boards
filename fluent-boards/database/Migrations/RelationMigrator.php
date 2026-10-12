@@ -29,6 +29,7 @@ class RelationMigrator
                 `preferences` TEXT NULL COMMENT 'Serialized',
                 `created_at` TIMESTAMP NULL,
                 `updated_at` TIMESTAMP NULL,
+                KEY `fbs_object_type_id` (`object_type`, `object_id`),
                 KEY `object_type` (`object_type`),
                 KEY `object_id` (`object_id`),
                 KEY `foreign_id` (`foreign_id`)

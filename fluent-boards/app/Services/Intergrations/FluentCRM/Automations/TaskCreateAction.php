@@ -3,12 +3,15 @@
 namespace FluentBoards\App\Services\Intergrations\FluentCRM\Automations;
 
 use FluentBoards\App\Models\Task;
-use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Services\TaskService;
+use FluentBoards\App\Services\PermissionManager;
+use FluentCrm\App\Models\Funnel;
 use FluentCrm\App\Services\Funnel\BaseAction;
 use FluentCrm\App\Services\Funnel\FunnelHelper;
 use FluentCrm\Framework\Support\Arr;
 use FluentBoards\App\Services\Helper;
+use FluentBoardsPro\App\Services\ProTaskService;
 
 class TaskCreateAction extends BaseAction
 {
@@ -158,6 +161,7 @@ class TaskCreateAction extends BaseAction
         ];
     }
 
+    /** Create a task for the triggering contact, using the shared template copier. */
     public function handle( $subscriber, $sequence, $funnelSubscriberId, $funnelMetric )
     {
         $data = $sequence->settings;
@@ -179,57 +183,67 @@ class TaskCreateAction extends BaseAction
             return;
         }
 
-        $board = Helper::getBoardByStageId( $stageId );
+        $destinationStage = Stage::find($stageId);
+        $board = $destinationStage ? $destinationStage->board : null;
+
+        if (!$board) {
+            FunnelHelper::changeFunnelSubSequenceStatus($funnelSubscriberId, $sequence->id, 'skipped');
+            return;
+        }
 
         if ($createType === 'template') {
-            $templateTaskId = Arr::get($data, 'task_template');
-            if (!$templateTaskId) {
+            $templateTaskId = absint(Arr::get($data, 'task_template'));
+            $templateTask = $templateTaskId ? Task::whereHas('taskMeta', function ($query) {
+                $query->where('key', 'is_template')->where('value', 'yes');
+            })->find($templateTaskId) : null;
+
+            // Authorize the stored automation owner, not the configurable task creator or runner.
+            $ownerId = Funnel::where('id', absint($sequence->funnel_id))->value('created_by');
+            $ownerId = $this->getExistingUserIds([$ownerId])[0] ?? 0;
+            if (!$templateTask || !$ownerId
+                || !PermissionManager::userHasPermission($templateTask->board_id, $ownerId)
+                || !PermissionManager::userHasPermission($board->id, $ownerId)) {
                 FunnelHelper::changeFunnelSubSequenceStatus($funnelSubscriberId, $sequence->id, 'skipped');
                 return;
             }
 
             $title = Arr::get($data, 'title_template');
-
-            $templateTask = Task::find($templateTaskId);
-
-            $taskData = array();
-            $taskData['board_id'] = $board->id;
-            $taskData['stage_id'] = $stageId;
-            $taskData['assignee'] = true;
-            $taskData['label'] = true;
-
-            $taskService = new TaskService();
-
-            $task = new Task();
-
-            $task->fill($templateTask->toArray());
-
-            if (!empty($title)) {
-                $task['title'] = $title;
+            if ($title === null || trim($title) === '') {
+                $title = $templateTask->title;
             }
+            $title = apply_filters('fluent_crm/parse_campaign_email_text', $title, $subscriber);
 
-            $task['board_id'] = $taskData['board_id'];
-            $task['stage_id'] = $taskData['stage_id'];
-            $task['created_by'] = $creatorId;
-            $task['comments_count'] = 0;
-            $task->moveToNewPosition(1);
-            $task->save();
-
+            $context = [
+                'created_by' => $creatorId,
+                'crm_contact_id' => absint($subscriber->id),
+                'source' => 'funnel',
+            ];
             if ($hasConfiguredAssignees) {
-                foreach ($assigneeIds as $assigneeId) {
-                    $taskService->updateAssignee($assigneeId, $task);
-                }
-            } else {
-                $templateTask->load('assignees');
-                foreach ($templateTask->assignees as $assignee) {
-                    $taskService->updateAssignee($assignee->ID, $task);
-                }
+                $context['assignees'] = $assigneeIds;
+            } elseif ((int) $templateTask->board_id !== (int) $board->id) {
+                // Preserve inherited assignments only for users who can access the destination.
+                $context['assignees'] = PermissionManager::getUserIdsWithBoardAccess(
+                    $board->id,
+                    $templateTask->assignees()->get()->pluck('ID')->toArray()
+                );
             }
-            if (isset($taskData['label']) && $taskData['label'] == 'true') {
-                $templateTask->load('labels');
-                foreach ($templateTask->labels as $label) {
-                    $task->labels()->syncWithoutDetaching([$label->id => ['object_type' => Constant::OBJECT_TYPE_TASK_LABEL]]);
-                }
+
+            $taskData = [
+                'title' => sanitize_text_field($title),
+                'board_id' => $board->id,
+                'stage_id' => $stageId,
+                'assignee' => !$hasConfiguredAssignees,
+                'label' => true,
+                'subtask' => true,
+                'custom_field' => true,
+            ];
+
+            // Free and Pro update independently; old Pro must not discard context or skip tasks.
+            if (class_exists(ProTaskService::class)
+                && method_exists(ProTaskService::class, 'createFromTemplateForAutomation')) {
+                (new ProTaskService())->createFromTemplateForAutomation($templateTaskId, $taskData, $context);
+            } else {
+                (new TaskService())->createAutomationTaskFromLegacyTemplate($templateTask, $taskData, $context);
             }
         } else {
             $title = Arr::get( $data, 'title');

@@ -159,7 +159,7 @@ class WebhookController extends Controller
     public function createOutgoingWebhook(Request $request)
     {
         $data = $this->validate(
-            $request->only(['name', 'url', 'board_id', 'triggered_events', 'header_type', 'headers']),
+            $request->only(['name', 'url', 'board_id', 'triggered_events', 'event_mode', 'header_type', 'headers']),
             [
                 'name' => 'required',
                 'url' => 'required',
@@ -190,16 +190,11 @@ class WebhookController extends Controller
             }
         }
 
-        // events cannot be null 
-        if (!isset($data['triggered_events']) || empty($data['triggered_events'])) {
-            return $this->sendError('At least one event must be selected for the webhook to be triggered.');
+        $data['event_mode'] = ($data['event_mode'] ?? 'selected') === 'all' ? 'all' : 'selected';
+        $data['triggered_events'] = array_values(array_filter(array_map('sanitize_text_field', $data['triggered_events'] ?? [])));
+        if ($data['event_mode'] !== 'all' && !$data['triggered_events']) {
+            return $this->sendError(__('At least one event must be selected for the webhook to be triggered.', 'fluent-boards'));
         }
-
-        // Sanitize triggered_events array
-        if (is_array($data['triggered_events'])) {
-            $data['triggered_events'] = array_filter(array_map('sanitize_text_field', $data['triggered_events']));
-        }
-        $data['triggered_events'] = array_values($data['triggered_events']);
 
         // Sanitize board_id array to integers
         if (!empty($data['board_id']) && is_array($data['board_id'])) {
@@ -220,7 +215,7 @@ class WebhookController extends Controller
                 'object_type' => 'outgoing_webhook_board',
                 'foreign_id' => $boardId,
                 'settings' => \maybe_serialize($data['triggered_events'] ?? []),
-                'preferences' => ''
+                'preferences' => ['event_mode' => $data['event_mode']]
             ]);
         }
     
@@ -268,10 +263,9 @@ class WebhookController extends Controller
             }
         }
 
-        // Sanitize triggered_events array
-        if (is_array($data['triggered_events'])) {
-            $data['triggered_events'] = array_filter(array_map('sanitize_text_field', $data['triggered_events']));
-        }
+        // Requests from legacy clients remain explicit subscriptions.
+        $data['event_mode'] = ($data['event_mode'] ?? 'selected') === 'all' ? 'all' : 'selected';
+        $data['triggered_events'] = array_values(array_filter(array_map('sanitize_text_field', $data['triggered_events'] ?? [])));
 
         // Sanitize board_id array to integers
         if (!empty($data['board_id']) && is_array($data['board_id'])) {
@@ -303,7 +297,7 @@ class WebhookController extends Controller
                 'object_type' => 'outgoing_webhook_board',
                 'foreign_id' => $boardId,
                 'settings' => \maybe_serialize($data['triggered_events'] ?? []),
-                'preferences' => ''
+                'preferences' => ['event_mode' => $data['event_mode']]
             ]);
         }
 

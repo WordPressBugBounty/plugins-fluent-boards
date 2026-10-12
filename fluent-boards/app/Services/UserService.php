@@ -2,6 +2,7 @@
 
 namespace FluentBoards\App\Services;
 
+use Exception;
 use FluentBoards\App\Models\Activity;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Notification;
@@ -14,6 +15,212 @@ use FluentBoards\Framework\Support\Arr;
 
 class UserService
 {
+    /** Save only the current member's public display name. */
+    public function updateDisplayName($userId, $displayName)
+    {
+        $userId = absint($userId);
+        $this->assertCanUpdateProfile($userId);
+        $displayName = is_string($displayName) ? trim(sanitize_text_field($displayName)) : '';
+        if ($displayName === '') {
+            throw new Exception(__('Display name is required', 'fluent-boards'), 400);
+        }
+        // WordPress treats "0" as empty and replaces it with the login name.
+        if ($displayName === '0') {
+            throw new Exception(__('Display name cannot be "0"', 'fluent-boards'), 400);
+        }
+
+        if (mb_strlen($displayName, 'UTF-8') > Constant::PROFILE_DISPLAY_NAME_MAX_LENGTH) {
+            throw new Exception(__('Display name must be 250 characters or fewer', 'fluent-boards'), 400);
+        }
+
+        $expectedName = null;
+        // Validate the final, unslashed storage value after WordPress and plugin filters.
+        $validateStorage = function ($data, $update, $targetUserId) use ($userId, &$expectedName) {
+            if (!$update || (int) $targetUserId !== $userId) {
+                return $data;
+            }
+            $expectedName = $data['display_name'] ?? null;
+            if (!is_string($expectedName) || $expectedName === '') {
+                throw new Exception(__('Display name is required', 'fluent-boards'), 400);
+            }
+            if (mb_strlen($expectedName, 'UTF-8') > Constant::PROFILE_DISPLAY_NAME_MAX_LENGTH) {
+                throw new Exception(__('Display name must be 250 characters or fewer', 'fluent-boards'), 400);
+            }
+            return $data;
+        };
+        add_filter('wp_pre_insert_user_data', $validateStorage, PHP_INT_MAX, 3);
+        try {
+            $result = wp_update_user(['ID' => $userId, 'display_name' => wp_slash($displayName)]);
+        } finally {
+            remove_filter('wp_pre_insert_user_data', $validateStorage, PHP_INT_MAX);
+        }
+        if (is_wp_error($result)) {
+            throw new Exception($result->get_error_message(), 400);
+        }
+
+        // WordPress can return a user ID after a failed database update.
+        clean_user_cache($userId);
+        $user = get_userdata($userId);
+        if (!$user) {
+            throw new Exception(__('Could not load the updated profile', 'fluent-boards'), 400);
+        }
+        if ($expectedName === null || $user->display_name !== $expectedName) {
+            throw new Exception(__('Could not save the display name. Please try again.', 'fluent-boards'), 400);
+        }
+        $displayName = $user->display_name;
+        do_action('fluent_boards/profile_name_updated', $userId, $displayName);
+        return ['display_name' => $displayName];
+    }
+
+    /** Validate and store a custom avatar without requiring media-library access. */
+    public function updateProfilePhoto($userId, $file)
+    {
+        $userId = absint($userId);
+        $this->assertCanUpdateProfile($userId);
+        if (!is_array($file) || !isset($file['error'], $file['size'], $file['tmp_name'], $file['name'])
+            || $file['error'] !== UPLOAD_ERR_OK || !is_string($file['tmp_name']) || !is_string($file['name'])
+            || !is_uploaded_file($file['tmp_name'])) {
+            throw new Exception(__('No photo uploaded or upload error', 'fluent-boards'), 400);
+        }
+        if (filesize($file['tmp_name']) <= 0 || filesize($file['tmp_name']) > Constant::PROFILE_PHOTO_MAX_BYTES) {
+            throw new Exception(__('Photo must be 2 MB or smaller', 'fluent-boards'), 400);
+        }
+
+        $mimes = ['jpg|jpeg|jpe' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'];
+        // Inspect the file contents, not the browser MIME or filename alone.
+        if (!in_array(wp_get_image_mime($file['tmp_name']), $mimes, true)) {
+            throw new Exception(__('Choose a JPG, PNG, GIF or WebP image', 'fluent-boards'), 400);
+        }
+        $dimensions = wp_getimagesize($file['tmp_name']);
+        if (!$dimensions || $dimensions[0] < 1 || $dimensions[1] < 1
+            || max($dimensions[0], $dimensions[1]) > Constant::PROFILE_PHOTO_MAX_DIMENSION
+            || $dimensions[0] * $dimensions[1] > Constant::PROFILE_PHOTO_MAX_PIXELS) {
+            throw new Exception(__('Photo dimensions must not exceed 4096 pixels per side or 12 megapixels', 'fluent-boards'));
+        }
+        if (!function_exists('wp_handle_upload')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+        }
+        $uploaded = wp_handle_upload($file, ['test_form' => false, 'mimes' => $mimes]);
+        if (isset($uploaded['error'])) {
+            throw new Exception($uploaded['error'], 400);
+        }
+
+        $uploaded = $this->createProfileAvatar($uploaded);
+        $this->replaceProfilePhoto($userId, $uploaded);
+        $photoUrl = esc_url_raw($uploaded['url']);
+        do_action('fluent_boards/profile_photo_updated', $userId, $photoUrl);
+        return ['photo' => fluent_boards_user_avatar(wp_get_current_user()->user_email)];
+    }
+
+    /** Re-encode a bounded avatar and discard the source before persisting profile changes. */
+    private function createProfileAvatar(array $uploaded)
+    {
+        $directory = dirname($uploaded['file']);
+        $filename = wp_unique_filename($directory, pathinfo($uploaded['file'], PATHINFO_FILENAME) . '-avatar.png');
+        $avatarPath = $directory . '/' . $filename;
+
+        try {
+            $editor = wp_get_image_editor($uploaded['file']);
+            if (is_wp_error($editor)) {
+                throw new Exception($editor->get_error_message());
+            }
+            $size = $editor->get_size();
+            if (max($size['width'], $size['height']) > Constant::PROFILE_AVATAR_SIZE) {
+                $resized = $editor->resize(Constant::PROFILE_AVATAR_SIZE, Constant::PROFILE_AVATAR_SIZE, false);
+                if (is_wp_error($resized)) {
+                    throw new Exception($resized->get_error_message());
+                }
+            }
+            $avatar = $editor->save($avatarPath, 'image/png');
+            if (is_wp_error($avatar)) {
+                throw new Exception($avatar->get_error_message());
+            }
+
+            return [
+                'file' => $avatar['path'],
+                'url' => trailingslashit(dirname($uploaded['url'])) . wp_basename($avatar['path']),
+                'type' => $avatar['mime-type'],
+            ];
+        } catch (Exception $e) {
+            wp_delete_file($avatarPath);
+            throw $e;
+        } finally {
+            wp_delete_file($uploaded['file']);
+        }
+    }
+
+    /** Serialize replacement across requests sharing the same WordPress user table. */
+    private function replaceProfilePhoto($userId, array $uploaded)
+    {
+        global $wpdb;
+
+        $lockName = Constant::USER_PROFILE_PHOTO_UPLOAD . ':' . md5(DB_NAME . ':' . $wpdb->users . ':' . $userId);
+        if ((int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 5)', $lockName)) !== 1) {
+            wp_delete_file($uploaded['file']);
+            throw new Exception(__('The profile photo is being updated. Please try again.', 'fluent-boards'));
+        }
+
+        try {
+            // A waiting request may have cached metadata from before the previous upload.
+            wp_cache_delete($userId, 'user_meta');
+            $this->persistProfilePhoto($userId, $uploaded);
+        } finally {
+            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lockName));
+        }
+    }
+
+    /** Track uploads we own; legacy or externally supplied avatar URLs never authorize deletion. */
+    private function persistProfilePhoto($userId, array $uploaded)
+    {
+        $previousUrl = get_user_meta($userId, Constant::USER_PROFILE_PHOTO, true);
+        $previousUpload = get_user_meta($userId, Constant::USER_PROFILE_PHOTO_UPLOAD, true);
+        $ownedUpload = [
+            'file' => $uploaded['file'],
+            'url' => esc_url_raw($uploaded['url']),
+            'blog_id' => get_current_blog_id(),
+        ];
+
+        if (!update_user_meta($userId, Constant::USER_PROFILE_PHOTO_UPLOAD, $ownedUpload)) {
+            wp_delete_file($uploaded['file']);
+            throw new Exception(__('The profile photo could not be saved. Please try again.', 'fluent-boards'));
+        }
+        if (!update_user_meta($userId, Constant::USER_PROFILE_PHOTO, $ownedUpload['url'])) {
+            if ($previousUpload) {
+                update_user_meta($userId, Constant::USER_PROFILE_PHOTO_UPLOAD, $previousUpload);
+            } else {
+                delete_user_meta($userId, Constant::USER_PROFILE_PHOTO_UPLOAD);
+            }
+            wp_delete_file($uploaded['file']);
+            throw new Exception(__('The profile photo could not be saved. Please try again.', 'fluent-boards'));
+        }
+
+        // Only a matching, locally tracked upload can be retired after both writes succeed.
+        if (!is_array($previousUpload)
+            || ($previousUpload['url'] ?? null) !== $previousUrl
+            || ($previousUpload['blog_id'] ?? null) !== get_current_blog_id()
+            || !is_string($previousUpload['file'] ?? null)
+            || $previousUpload['file'] === $ownedUpload['file']) {
+            return;
+        }
+
+        $uploads = wp_get_upload_dir();
+        $previousFile = realpath($previousUpload['file']);
+        $uploadsDirectory = realpath($uploads['basedir']);
+        if (!$uploads['error'] && $previousFile && $uploadsDirectory
+            && strpos(wp_normalize_path($previousFile), trailingslashit(wp_normalize_path($uploadsDirectory))) === 0
+            && is_file($previousFile)) {
+            wp_delete_file($previousFile);
+        }
+    }
+
+    /** Profile editing requires Fluent Boards membership and remains self-service for administrators. */
+    private function assertCanUpdateProfile($userId)
+    {
+        if (!$userId || $userId !== get_current_user_id() || !PermissionManager::isFluentBoardsUser($userId)) {
+            throw new Exception(__('You can only update your own profile', 'fluent-boards'), 403);
+        }
+    }
+
     public function allFluentBoardsUsers($boardId = null)
     {
         // Get the global admins first
@@ -247,8 +454,8 @@ class UserService
         $boardIds = !empty($requestData['boardIds']) ? $requestData['boardIds'] : [];
         $orderBy = $requestData['orderBy'] ?? 'created_at';
         $order = strtoupper($requestData['order'] ?? 'ASC');
-        $per_page = $requestData['per_page'] ?? 15;
-        $page = $requestData['page'] ?? 1;
+        $per_page = Sanitize::perPage($requestData['per_page'] ?? 15, 50);
+        $page = max(1, (int) ($requestData['page'] ?? 1));
         $user = User::find($user_id);
 
         $loggedInUserId = get_current_user_id();

@@ -10,13 +10,15 @@ class SingleBoardPolicy extends BasePolicy
     /**
      * Check user permission for any method
      * @param  \FluentBoards\Framework\Http\Request\Request $request
-     * @param  int $board_id
      * @return bool
      */
     public function verifyRequest(Request $request)
     {
+        // Authorize the controller's URL target, never a query/body override.
+        $routeParams = $request->get_url_params();
+        $boardId = absint($routeParams['board_id'] ?? 0);
 
-        return PermissionManager::userHasBoardPermission($request->board_id, $request->getMethod());
+        return PermissionManager::userHasBoardPermission($boardId, $request->getMethod());
     }
 
     public function delete(Request $request)
@@ -32,29 +34,43 @@ class SingleBoardPolicy extends BasePolicy
      */
     public function taskAssist(Request $request)
     {
+        $routeParams = $request->get_url_params();
+        $boardId = absint($routeParams['board_id'] ?? 0);
         $method = $request->get('action') === 'summarize' ? 'GET' : $request->getMethod();
 
-        return PermissionManager::userHasBoardPermission($request->board_id, $method);
+        return PermissionManager::userHasBoardPermission($boardId, $method);
     }
 
+    /**
+     * Allow board role changes while reserving admin targets for global admins.
+     */
     public function makeManager(Request $request)
     {
-        return $this->userIsBoardManager($request);
+        return $this->canManageBoardUser($request);
     }
 
+    /**
+     * Allow board role changes while reserving admin targets for global admins.
+     */
     public function removeManager(Request $request)
     {
-        return $this->userIsBoardManager($request);
+        return $this->canManageBoardUser($request);
     }
 
+    /**
+     * Allow board role changes while reserving admin targets for global admins.
+     */
     public function makeViewer(Request $request)
     {
-        return $this->userIsBoardManager($request);
+        return $this->canManageBoardUser($request);
     }
 
+    /**
+     * Allow board role changes while reserving admin targets for global admins.
+     */
     public function makeMember(Request $request)
     {
-        return $this->userIsBoardManager($request);
+        return $this->canManageBoardUser($request);
     }
 
     public function getInvitations(Request $request)
@@ -76,19 +92,24 @@ class SingleBoardPolicy extends BasePolicy
     }
 
     /**
-     * Allow members to leave a board while restricting removal of others.
+     * Allow members to leave; only global admins may remove admin targets.
      */
     public function removeUserFromBoard(Request $request)
     {
-        $boardId = absint($request->board_id);
-        $targetUserId = absint($request->user_id);
+        $routeParams = $request->get_url_params();
+        $boardId = absint($routeParams['board_id'] ?? 0);
+        $targetUserId = absint($routeParams['user_id'] ?? 0);
         $currentUserId = get_current_user_id();
+
+        if (!$boardId || !$targetUserId) {
+            return false;
+        }
 
         if ($currentUserId && $targetUserId === $currentUserId) {
             return PermissionManager::userHasPermission($boardId, $currentUserId);
         }
 
-        return PermissionManager::isBoardManager($boardId);
+        return $this->canManageBoardUser($request);
     }
 
     /**
@@ -204,11 +225,34 @@ class SingleBoardPolicy extends BasePolicy
     }
 
     /**
+     * Managers can manage ordinary board users; global admins alone can manage admins.
+     */
+    private function canManageBoardUser(Request $request)
+    {
+        // Match controller route arguments; body/query IDs must not authorize another target.
+        $routeParams = $request->get_url_params();
+        $boardId = absint($routeParams['board_id'] ?? 0);
+        $targetUserId = absint($routeParams['user_id'] ?? 0);
+
+        if (!$boardId || !$targetUserId) {
+            return false;
+        }
+
+        if (PermissionManager::isAdmin($targetUserId)) {
+            return PermissionManager::isAdmin();
+        }
+
+        return PermissionManager::isBoardManager($boardId);
+    }
+
+    /**
      * Resolve board-manager access from the sanitized route board id.
      */
     private function userIsBoardManager(Request $request)
     {
-        return PermissionManager::isBoardManager(absint($request->board_id));
+        $routeParams = $request->get_url_params();
+
+        return PermissionManager::isBoardManager(absint($routeParams['board_id'] ?? 0));
     }
 
 

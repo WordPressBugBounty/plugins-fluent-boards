@@ -54,8 +54,10 @@ class AiController extends Controller
 
     public function getModels(Request $request)
     {
-        $provider = sanitize_text_field(Arr::get($request->get('settings', []), 'provider', ''));
-        $models   = $this->aiService->getModelOptions($provider);
+        $data     = $request->get('settings', []);
+        $provider = sanitize_text_field(Arr::get($data, 'provider', ''));
+        $apiKey   = sanitize_text_field(Arr::get($data, 'api_key', ''));
+        $models   = $this->aiService->getModelOptions($provider, $apiKey);
 
         if (is_wp_error($models)) {
             return $this->sendError(['message' => $models->get_error_message()], 422);

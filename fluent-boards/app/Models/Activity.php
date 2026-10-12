@@ -42,6 +42,46 @@ class Activity extends Model
         return \maybe_unserialize($settings);
     }
 
+    /** Read full custom-field message attributes from their LONGTEXT payload; preserve legacy rows. */
+    private function customFieldActivityAttribute($key, $fallback)
+    {
+        if (empty($this->settings['custom_field_activity_payload'])) {
+            return $fallback;
+        }
+
+        $payload = json_decode($this->attributes['description'] ?? '', true);
+        return is_array($payload) && array_key_exists($key, $payload) ? $payload[$key] : $fallback;
+    }
+
+    /** Resolve the stored label while preserving display translations applied by the activity service. */
+    public function getColumnAttribute($value)
+    {
+        // Payload rows store this identifier until translateActivities assigns a display label.
+        if ($value !== Constant::ACTIVITY_CUSTOM_FIELD) {
+            return $value;
+        }
+
+        return $this->customFieldActivityAttribute('column', $value);
+    }
+
+    /** Restore the complete previous value for all activity feeds and serialized responses. */
+    public function getOldValueAttribute($value)
+    {
+        return $this->customFieldActivityAttribute('old_value', $value);
+    }
+
+    /** Restore the complete new value, including null removals and zero values. */
+    public function getNewValueAttribute($value)
+    {
+        return $this->customFieldActivityAttribute('new_value', $value);
+    }
+
+    /** Keep storage details out of the user-facing activity description. */
+    public function getDescriptionAttribute($value)
+    {
+        return $this->customFieldActivityAttribute('description', $value);
+    }
+
     /**
      * One2One: Activity belongs to one Task
      * @return \FluentBoards\Framework\Database\Orm\Relations\BelongsTo

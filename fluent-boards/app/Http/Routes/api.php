@@ -6,6 +6,7 @@ use FluentBoards\App\Http\Controllers\AiController;
 use FluentBoards\App\Http\Controllers\BoardController;
 use FluentBoards\App\Http\Controllers\CommentController;
 use FluentBoards\App\Http\Controllers\FolderController;
+use FluentBoards\App\Http\Controllers\ImportController;
 use FluentBoards\App\Http\Controllers\LabelController;
 use FluentBoards\App\Http\Controllers\MCPSettingsController;
 use FluentBoards\App\Http\Controllers\NotificationController;
@@ -198,8 +199,8 @@ $router->prefix('admin')->withPolicy('AdminPolicy')->group(function ($router) {
 
     $router->get('/mcp/status', [MCPSettingsController::class, 'status']);
     $router->post('/mcp/toggle', [MCPSettingsController::class, 'toggle']);
+    $router->post('/mcp/member-access', [MCPSettingsController::class, 'toggleMemberAccess']);
     $router->post('/mcp/install-adapter', [MCPSettingsController::class, 'installAdapter']);
-    $router->get('/mcp/config-snippet', [MCPSettingsController::class, 'getConfigSnippet']);
 
     $router->get('pages', [OptionsController::class, 'getPages']);
 
@@ -250,6 +251,11 @@ $router->prefix('member/{id}')->withPolicy('UserPolicy')->group(function ($route
     $router->get('/task-counts', [UserController::class, 'getMemberTaskCounts']);
     $router->get('/activities', [UserController::class, 'getMemberRelatedAcitivies']);
     $router->get('/stats', [UserController::class, 'getMemberStats']);
+    $router->post('/display-name', [UserController::class, 'updateDisplayName']);
+    $router->post('/photo', [UserController::class, 'updateProfilePhoto']);
+    $router->get('/mcp-connections', [UserController::class, 'getMcpConnections']);
+    $router->post('/mcp-connections', [UserController::class, 'createMcpConnection']);
+    $router->delete('/mcp-connections/{uuid}', [UserController::class, 'revokeMcpConnection']);
 });
 
 /*
@@ -284,4 +290,11 @@ $router->withPolicy('UserPolicy')->group(function ($router) {
 $router->prefix('options')->withPolicy('AuthPolicy')->group(function ($router) {
     $router->get('members', [OptionsController::class, 'getBoardMembers']);
     $router->get('projects', [OptionsController::class, 'getBoards']);
+});
+
+// Native board imports are available without the Pro addon.
+$router->prefix('fluent-boards-import')->withPolicy('AdminPolicy')->group(function ($router) {
+    $router->post('import-file', [ImportController::class, 'importFile']);
+    $router->post('upload-json-chunk', [ImportController::class, 'uploadJsonChunk']);
+    $router->post('process-json-import', [ImportController::class, 'processJsonImport']);
 });

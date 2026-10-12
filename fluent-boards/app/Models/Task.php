@@ -7,12 +7,13 @@ use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\TaskService;
 use FluentBoards\Framework\Database\Orm\Builder;
 use FluentBoardsPro\App\Models\TaskAttachment;
-use FluentBoardsPro\App\Models\CustomField;
+use FluentBoards\App\Models\CustomField;
 use FluentBoardsPro\App\Services\Constant as ProConstant;
 use FluentCrm\App\Models\Subscriber;
 
 class Task extends Model
 {
+
     protected $table = 'fbs_tasks';
 
     protected $guarded = ['id'];
@@ -97,6 +98,16 @@ class Task extends Model
                 }
             } else {
                 self::adjustSubtaskCount($model->parent_id);
+            }
+        });
+
+        static::updated(function ($model) {
+            if ($model->isDirty('status') && $model->getOriginal('status') === 'open' && $model->status === 'closed') {
+                // Use persisted attributes without stale stage/board relations from the move.
+                $closedTask = $model->fresh();
+                if ($closedTask && $closedTask->status === 'closed') {
+                    do_action('fluent_boards/task_closed', $closedTask);
+                }
             }
         });
 
@@ -357,8 +368,13 @@ class Task extends Model
         }
     }
 
+    /** Use batch-loaded metadata when preparing task-list responses. */
     public function getMetaAttribute()
     {
+        if ($this->relationLoaded('taskMeta')) {
+            return $this->getRelation('taskMeta')->pluck('value', 'key');
+        }
+
         return $this->taskMeta()->get()->pluck('value', 'key');
     }
 
@@ -524,6 +540,7 @@ class Task extends Model
         return $default;
     }
 
+    /** Persist metadata and invalidate any snapshot loaded for serialization. */
     public function updateMeta($key, $value)
     {
         $exist = TaskMeta::where('task_id', $this->id)->where('key', $key)
@@ -540,13 +557,15 @@ class Task extends Model
             ]);
         }
 
+        $this->unsetRelation('taskMeta');
+
         return $exist;
     }
 
     /**
      * Virtual attribute: pinned state from task meta (for API/frontend).
      * Tasks without is_pinned meta are treated as unpinned (0).
-     * Reads from the already-loaded 'meta' attribute to avoid an extra DB query per task.
+     * Uses the batch-loaded metadata relation when preparing task lists.
      *
      * @return int 1 if pinned, 0 otherwise
      */
@@ -878,7 +897,7 @@ class Task extends Model
                 'field' => __('Priority', 'fluent-boards'),
                 'type'  => 'text',
                 'rules' => 'optional',
-                'description' => __('Priority of the task (urgent | high | medium | low). Leave empty for no priority. Example: "medium" ', 'fluent-boards'),
+                'description' => __('Priority of the task (urgent | high | medium | low). Leave empty for no priority. Example: "medium"', 'fluent-boards'),
             ],
             'due_at' => [
                 'field' => __('Due Date', 'fluent-boards'),
@@ -962,8 +981,14 @@ class Task extends Model
     {
         return $this->hasOne(Meta::class, 'object_id', 'id')->where('object_type', Constant::REPEAT_TASK_META);
     }
+
+    /** Reuse batch-loaded repeat settings, including a known missing relation. */
     public function getRepeatTaskMetaAttribute()
     {
+        if ($this->relationLoaded('repeatTaskMeta')) {
+            return $this->getRelation('repeatTaskMeta');
+        }
+
         return $this->repeatTaskMeta()->first();
     }
     public function taskCustomFields()

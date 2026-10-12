@@ -5,6 +5,21 @@ namespace FluentBoards\App\Services;
 
 class Constant{
 
+    const USER_PROFILE_PHOTO = 'fbs_profile_photo';
+    const USER_PROFILE_PHOTO_UPLOAD = '_fbs_profile_photo_upload';
+    const PROFILE_PHOTO_MAX_DIMENSION = 4096;
+    const PROFILE_PHOTO_MAX_PIXELS = 12000000;
+    const PROFILE_AVATAR_SIZE = 256;
+
+    const PROFILE_DISPLAY_NAME_MAX_LENGTH = 250;
+    const PROFILE_PHOTO_META_KEY = 'fbs_profile_photo';
+    const PROFILE_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+
+    const UPLOAD_PROTECTION_CHECK_PREFIX = '_fbs_upload_protection_';
+    const FLUENT_BOARDS_IMPORT = 'FluentBoards';
+    const JSON_IMPORT = 'json_import';
+    const TASK_ESTIMATED_MINUTES = '_estimated_minutes';
+
     const BOARD_EMAIL_COMMENT =  'email_after_comment';
     const BOARD_EMAIL_TASK_ASSIGN =  'email_after_task_assign';
     const BOARD_EMAIL_STAGE_CHANGE =  'email_after_task_stage_change';
@@ -400,6 +415,10 @@ class Constant{
 
     const ACTIVITY_ACTION_CREATED = 'created';
     const ACTIVITY_ACTION_UPDATED = 'updated';
+    const ACTIVITY_ACTION_ADDED = 'added';
+    const ACTIVITY_ACTION_CHANGED = 'changed';
+    const ACTIVITY_ACTION_REMOVED = 'removed';
+    const ACTIVITY_CUSTOM_FIELD = 'custom field';
     const ACTIVITY_ACTION_DELETED = 'deleted';
 
     const TASK_ATTACHMENT = 'TASK';
@@ -415,6 +434,7 @@ class Constant{
 
     const REPEAT_TASK_META = 'repeat_task';
 
+    const BOARD_TERM_CUSTOM_FIELD = 'custom-field';
     const TASK_CUSTOM_FIELD = 'task_custom_field';
 
     const BOARD_CSV_EXPORT = 'csv_export';

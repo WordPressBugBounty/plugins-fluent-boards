@@ -2,6 +2,8 @@
 //if accessed directly exit
 if(!defined( 'ABSPATH' ))  exit;
 
+use FluentBoards\App\Hooks\Handlers\RestLocaleHandler;
+
 /**
  * All registered filter's handlers should be in app\Hooks\Handlers,
  * addFilter is similar to add_filter and addCustomFilter is just a
@@ -20,3 +22,10 @@ $app->addCustomFilter('ajax_options_crm_contacts', 'TaskHandler@searchContact', 
 $app->addCustomFilter('task_attachment_file_upload', 'FileHandler@handleUpload', 10, 1);
 $app->addCustomFilter('wp_editor_media_file_upload', 'FileHandler@handleMediaFileUpload', 10, 1 );
 $app->addCustomFilter('board_find', 'BoardHandler@attachFolderToBoard', 10, 1);
+
+$restLocaleHandler = new RestLocaleHandler(
+    $app->config->get('app.rest_namespace'),
+    $app->config->get('app.rest_version')
+);
+$app->addFilter('rest_request_before_callbacks', [$restLocaleHandler, 'switchToUserLocale'], 1, 3);
+$app->addFilter('rest_request_after_callbacks', [$restLocaleHandler, 'restoreLocale'], PHP_INT_MAX, 3);

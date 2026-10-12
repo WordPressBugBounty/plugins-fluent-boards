@@ -63,6 +63,15 @@ class BoardController extends Controller
 
         $order   = $request->getSafe('order', 'sanitize_text_field', 'created_at');
         $orderBy = $request->getSafe('orderBy', 'sanitize_text_field', 'DESC');
+        $order = is_string($order) ? sanitize_sql_orderby($order) : false;
+        if (!in_array($order, ['created_at', 'title', 'updated_at', 'id'], true)) {
+            $order = 'created_at';
+        }
+        $orderBy = is_string($orderBy) ? strtoupper($orderBy) : 'DESC';
+        if (!in_array($orderBy, ['ASC', 'DESC'], true)) {
+            $orderBy = 'DESC';
+        }
+
         $searchInput = $request->getSafe('searchInput', 'sanitize_text_field');
 
         $option = $request->getSafe('option', 'sanitize_text_field');
@@ -86,8 +95,8 @@ class BoardController extends Controller
         // Scope pinned before pagination, from the same id source as getBoardCounts(),
         // so the pinned page and board_counts.pinned always agree. Filtering pinned
         // after pagination would drop pinned boards that fall on a later active page.
+        $pinnedIds = $this->boardService->getPinnedBoardIds();
         if ($option == 'pinned') {
-            $pinnedIds = $this->boardService->getPinnedBoardIds();
 
             $relatedBoardsQuery = $pinnedIds
                 ? $relatedBoardsQuery->whereIn('id', $pinnedIds)
@@ -111,13 +120,13 @@ class BoardController extends Controller
 
         $relatedBoards = $relatedBoardsQuery->orderBy($order, $orderBy)
                                             ->withCount('completedTasks')
-                                            ->with('stages', 'users')
+                                            ->with('stages', 'users', 'boardMeta', 'viewerMembership')
                                             ->paginate($per_page);
 
         foreach ($relatedBoards as $relatedBoard) {
             $relatedBoard->description = DescriptionMarkdownConverter::normalize($relatedBoard->description);
             $relatedBoard->users = Helper::sanitizeUserCollections($relatedBoard->users);
-            $relatedBoard->is_pinned = $this->boardService->isPinned($relatedBoard->id);
+            $relatedBoard->is_pinned = in_array((int) $relatedBoard->id, $pinnedIds, true);
         }
 
         $response = [
@@ -536,8 +545,10 @@ class BoardController extends Controller
         }
     }
 
+    /** Return board details with a cursor covering changes made during retrieval. */
     public function find(Request $request, $board_id)
     {
+        $syncStartedAt = current_time('mysql');
         $board = Board::findOrFail($board_id);
         $board->description = DescriptionMarkdownConverter::normalize($board->description);
         $includeArchived = filter_var($request->get('include_archived', false), FILTER_VALIDATE_BOOLEAN);
@@ -579,7 +590,7 @@ class BoardController extends Controller
 
         return [
             'board'     => $board,
-            'synced_at' => current_time('mysql')
+            'synced_at' => $syncStartedAt
         ];
     }
 
@@ -868,6 +879,7 @@ class BoardController extends Controller
 
         return [
             'message' => __('Member added successfully', 'fluent-boards'),
+            'is_admin' => PermissionManager::isAdmin($memberId),
             'member'  => Helper::sanitizeUserCollections($member)
         ];
     }
@@ -1222,6 +1234,9 @@ class BoardController extends Controller
         return (bool) $permissionManager::currentUserCan('fcrm_read_contacts');
     }
 
+    /**
+     * Duplicate a board with the selected board data options.
+     */
     public function duplicateBoard(Request $request, $board_id)
     {
         $boardData = $this->taskSanitizeAndValidate($request->get('board'), [
@@ -1232,6 +1247,8 @@ class BoardController extends Controller
 
         $isWithLabels = $request->getSafe('isWithLabels');
         $isWithTasks = $request->getSafe('isWithTasks');
+        $isWithMembers = $request->getSafe('isWithMembers');
+        $isWithCustomFields = $request->getSafe('isWithCustomFields', 'sanitize_text_field', 'yes');
         $isWithTemplates = $request->getSafe('isWithTemplates');
 
         try {
@@ -1241,6 +1258,11 @@ class BoardController extends Controller
             }
             //create board
             $newBoard = $this->boardService->copyBoard($boardData);
+            $customFieldMap = [];
+
+            if ($isWithCustomFields == 'yes') {
+                $customFieldMap = $this->boardService->copyCustomFieldsOfBoard($board_id, $newBoard);
+            }
 
             //label copy
             $labelMap = [];
@@ -1254,7 +1276,11 @@ class BoardController extends Controller
 
             //copy tasks of selected stages
             if ($isWithTasks == 'yes') {
-                $this->taskService->copyTasks($board_id, $stageMapForCopyingTask, $newBoard, $labelMap,$isWithTemplates);
+                $this->taskService->copyTasks($board_id, $stageMapForCopyingTask, $newBoard, $labelMap, $isWithTemplates, $customFieldMap);
+            }
+
+            if ($isWithMembers == 'yes') {
+                $this->boardService->copyMembersOfBoard($board_id, $newBoard);
             }
 
             return $this->sendSuccess([

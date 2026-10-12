@@ -4,6 +4,7 @@ namespace FluentBoards\App\Services;
 
 use FluentBoards\Framework\Database\Orm\ModelNotFoundException;
 use FluentBoards\App\App;
+use FluentBoards\App\Hooks\Handlers\FileHandler;
 use FluentBoards\App\Models\Attachment;
 use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Models\Notification;
@@ -21,6 +22,8 @@ use FluentBoards\App\Models\CommentImage;
 use FluentBoards\App\Models\Relation;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoardsPro\App\Models\TaskAttachment;
+use FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack;
+use FluentBoardsPro\App\Modules\TimeTracking\TimeTrackingHelper;
 use FluentBoardsPro\App\Services\AttachmentService;
 use FluentBoardsPro\App\Services\RemoteUrlParser;
 use FluentRoadmap\App\Models\IdeaReaction;
@@ -28,6 +31,62 @@ use FluentRoadmap\App\Models\IdeaReaction;
 class TaskService
 {
     private static $physicalTableNameCache = [];
+
+    /** Load appended task metadata in two queries without exposing internal relation rows. */
+    public function loadTaskListMetadata($tasks)
+    {
+        $items = [];
+        foreach ($tasks as $task) {
+            $items[] = $task;
+        }
+
+        $collection = (new Task())->newCollection($items);
+        $collection->load(['taskMeta', 'repeatTaskMeta']);
+
+        foreach ($collection as $task) {
+            // Keep the existing meta/repeat_task_meta API fields, not duplicate raw relations.
+            $task->makeHidden(['taskMeta', 'repeatTaskMeta']);
+        }
+    }
+
+    /**
+     * Preserve the original CRM template copy when Pro lacks automation-context support.
+     * Copies parent data, assignees and labels; full related-data copying requires updated Pro.
+     * Context is provided by the automation handler, not directly from an HTTP request.
+     */
+    public function createAutomationTaskFromLegacyTemplate(Task $template, array $data, array $context): Task
+    {
+        $stage = Stage::where('id', absint($data['stage_id']))
+            ->where('board_id', absint($data['board_id']))->firstOrFail();
+        $task = new Task();
+        $task->fill($template->toArray());
+        $task->title = sanitize_text_field($data['title']);
+        $task->board_id = $stage->board_id;
+        $task->stage_id = $stage->id;
+        $task->parent_id = null;
+        $task->created_by = absint($context['created_by']);
+        $task->crm_contact_id = absint($context['crm_contact_id']);
+        $task->source = sanitize_key($context['source']);
+        $task->comments_count = 0;
+        $settings = $task->settings ?: [];
+        $settings['subtask_count'] = 0;
+        $settings['subtask_completed_count'] = 0;
+        $task->settings = $settings;
+        $task->moveToNewPosition(1);
+        $task->save();
+
+        $assigneeIds = array_key_exists('assignees', $context)
+            ? $context['assignees']
+            : $template->assignees()->get()->pluck('ID')->toArray();
+        foreach (array_unique(array_filter(array_map('absint', (array) $assigneeIds))) as $assigneeId) {
+            $this->updateAssignee($assigneeId, $task);
+        }
+        foreach ($template->labels as $label) {
+            $task->labels()->syncWithoutDetaching([$label->id => ['object_type' => Constant::OBJECT_TYPE_TASK_LABEL]]);
+        }
+
+        return $task;
+    }
 
     /**
      * Resolve a task only when it belongs to the requested board.
@@ -84,6 +143,9 @@ class TaskService
         return $task;
     }
 
+    /**
+     * Create a board task and notify eligible selected assignees before applying stage defaults.
+     */
     public function createTask($data, $boardId)
     {
         $board = Board::select('id', 'type')->find($boardId);
@@ -141,6 +203,16 @@ class TaskService
 
         $data = array_filter($data);
         $task = (new Task())->createTask($data);
+
+        // Selected assignees are already attached; toggling them via updateAssignee would remove them.
+        $task->load('assignees');
+        $currentUserId = get_current_user_id();
+        $assigneeIds = array_diff($task->assignees->pluck('ID')->all(), [$currentUserId]);
+        $notificationService = new NotificationService();
+        $recipientIds = $notificationService->getEmailEnabledUserIds($task->board_id, $assigneeIds, Constant::BOARD_EMAIL_TASK_ASSIGN);
+        foreach ($recipientIds as $recipientId) {
+            $this->sendMailAfterTaskModify('add_assignee', $recipientId, $task->id);
+        }
 
         $this->manageDefaultAssignees($task, $stage->id);
         $this->manageDefaultWatchers($task, $stage->id);
@@ -617,8 +689,10 @@ class TaskService
         $task->archived_at = $value == null ? null : current_time('mysql');
         $task->save();
         do_action('fluent_boards/task_archived', $task);
-        $watchersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_TASK_ARCHIVE);
-        $this->sendMailAfterTaskModify('task_archived', $watchersToSendEmail, $task->id);
+        if ($value != null) {
+            $watchersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_TASK_ARCHIVE);
+            $this->sendMailAfterTaskModify('task_archived', $watchersToSendEmail, $task->id);
+        }
     }
 
     private function updateStatus($value, $task)
@@ -866,6 +940,7 @@ class TaskService
             Notification::whereIn('task_id', $taskIds)->delete();
 
             $this->deleteTaskAttachmentsBatch($taskIds, $taskBoardIds);
+            $this->deleteTaskCommentsBatch($taskIds, $taskBoardIds, $dbInstance);
             Activity::whereIn('object_id', $taskIds)
                 ->where('object_type', Constant::ACTIVITY_TASK)
                 ->delete();
@@ -894,6 +969,66 @@ class TaskService
         }
     }
 
+    /** Remove comment rows transactionally; file cleanup must wait for commit. */
+    private function deleteTaskCommentsBatch($taskIds, $taskBoardIds, $dbInstance)
+    {
+        $commentTasks = Comment::whereIn('task_id', $taskIds)->pluck('task_id', 'id')->toArray();
+        if (!$commentTasks) {
+            return;
+        }
+
+        $commentIds = array_keys($commentTasks);
+        $images = CommentImage::where('object_type', Constant::COMMENT_IMAGE)
+            ->whereIn('object_id', $commentIds)->get();
+        CommentImage::where('object_type', Constant::COMMENT_IMAGE)
+            ->whereIn('id', $images->pluck('id')->toArray())->delete();
+        // Bulk deletion bypasses model file hooks and counters for the deleted task.
+        Comment::whereIn('id', $commentIds)->delete();
+
+        $dbInstance->afterCommit(function () use ($images, $commentTasks, $taskBoardIds) {
+            $fileHandler = new FileHandler();
+            $remoteFiles = [];
+            $localImages = $images->filter(function ($image) {
+                return $image->attachment_type !== 'url' && $image->file_path && (!$image->driver || $image->driver === 'local');
+            });
+            try {
+                $sharedReferences = $fileHandler->getSharedLocalReferences($localImages);
+            } catch (\Throwable $e) {
+                // Null falls back to per-file reference checks.
+                $sharedReferences = null;
+            }
+            foreach ($images as $image) {
+                if ($image->attachment_type === 'url' || !$image->file_path) {
+                    continue;
+                }
+                if ($image->driver && $image->driver !== 'local') {
+                    $remoteFiles[] = ['file_path' => $image->file_path, 'driver' => $image->driver];
+                    continue;
+                }
+
+                try {
+                    $boardId = $taskBoardIds[$commentTasks[$image->object_id]];
+                    $fileHandler->deleteAttachmentFile($image, $boardId, $sharedReferences);
+                } catch (\Throwable $e) {
+                    error_log('FluentBoards: Failed to delete committed comment image ' . (int) $image->id . ': ' . sanitize_text_field($e->getMessage()));
+                }
+            }
+
+            // Use the existing remote cleanup worker, which rechecks shared references.
+            foreach (array_chunk($remoteFiles, 50) as $batch) {
+                try {
+                    if (function_exists('as_enqueue_async_action')) {
+                        as_enqueue_async_action('fluent_boards/delete_remote_attachment_files', [$batch], 'fluent-boards');
+                    } else {
+                        $fileHandler->deleteRemoteAttachmentFiles($batch);
+                    }
+                } catch (\Throwable $e) {
+                    error_log('FluentBoards: Failed to queue committed comment image cleanup: ' . sanitize_text_field($e->getMessage()));
+                }
+            }
+        });
+    }
+
     /**
      * Dispatch task deletion hooks after the outermost transaction commits.
      *
@@ -918,45 +1053,15 @@ class TaskService
         });
     }
 
+    /** Keep legacy bulk callers on the normal task deletion lifecycle. */
     public function deleteTaskForBulk($task)
     {
-        // If this is a parent task, delete all subtasks first
-        if (!$task->parent_id) {
-            $subtasks = Task::where('parent_id', $task->id)->get();
-            foreach ($subtasks as $subtask) {
-                // Recursively delete each subtask (cleans up all their relations)
-                $this->deleteTaskForBulk($subtask);
-            }
+        // A selected subtask may already have been deleted with its parent.
+        if (!Task::where('id', $task->id)->exists()) {
+            return;
         }
 
-        $this->deleteTimeTrackingRecords($task->id, false);
-
-        $deleted = $task->delete();
-
-        if ($deleted) {
-
-            //task assignees watchers removed
-            $task->watchers()->detach();
-            $task->assignees()->detach();
-
-            //removing all task related notifications
-            $notificationIds = $task->notifications->pluck('id');
-            $task->notifications()->delete();
-            NotificationUser::whereIn('notification_id', $notificationIds)->delete();
-
-            //task labels removed
-            $task->labels()->detach();
-
-            //task custom field value
-            if (defined('FLUENT_BOARDS_PRO_VERSION')) {
-                $task->customFields()->detach();
-                $this->deleteTaskAttachments($task);
-            }
-
-            // For bulk delete, you might want to avoid firing hooks/actions,
-            // so 'fluent_boards/task_deleted' is not triggered here.
-            TaskMeta::where('task_id', $task->id)->delete();
-        }
+        $this->deleteTask($task);
     }
     // this is invoked when task is moved to another board
 
@@ -1396,6 +1501,7 @@ class TaskService
         return $tasks;
     }
 
+    /** Fetch a page of board tasks, applying filters before pagination. */
     public function getTableTasks($boardId, $data = [])
     {
         $perPage = isset($data['per_page']) ? intval($data['per_page']) : 20;
@@ -1405,6 +1511,8 @@ class TaskService
         $search = isset($data['search']) ? sanitize_text_field($data['search']) : '';
         $stageFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'stage', []));
         $taskStatusFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'task_status', []));
+        $recurringFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'recurring', []));
+        $templateFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'template', []));
         $priorityFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'priority', []), true);
         $assigneeFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'assignee', []));
         $labelFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'labels', []));
@@ -1443,6 +1551,7 @@ class TaskService
             'slug',
             'board_id',
             'parent_id',
+            'crm_contact_id',
             'type',
             'stage_id',
             'status',
@@ -1494,6 +1603,8 @@ class TaskService
         $this->applyTableTaskFilters($tasksQuery, [
             'stage' => $stageFilters,
             'task_status' => $taskStatusFilters,
+            'recurring' => $recurringFilters,
+            'template' => $templateFilters,
             'priority' => $priorityFilters,
             'assignee' => $assigneeFilters,
             'labels' => $labelFilters,
@@ -1512,11 +1623,14 @@ class TaskService
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
+    /** Fetch matching board cards with the same filters as table view. */
     public function getBoardViewTasks($boardId, $data = [])
     {
         $search = isset($data['search']) ? sanitize_text_field($data['search']) : '';
         $stageFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'stage', []));
         $taskStatusFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'task_status', []));
+        $recurringFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'recurring', []));
+        $templateFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'template', []));
         $priorityFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'priority', []), true);
         $assigneeFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'assignee', []));
         $labelFilters = $this->sanitizeTableFilterValues(Arr::get($data, 'labels', []));
@@ -1566,6 +1680,8 @@ class TaskService
         $this->applyTableTaskFilters($tasksQuery, [
             'stage' => $stageFilters,
             'task_status' => $taskStatusFilters,
+            'recurring' => $recurringFilters,
+            'template' => $templateFilters,
             'priority' => $priorityFilters,
             'assignee' => $assigneeFilters,
             'labels' => $labelFilters,
@@ -1617,6 +1733,7 @@ class TaskService
         $tasksQuery->where('title', 'LIKE', '%' . $escapedSearch . '%');
     }
 
+    /** Apply board filters to table and card queries, gating Pro-only options. */
     private function applyTableTaskFilters($tasksQuery, $filters)
     {
         $stageFilters = Arr::get($filters, 'stage', []);
@@ -1628,6 +1745,20 @@ class TaskService
         $contactFilters = Arr::get($filters, 'contact', []);
         $customFieldFilters = Arr::get($filters, 'custom_fields', []);
         $dueDateFilters = Arr::get($filters, 'due_date', []);
+
+        $hasPro = defined('FLUENT_BOARDS_PRO_VERSION');
+
+        if ($hasPro && in_array('yes', Arr::get($filters, 'template', []), true)) {
+            $tasksQuery->whereHas('taskMeta', function ($metaQuery) {
+                $metaQuery->where('key', Constant::IS_TASK_TEMPLATE)->where('value', 'yes');
+            });
+        }
+
+        if ($hasPro && in_array('yes', Arr::get($filters, 'recurring', []), true)
+            && Arr::get(fluent_boards_get_pref_settings(), 'recurring_task.enabled') === 'yes') {
+            // Only the schedule owner repeats; generated copies may have no schedule.
+            $tasksQuery->whereNull('archived_at')->whereHas('repeatTaskMeta');
+        }
 
         if ($stageFilters) {
             $this->applyTableStageFilters($tasksQuery, $stageFilters);
@@ -1869,6 +2000,10 @@ class TaskService
 
     public function sendMailAfterTaskModify($column, $assigneeIds, $taskId)
     {
+        if (empty($assigneeIds)) {
+            return;
+        }
+
         $current_user_id = get_current_user_id();
         /* this will run in background as soon as possible */
         /* sending Model or Model Instance won't work here */
@@ -1934,6 +2069,7 @@ class TaskService
 
     public function getActivities($taskId, $perPage, $filter = 'newest')
     {
+        $perPage = Sanitize::perPage($perPage);
         $activityQuery = Activity::where('object_id', $taskId)
             ->where('object_type', Constant::ACTIVITY_TASK);
         if ($filter == 'newest') {
@@ -2098,9 +2234,12 @@ class TaskService
         return $subtaskGroupMap;
     }
 
-    public function copyTasks($boardId, $stageMap, $newBoard, $labelMap = [],$isWithTemplates='no')
+    public function copyTasks($boardId, $stageMap, $newBoard, $labelMap = [], $isWithTemplates = 'no', $customFieldMap = [])
     {
-        $allActiveTasks = Task::where('board_id', $boardId)->whereNull('archived_at')->get();
+        $allActiveTasks = Task::where('board_id', $boardId)
+            ->whereNull('archived_at')
+            ->with(['labels', 'taskCustomFields'])
+            ->get();
         $taskMap = [];
         $subtaskGroupMap = [];
         $parentTaskCount = 0;
@@ -2169,6 +2308,7 @@ class TaskService
                         ]);
                     }
                 }
+                $this->copyTaskCustomFields($task, $newTask, $customFieldMap);
                 if(!$task->parent_id){
                     ++$parentTaskCount;
                     $taskMap[$task['id']] = $newTask->id;
@@ -2199,6 +2339,29 @@ class TaskService
         }
     }
 
+    /**
+     * Copy task custom field values to the duplicated task using copied board field IDs.
+     */
+    private function copyTaskCustomFields($task, $newTask, array $customFieldMap)
+    {
+        if (!$customFieldMap || !$task->taskCustomFields) {
+            return;
+        }
+
+        foreach ($task->taskCustomFields as $customField) {
+            $newCustomFieldId = $customFieldMap[(int) $customField->foreign_id] ?? null;
+
+            if (!$newCustomFieldId) {
+                continue;
+            }
+
+            $clonedField = $customField->replicate();
+            $clonedField->object_id = $newTask->id;
+            $clonedField->foreign_id = $newCustomFieldId;
+            $clonedField->save();
+        }
+    }
+
     private function subtaskCountUpdate($taskId){
         $parentTask = Task::findOrFail($taskId);
         $settings = $parentTask->settings;
@@ -2218,79 +2381,100 @@ class TaskService
      */
     public function getCommentsAndActivities($taskId, $perPage, $page, string $filter = 'newest', $boardId = null, string $feedType = 'all'): array
     {
+        $perPage = Sanitize::perPage($perPage);
+        $page = max(1, (int) $page);
         // Fetch the task
         $task = $boardId ? $this->findTaskOnBoard($taskId, $boardId) : Task::findOrFail($taskId);
         $feedType = in_array($feedType, ['all', 'comments', 'activities'], true) ? $feedType : 'all';
 
-        // Fetch comments and activities separately
-        $comments = [];
+        $direction = $filter == 'newest' ? 'desc' : 'asc';
+        $offset = ($page - 1) * $perPage;
+        // Each source needs at most offset + perPage rows to fill the requested page.
+        $limit = $offset + $perPage;
+
+        $commentQuery = $task->comments();
+        $activityQuery = $task->activities()
+            ->where(function($query) {
+                $query->whereNotIn('column', [ 'comment', 'a reply'])
+                    ->orWhere(function($subQuery) {
+                        $subQuery->whereNotIn('action', ['added', 'updated']);
+                    });
+            });
+
+        $entries = [];
+        $total = 0;
         if ($feedType !== 'activities') {
-            $comments = $task->comments()->with(['user', 'replies.user'])->orderBy('created_at', 'desc')->get()->toArray();
+            $total += (clone $commentQuery)->count();
+            foreach ((clone $commentQuery)->reorder('created_at', $direction)->orderBy('id', $direction)->limit($limit)->get(['id', 'created_at']) as $row) {
+                $entries[] = ['comment', (int) $row->id, $row->created_at];
+            }
         }
-
-        $activities = [];
         if ($feedType !== 'comments') {
-            $activities = $task->activities()
-                ->with('user')
-                ->where(function($query) {
-                    $query->whereNotIn('column', [ 'comment', 'a reply'])
-                        ->orWhere(function($subQuery) {
-                            $subQuery->whereNotIn('action', ['added', 'updated']);
-                        });
-                })
-                ->orderBy('created_at', 'desc')
-                ->get()
-                ->toArray();
+            $total += (clone $activityQuery)->count();
+            foreach ((clone $activityQuery)->reorder('created_at', $direction)->orderBy('id', $direction)->limit($limit)->get(['id', 'created_at']) as $row) {
+                $entries[] = ['activity', (int) $row->id, $row->created_at];
+            }
         }
 
-
-        // Merge comments and activities into a single array
-        $commentsAndActivities = array_merge($comments, $activities);
-
-        // Sort the merged array by created_at date in ascending or descending order
-        $order = $filter == 'newest' ? -1 : 1;
-        usort($commentsAndActivities, function ($a, $b) use ($order) {
-            return $order * (strtotime($a['created_at']) - strtotime($b['created_at']));
+        // Stable sort keeps comments ahead of activities on equal timestamps, as before.
+        $order = $direction === 'desc' ? -1 : 1;
+        usort($entries, function ($a, $b) use ($order) {
+            return $order * (strtotime($a[2]) - strtotime($b[2]));
         });
+        $entries = array_slice($entries, $offset, $perPage);
 
-        // Paginate the results
-        $offset = ($page - 1) * $perPage; // Calculate the offset for slicing the array
-        $paginatedResults = array_slice($commentsAndActivities, $offset, $perPage);
+        // Hydrate relations only for the selected page.
+        $selectedIds = ['comment' => [], 'activity' => []];
+        foreach ($entries as $entry) {
+            $selectedIds[$entry[0]][] = $entry[1];
+        }
+        $models = ['comment' => [], 'activity' => []];
+        if ($selectedIds['comment']) {
+            $models['comment'] = $commentQuery->with(['user', 'replies.user'])->whereIn('id', $selectedIds['comment'])->get()->keyBy('id')->all();
+        }
+        if ($selectedIds['activity']) {
+            $models['activity'] = $activityQuery->with('user')->whereIn('id', $selectedIds['activity'])->get()->keyBy('id')->all();
+        }
 
-        // Get the total count of comments and activities
-        $total = count($commentsAndActivities);
+        $paginatedResults = [];
+        foreach ($entries as $entry) {
+            if (isset($models[$entry[0]][$entry[1]])) {
+                $paginatedResults[] = $models[$entry[0]][$entry[1]]->toArray();
+            }
+        }
+
         $lastPage = (int) ceil($total / $perPage);
 
         // Construct pagination metadata
-        $path = "https://wordpress.test/wp-json/fluent-boards/v2/projects/{$task->board_id}/tasks/{$task->id}/comments-and-activities";
+        $path = rest_url("fluent-boards/v2/projects/{$task->board_id}/tasks/{$task->id}/comments-and-activities");
         return [
             'current_page' => (int) $page,
             'data' => $paginatedResults,
-            'first_page_url' => "{$path}?page=1",
+            'first_page_url' => add_query_arg('page', 1, $path),
             'from' => $total > 0 ? (int) ($offset + 1) : null,
             'last_page' => (int) $lastPage,
-            'last_page_url' => "{$path}?page={$lastPage}",
+            'last_page_url' => add_query_arg('page', $lastPage, $path),
             'links' => [
                 [
-                    'url' => $page > 1 ? "{$path}?page=" . ($page - 1) : null,
+                    'url' => $page > 1 ? add_query_arg('page', ($page - 1), $path) : null,
                     'label' => 'pagination.previous',
                     'active' => false
                 ],
                 [
-                    'url' => "{$path}?page={$page}",
+                    'url' => add_query_arg('page', $page, $path),
                     'label' => (int) $page,
                     'active' => true
                 ],
                 [
-                    'url' => $page < $lastPage ? "{$path}?page=" . ($page + 1) : null,
+                    'url' => $page < $lastPage ? add_query_arg('page', ($page + 1), $path) : null,
                     'label' => 'pagination.next',
                     'active' => false
                 ]
             ],
-            'next_page_url' => $page < $lastPage ? "{$path}?page=" . ($page + 1) : null,
+            'next_page_url' => $page < $lastPage ? add_query_arg('page', ($page + 1), $path) : null,
             'path' => $path,
             'per_page' => (int) $perPage,
-            'prev_page_url' => $page > 1 ? "{$path}?page=" . ($page - 1) : null,
+            'prev_page_url' => $page > 1 ? add_query_arg('page', ($page - 1), $path) : null,
             'to' => $total > 0 ? (int) min($offset + $perPage, $total) : null,
             'total' => (int) $total
         ];
@@ -2347,9 +2531,13 @@ class TaskService
         return $title ?? $UrlMeta['title'] ?? '';
     }
 
-    public function manageDefaultAssignees($task, $stageId)
+    /** Apply missing stage assignees and report whether any assignments were added. */
+    public function manageDefaultAssignees($task, $stageId, ?Stage $stage = null)
     {
-        $stage = Stage::findOrFail($stageId);
+        if (!$stage || (int) $stage->id !== (int) $stageId) {
+            $stage = Stage::findOrFail($stageId);
+        }
+        $assignmentsChanged = false;
         if ($stage && isset($stage->settings['default_task_assignees'])) {
             $defaultAssignees = $stage->settings['default_task_assignees'];
             foreach ($defaultAssignees as $assigneeId) {
@@ -2357,9 +2545,11 @@ class TaskService
                 $IfAlreadyAssignee = in_array($assigneeId, $alreadyAssigneeIds);
                 if (!$IfAlreadyAssignee) {
                     $this->updateAssignee($assigneeId, $task);
+                    $assignmentsChanged = true;
                 }
             }
         }
+        return $assignmentsChanged;
     }
 
     public function manageDefaultWatchers($task, $stageId)
@@ -2537,7 +2727,8 @@ class TaskService
 
             // Create new task with cloned data
             $clonedTask = $task->replicate();
-            $clonedTask->title = $taskData['title'] ?? $task->title . ' (' . \__('cloned', 'fluent-boards') . ')';
+            /* translators: %s is the title of the task being cloned */
+            $clonedTask->title = $taskData['title'] ?? sprintf(\__('%s (cloned)', 'fluent-boards'), $task->title);
 
             $settings = $clonedTask->settings ?? [];
 
@@ -2616,7 +2807,8 @@ class TaskService
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transaction control for atomic task cloning operation
             $wpdb->query('ROLLBACK');
             throw new \Exception(
-                esc_html(\__('Failed to clone task: ', 'fluent-boards') . $e->getMessage()),
+                /* translators: %s is the error message */
+                esc_html(sprintf(\__('Failed to clone task: %s', 'fluent-boards'), $e->getMessage())),
                 (int) ($e->getCode() ?: 500)
             );
         }
@@ -2983,37 +3175,37 @@ class TaskService
         $successfulTasks = [];
         
         foreach ($tasks as $task) {
+            $oldStageId = $task->stage_id;
             if ($isMovingToAnotherBoard) {
                 // Cross-board move - use existing method for data cleanup and security
                 $task = $this->changeBoardByTask($task, $effectiveTargetBoardId);
                 $task->stage_id = $targetStageId;
                 $task = $task->moveToNewPosition(null);
             } else {
-                // Same board - simple stage move
-                $oldStageId = $task->stage_id;
                 $task->stage_id = $targetStageId;
                 $task = $task->moveToNewPosition(1);
-                
-                // Only process stage-specific logic if stage actually changed
-                if ($oldStageId != $targetStageId) {
-                    $this->manageDefaultAssignees($task, $targetStageId);
-                    
-                    $defaultPosition = $task->stage->defaultTaskStatus();
-                    if ($defaultPosition == 'closed' && $task->status != 'closed') {
-                        $task = $task->close();
-                    }
-                    
-                    $usersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_STAGE_CHANGE);
-                    $this->sendMailAfterTaskModify('stage_change', $usersToSendEmail, $task->id);
-                }
             }
-            
-            // Reload task with all relationships
+
+            // Board moves detach relations; listeners must see the destination state.
             $task->load(['labels', 'assignees', 'board', 'stage', 'watchers', 'taskCustomFields']);
-            
+
+            if ($oldStageId != $targetStageId) {
+                $this->manageDefaultAssignees($task, $targetStageId);
+                if ($targetStage->defaultTaskStatus() == 'closed' && $task->status != 'closed') {
+                    $task = $task->close();
+                }
+
+                // Default assignees may also become watchers.
+                $task->load(['assignees', 'watchers']);
+                do_action('fluent_boards/task_stage_updated', $task, $oldStageId);
+
+                $usersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_STAGE_CHANGE);
+                $this->sendMailAfterTaskModify('stage_change', $usersToSendEmail, $task->id);
+            }
+
             $successfulTasks[] = $task;
         }
-        
+
         $successCount = count($successfulTasks);
         
         if ($isMovingToAnotherBoard) {
@@ -3357,7 +3549,7 @@ class TaskService
     }
   
     /**
-     * Delete time tracking records for one or multiple tasks.
+     * Delete time tracking records for one or multiple tasks when the table exists.
      *
      * @param int|array $taskIds Single task ID or array of task IDs.
      * @param bool $suppressErrors Whether cleanup failures should be ignored.
@@ -3365,20 +3557,33 @@ class TaskService
      */
     public function deleteTimeTrackingRecords($taskIds, $suppressErrors = true)
     {
-        // Check if FluentBoards Pro time tracking is available
-        if (!class_exists('FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack')) {
+        if (!class_exists(TimeTrack::class)) {
             return;
         }
 
         try {
+            // Disabled modules still need cleanup, but never-enabled modules may have no table.
+            if (method_exists(TimeTrackingHelper::class, 'timeTrackingTableExists')) {
+                $tableExists = TimeTrackingHelper::timeTrackingTableExists();
+            } else {
+                // Older Pro versions do not provide the table-existence helper.
+                global $wpdb;
+                $table = $wpdb->prefix . (new TimeTrack())->getTable();
+                $tableExists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))) === $table;
+            }
+
+            if (!$tableExists) {
+                return;
+            }
+
             // Handle single task ID or array of task IDs
             if (is_array($taskIds)) {
                 if (!empty($taskIds)) {
-                    \FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack::whereIn('task_id', $taskIds)->delete();
+                    TimeTrack::whereIn('task_id', $taskIds)->delete();
                 }
             } else {
                 if (is_numeric($taskIds) && $taskIds > 0) {
-                    \FluentBoardsPro\App\Modules\TimeTracking\Model\TimeTrack::where('task_id', (int) $taskIds)->delete();
+                    TimeTrack::where('task_id', (int) $taskIds)->delete();
                 }
             }
         } catch (\Throwable $e) {

@@ -57,6 +57,21 @@ class OptionsController extends Controller
                 }
 
                 $options = $this->addUserDataAsSelectorOption($users);
+                if ('users' === $optionKey && $options) {
+                    // Resolve plugin admins once for this result set instead of querying per user.
+                    $adminIds = Meta::where('object_type', Constant::FLUENT_BOARD_ADMIN)
+                        ->whereIn('object_id', array_column($options, 'id'))
+                        ->pluck('object_id')
+                        ->toArray();
+                    $adminLookup = array_fill_keys($adminIds, true);
+
+                    foreach ($options as &$option) {
+                        $option['is_admin'] = isset($adminLookup[$option['id']])
+                            || PermissionManager::isWPAdmin($option['id']);
+                    }
+                    unset($option);
+                }
+
 
             } elseif ('board_create_users' === $optionKey) {
                 if (!PermissionManager::userHasBoardCreationPermission()) {

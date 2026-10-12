@@ -1262,6 +1262,7 @@ class ReportService
         if ($days > self::MAX_ROADMAP_REPORT_DAYS) {
             throw new \InvalidArgumentException(
                 sprintf(
+                    /* translators: %d is the maximum number of days a roadmap report can cover */
                     esc_html__('Roadmap reports are limited to %d days.', 'fluent-boards'),
                     self::MAX_ROADMAP_REPORT_DAYS
                 )
