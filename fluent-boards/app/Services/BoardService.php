@@ -40,10 +40,22 @@ class BoardService
         //if we need to do something before a board is deleted
         do_action('fluent_boards/before_board_deleted', $board, $options);
 
-        //related task delete, task related relations delete
+        // Relation IDs overlap across boards, tasks and folders; delete only task-owned types.
         $allTaskIdsInBoard = $board->tasks->pluck('id');
-        $taskRelatedRelations = Relation::whereIn('object_id', $allTaskIdsInBoard);
-        $taskRelatedRelations->delete();
+        Relation::whereIn('object_id', $allTaskIdsInBoard)
+            ->whereIn('object_type', [
+                Constant::OBJECT_TYPE_TASK_ASSIGNEE,
+                Constant::OBJECT_TYPE_TASK_LABEL,
+                Constant::OBJECT_TYPE_USER_TASK_WATCH,
+                Constant::TASK_CUSTOM_FIELD,
+            ])
+            ->delete();
+        Relation::where('object_type', Constant::OBJECT_TYPE_TASK_DEPENDENCY)
+            ->where(function ($query) use ($allTaskIdsInBoard) {
+                $query->whereIn('object_id', $allTaskIdsInBoard)
+                    ->orWhereIn('foreign_id', $allTaskIdsInBoard);
+            })
+            ->delete();
         TaskMeta::whereIn('task_id', $allTaskIdsInBoard)->delete();
 
         // Delete time tracking records for all tasks in the board
@@ -255,11 +267,12 @@ class BoardService
         $board->boardUserNotificationSettings()->detach($userId); //removing notification settings of user in that board
         $board->boardUserEmailNotificationSettings()->detach($userId); //removing email notification settings of user in that board
 
-        //detacing all tasks of this board from user
-        $taskIdsToDetach = $user->tasks()->where('board_id', $boardId)->get()->pluck('id');
-
-        $user->tasks()->detach($taskIdsToDetach);
-        $user->watchingTasks()->detach($taskIdsToDetach);
+        // Assignees need not be watchers; detach each board-scoped relation separately.
+        $taskIdColumn = (new Task())->getTable() . '.id';
+        $assignedTaskIds = $user->assignedTasks()->where('board_id', $boardId)->pluck($taskIdColumn);
+        $user->assignedTasks()->detach($assignedTaskIds);
+        $watchedTaskIds = $user->watchingTasks()->where('board_id', $boardId)->pluck($taskIdColumn);
+        $user->watchingTasks()->detach($watchedTaskIds);
 
     }
 

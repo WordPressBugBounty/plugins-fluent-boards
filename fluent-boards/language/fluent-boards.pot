@@ -2,14 +2,14 @@
 # This file is distributed under the GPLv2 or later.
 msgid ""
 msgstr ""
-"Project-Id-Version: Fluent Boards - Project Management Tool 2.2.0\n"
+"Project-Id-Version: Fluent Boards - Project Management Tool 2.2.1\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/fluent-boards\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-12T12:48:15+00:00\n"
+"POT-Creation-Date: 2026-10-13T12:10:19+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: fluent-boards\n"
@@ -79,22 +79,6 @@ msgstr ""
 #: app/Services/TaskService.php:3297
 #: app/Services/TransStrings.php:897
 msgid "Low"
-msgstr ""
-
-#: app/Hooks/actions.php:39
-msgid "Fluent Boards uploads are accessible by direct URL without a login. Ask your hosting provider to block direct web access to this directory and its subdirectories."
-msgstr ""
-
-#: app/Hooks/actions.php:41
-msgid "Fluent Boards could not prepare upload-directory protection. Ask your hosting provider to check filesystem permissions and block direct access to uploads."
-msgstr ""
-
-#: app/Hooks/actions.php:43
-msgid "Fluent Boards could not verify upload-directory protection. Writing .htaccess rules does not confirm that your web server enforces them."
-msgstr ""
-
-#: app/Hooks/actions.php:49
-msgid "Nginx requires a server rule denying this upload URL and every path beneath it. Apache must honor the generated .htaccess authorization rules. Verify that direct file requests return 403 or 404. This check retries every five minutes."
 msgstr ""
 
 #. translators: %s is the custom field title
@@ -278,8 +262,8 @@ msgstr ""
 msgid "File could not be found."
 msgstr ""
 
-#: app/Hooks/Handlers/ExternalPages.php:94
-#: app/Hooks/Handlers/ExternalPages.php:107
+#: app/Hooks/Handlers/ExternalPages.php:100
+#: app/Hooks/Handlers/ExternalPages.php:113
 #: app/Http/Controllers/TaskController.php:533
 #: app/Http/Controllers/TaskController.php:803
 #: app/Http/Controllers/TaskController.php:1081
@@ -1748,23 +1732,23 @@ msgstr ""
 msgid "Add, remove, or sync task assignees. Newly added user ids must identify existing WordPress users who are board members or global administrators. Adding someone already assigned is a no-op. Assignees also become task watchers."
 msgstr ""
 
-#: app/Modules/MCP/Helpers/MCPHelper.php:58
+#: app/Modules/MCP/Helpers/MCPHelper.php:60
 msgid "Provide board_id"
 msgstr ""
 
-#: app/Modules/MCP/Helpers/MCPHelper.php:63
+#: app/Modules/MCP/Helpers/MCPHelper.php:65
 msgid "Board not found"
 msgstr ""
 
-#: app/Modules/MCP/Helpers/MCPHelper.php:75
+#: app/Modules/MCP/Helpers/MCPHelper.php:77
 msgid "Provide board_id and task_id"
 msgstr ""
 
-#: app/Modules/MCP/Helpers/MCPHelper.php:80
+#: app/Modules/MCP/Helpers/MCPHelper.php:82
 msgid "Task not found on this board"
 msgstr ""
 
-#: app/Modules/MCP/Helpers/MCPHelper.php:131
+#: app/Modules/MCP/Helpers/MCPHelper.php:133
 #: app/Modules/MCP/Tools/StageTools.php:138
 msgid "Stage not found on this board"
 msgstr ""
@@ -2123,32 +2107,32 @@ msgid "OpenRouter returned no text models for this API key."
 msgstr ""
 
 #: app/Services/AttachmentFileService.php:328
-#: app/Services/Libs/FileSystem.php:264
-msgid "Could not prepare upload-directory protection. Please ask your hosting provider to block direct file access and check directory permissions."
+#: app/Services/Libs/FileSystem.php:206
+msgid "Could not create the upload directory. Please check directory permissions."
 msgstr ""
 
 #: app/Services/AttachmentFileService.php:340
 msgid "Could not copy attachment file."
 msgstr ""
 
-#: app/Services/BoardService.php:310
+#: app/Services/BoardService.php:323
 #: app/Services/TransStrings.php:1769
 msgid "Title cannot be empty"
 msgstr ""
 
-#: app/Services/BoardService.php:609
+#: app/Services/BoardService.php:622
 msgid "Board not found."
 msgstr ""
 
-#: app/Services/BoardService.php:636
+#: app/Services/BoardService.php:649
 msgid "Background image not found."
 msgstr ""
 
-#: app/Services/BoardService.php:1012
+#: app/Services/BoardService.php:1025
 msgid "A board ID is required to delete an invitation."
 msgstr ""
 
-#: app/Services/BoardService.php:1050
+#: app/Services/BoardService.php:1063
 #: app/Services/TaskService.php:154
 msgid "Board doesn't exists"
 msgstr ""
@@ -2598,6 +2582,15 @@ msgstr ""
 msgid "Label not found"
 msgstr ""
 
+#: app/Services/Libs/FileSystem.php:233
+#: app/Services/TransStrings.php:679
+msgid "File upload failed."
+msgstr ""
+
+#: app/Services/Libs/FileSystem.php:299
+msgid "Could not create the upload directory."
+msgstr ""
+
 #: app/Services/MCPAccessService.php:146
 msgid "MCP is disabled on this site."
 msgstr ""
@@ -2643,13 +2636,13 @@ msgstr ""
 msgid "Another MCP key change is in progress. Please try again."
 msgstr ""
 
-#: app/Services/NotificationService.php:50
-#: app/Services/NotificationService.php:420
-#: app/Services/NotificationService.php:437
+#: app/Services/NotificationService.php:51
+#: app/Services/NotificationService.php:454
+#: app/Services/NotificationService.php:471
 msgid "You are not allowed to do that"
 msgstr ""
 
-#: app/Services/NotificationService.php:83
+#: app/Services/NotificationService.php:84
 msgid "Notification could not be found"
 msgstr ""
 
@@ -5369,10 +5362,6 @@ msgstr ""
 
 #: app/Services/TransStrings.php:678
 msgid "File upload canceled."
-msgstr ""
-
-#: app/Services/TransStrings.php:679
-msgid "File upload failed."
 msgstr ""
 
 #: app/Services/TransStrings.php:680

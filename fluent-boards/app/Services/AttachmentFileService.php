@@ -325,7 +325,7 @@ class AttachmentFileService
         }
 
         if (!FileSystem::installUploadProtectionRules()) {
-            throw new Exception(__('Could not prepare upload-directory protection. Please ask your hosting provider to block direct file access and check directory permissions.', 'fluent-boards'));
+            throw new Exception(__('Could not create the upload directory. Please check directory permissions.', 'fluent-boards'));
         }
 
         $targetDir = $this->getBoardDir($targetBoardId);

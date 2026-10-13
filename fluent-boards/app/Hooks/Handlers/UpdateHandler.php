@@ -16,6 +16,14 @@ class UpdateHandler
 
     public static function maybeSubtaskGroupSync()
     {
+        // Retire the former automatic diagnostic without changing the schema version.
+        if (!get_option('_fbs_manual_upload_diagnostics')) {
+            $cleared = wp_clear_scheduled_hook('fluent_boards/check_upload_protection');
+            if ($cleared !== false && !is_wp_error($cleared)) {
+                update_option('_fbs_manual_upload_diagnostics', 1, false);
+            }
+        }
+
         $lastDbVersion = get_option('_fluent_boards_db_version');
         if (!$lastDbVersion || version_compare($lastDbVersion, FLUENT_BOARDS_DB_VERSION, '<')) {
             // the last updated version is less than the current version

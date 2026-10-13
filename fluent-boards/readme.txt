@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.2.0
+Stable tag: 2.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -136,6 +136,9 @@ FluentBoards comes with the most advanced integrations to ensure you run your pr
 
 == Frequently Asked Questions ==
 
+= How do I block direct access to uploaded attachments? =
+FluentBoards writes Apache `.htaccess` rules to `wp-content/uploads/fluent-boards`. On Nginx, or Apache with `AllowOverride None`, ask your host to deny that path and everything beneath it, for example `location ^~ /wp-content/uploads/fluent-boards/ { deny all; }`. To verify, open an attachment URL in a private browser window; it should return 403 or 404.
+
 = Can I handle unlimited tasks with FluentBoards? =
 Yes, you can handle unlimited tasks with FluentBoards.
 
@@ -169,6 +172,15 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v2.2.1 (Date: October 13, 2026) =
+
+- Fix: Upload directory warning issue
+- Fix: Cloud attachment downloads failing on some sites
+- Fix: Search briefly showing empty results while typing
+- Fix: CSV import upload error handling
+- Fix: Recurring task and reminder scheduling fixes
+- Fix: Minor stability and permission fixes
 
 = v2.2.0 (Date: October 12, 2026) =
 

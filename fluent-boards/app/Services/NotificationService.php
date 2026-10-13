@@ -2,6 +2,7 @@
 
 namespace FluentBoards\App\Services;
 
+use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Notification;
 use FluentBoards\App\Models\NotificationUser;
@@ -17,7 +18,7 @@ class NotificationService
         $page = max(1, (int) $page);
         $user = wp_get_current_user();
 
-        $query = Notification::where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
+        $query = $this->getAccessibleNotificationsQuery($user->ID)
             ->whereHas('users', function($q) use ($user) {
                 $q->where('user_id', $user->ID);
             });
@@ -49,7 +50,7 @@ class NotificationService
         if (!$userId) {
             throw new \Exception(esc_html__('You are not allowed to do that', 'fluent-boards'), 403);
         }
-        $unreadNotifications = Notification::where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
+        $unreadNotifications = $this->getAccessibleNotificationsQuery($userId)
             ->whereHas('users', function($q) use ($userId) {
                 $q->where('user_id', $userId)
                     ->whereNull('marked_read_at');
@@ -92,13 +93,46 @@ class NotificationService
     {
         $user = wp_get_current_user();
 
-        $unread_notifications = Notification::query()->where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
+        $unread_notifications = $this->getAccessibleNotificationsQuery($user->ID)
             ->whereHas('users', function($q) use ($user) {
                 $q->where('user_id', $user->ID)
                     ->whereNull('marked_read_at');
             });
 
         return $unread_notifications->count();
+    }
+
+    /**
+     * Historical recipients must still have access to the source board and current task.
+     * Keep legacy subtasks readable through their parent when their board_id is null.
+     */
+    private function getAccessibleNotificationsQuery($userId)
+    {
+        $query = Notification::where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION);
+        if (!$userId) {
+            return $query->where('id', 0);
+        }
+
+        $boardIds = Board::select('id');
+        if (!PermissionManager::isAdmin($userId)) {
+            $boardIds->whereIn('id', Relation::select('object_id')
+                ->where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
+                ->where('foreign_id', $userId));
+        }
+
+        return $query->whereIn('object_id', $boardIds)
+            ->where(function ($notifications) use ($boardIds) {
+                $notifications->whereNull('task_id')
+                    ->orWhereHas('task', function ($tasks) use ($boardIds) {
+                        $tasks->where(function ($ownedTasks) use ($boardIds) {
+                            $ownedTasks->whereIn('board_id', $boardIds)
+                                ->orWhere(function ($legacySubtasks) use ($boardIds) {
+                                    $legacySubtasks->whereNull('board_id')
+                                        ->whereIn('parent_id', Task::select('id')->whereIn('board_id', $boardIds));
+                                });
+                        });
+                    });
+            });
     }
 
     public function isCurrentUserObservingTask($task)
@@ -419,7 +453,7 @@ class NotificationService
         if (!$userId) {
             throw new \Exception(esc_html__('You are not allowed to do that', 'fluent-boards'), 403);
         }
-        $unreadNotifications = Notification::where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
+        $unreadNotifications = $this->getAccessibleNotificationsQuery($userId)
             ->whereHas('users', function($q) use ($userId) {
                 $q->where('user_id', $userId)
                     ->whereNull('marked_read_at');
@@ -442,7 +476,7 @@ class NotificationService
             return [];
         }
 
-        $rows = Notification::query()
+        $rows = $this->getAccessibleNotificationsQuery($userId)
             // Board/list views can return many tasks at once, so unread counts are
             // grouped in one query instead of issuing a count query per task.
             ->selectRaw('task_id, COUNT(*) as unread_count')
@@ -452,7 +486,6 @@ class NotificationService
                 '=',
                 'fbs_notification_users.notification_id'
             )
-            ->where('object_type', Constant::OBJECT_TYPE_BOARD_NOTIFICATION)
             ->where('fbs_notification_users.user_id', $userId)
             ->whereNull('fbs_notification_users.marked_read_at')
             ->whereIn('task_id', $taskIds)

@@ -3,7 +3,7 @@
 namespace FluentBoards\App\Services\Libs;
 
 use FluentBoards\Framework\Support\Arr;
-use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\UploadService;
 use Exception;
 
 class FileSystem
@@ -23,9 +23,6 @@ class FileSystem
     {
         $arr = explode('/', $file);
         $fileName = end($arr);
-        if ($this->subDir) {
-            $fileName = $this->subDir . DIRECTORY_SEPARATOR . $fileName;
-        }
         
         $filePath = $this->getDir() . DIRECTORY_SEPARATOR . $fileName;
         
@@ -57,20 +54,28 @@ class FileSystem
     }
 
     /**
-     * Prepare local storage with Apache rules or verified host-managed protection.
-     * Installing rules alone does not prove the HTTP server enforces them.
-     * Pass false to defer any required HTTP verification to cron.
+     * Legacy Core/Pro entry point: prepare storage, not a verified security boundary.
+     * Rule writes are best effort; $allowProbe is retained for caller compatibility.
      */
     public function _installUploadProtectionRules($allowProbe = true)
     {
-        // Protect the root even when called on a board-specific filesystem instance.
         $directory = (new static())->_getDir();
         if (!wp_mkdir_p($directory)) {
             return false;
         }
-
         $path = $directory . '/.htaccess';
-        $rules = [
+        if (!$this->hasUploadProtectionRules($path)) {
+            if (!function_exists('insert_with_markers')) {
+                require_once ABSPATH . 'wp-admin/includes/misc.php';
+            }
+            insert_with_markers($path, 'Fluent Boards', $this->uploadProtectionRules());
+        }
+        return true;
+    }
+
+    protected function uploadProtectionRules()
+    {
+        return [
             '<IfModule mod_authz_core.c>',
             'Require all denied',
             '</IfModule>',
@@ -79,90 +84,27 @@ class FileSystem
             'Deny from all',
             '</IfModule>',
         ];
-
-        // Hosts may lock security configuration while leaving upload storage writable.
-        if (is_file($path) && is_readable($path)) {
-            $contents = str_replace("\r\n", "\n", file_get_contents($path));
-            if (preg_match_all('/^# BEGIN Fluent Boards\n(.*?)^# END Fluent Boards$/ms', $contents, $blocks) === 1) {
-                $existingRules = array_values(array_filter(array_map('trim', explode("\n", $blocks[1][0])), function ($line) {
-                    return $line !== '' && strpos($line, '#') !== 0;
-                }));
-                if ($existingRules === $rules) {
-                    return true;
-                }
-            }
-        }
-
-        if (!function_exists('insert_with_markers')) {
-            require_once ABSPATH . 'wp-admin/includes/misc.php';
-        }
-
-        if (insert_with_markers($path, 'Fluent Boards', $rules)) {
-            return true;
-        }
-
-        // Unmarked, locked host rules and server-level restrictions need no rewrite.
-        return $this->_checkUploadProtection($allowProbe) === true;
     }
 
-    /**
-     * Probe direct access without login cookies using a harmless temporary file.
-     * Return true for denied access, false for exposure, or null when unverified.
-     * Pass false to read only the cache and schedule a missing check in cron.
-     */
+    protected function hasUploadProtectionRules($path)
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            return false;
+        }
+        $contents = str_replace("\r\n", "\n", file_get_contents($path));
+        if (preg_match_all('/^# BEGIN Fluent Boards\n(.*?)^# END Fluent Boards$/ms', $contents, $blocks) !== 1) {
+            return false;
+        }
+        $rules = array_values(array_filter(array_map('trim', explode("\n", $blocks[1][0])), function ($line) {
+            return $line !== '' && strpos($line, '#') !== 0;
+        }));
+        return $rules === $this->uploadProtectionRules();
+    }
+
+    /** Legacy adapter for older Pro callers; protection is no longer probed over HTTP. */
     public function _checkUploadProtection($allowProbe = true)
     {
-        $directory = (new static())->_getDir();
-        $uploads = wp_upload_dir();
-        $folder = apply_filters('fluent_boards/upload_folder_name', FLUENT_BOARDS_UPLOAD_DIR);
-        $url = trailingslashit($uploads['baseurl']) . trim($folder, '/');
-        $rulesPath = $directory . '/.htaccess';
-        $rulesHash = is_file($rulesPath) && is_readable($rulesPath) ? hash_file('sha256', $rulesPath) : '';
-        $cacheKey = Constant::UPLOAD_PROTECTION_CHECK_PREFIX . md5($directory . '|' . $url);
-        $cached = get_transient($cacheKey);
-        if (is_array($cached) && isset($cached['rules_hash']) && $cached['rules_hash'] === $rulesHash && array_key_exists('blocked', $cached)) {
-            return $cached['blocked'];
-        }
-
-        if (!$allowProbe) {
-            $hook = 'fluent_boards/check_upload_protection';
-            if (!wp_next_scheduled($hook)) {
-                wp_schedule_single_event(time(), $hook);
-            }
-            return null;
-        }
-
-        $blocked = null;
-        $filename = 'fbs-access-check-' . wp_generate_uuid4() . '.txt';
-        $path = trailingslashit($directory) . $filename;
-        $contents = wp_generate_uuid4();
-        try {
-            if (is_dir($directory) && is_writable($directory)
-                && file_put_contents($path, $contents, LOCK_EX) === strlen($contents)) {
-                // The upload URL comes from trusted site configuration, never request input.
-                $response = wp_remote_get($url . '/' . $filename, [
-                    'timeout' => 5,
-                    'redirection' => 0,
-                    'limit_response_size' => 1024,
-                    'headers' => ['Cache-Control' => 'no-cache'],
-                ]);
-                if (!is_wp_error($response)) {
-                    $status = wp_remote_retrieve_response_code($response);
-                    if (in_array($status, [403, 404], true)) {
-                        $blocked = true;
-                    } elseif ($status === 200 && wp_remote_retrieve_body($response) === $contents) {
-                        $blocked = false;
-                    }
-                }
-            }
-        } finally {
-            if (is_file($path)) {
-                wp_delete_file($path);
-            }
-        }
-
-        set_transient($cacheKey, ['rules_hash' => $rulesHash, 'blocked' => $blocked], 5 * MINUTE_IN_SECONDS);
-        return $blocked;
+        return null;
     }
 
     /**
@@ -261,40 +203,50 @@ class FileSystem
     public function _put($files)
     {
         if (!$this->_installUploadProtectionRules()) {
-            throw new Exception(__('Could not prepare upload-directory protection. Please ask your hosting provider to block direct file access and check directory permissions.', 'fluent-boards'));
+            throw new Exception(__('Could not create the upload directory. Please check directory permissions.', 'fluent-boards'));
         }
 
         if (!function_exists('wp_handle_upload')) {
             require_once(ABSPATH . 'wp-admin/includes/file.php');
         }
 
-        $this->overrideUploadDir();
-
         $uploadOverrides = [
             'test_form' => false,
-            // Accept the same allow-list FluentBoards validates against, so wp_handle_upload
-            // doesn't reject broader types (e.g. .json, .md) by extension.
-            'mimes'     => \FluentBoards\App\Services\UploadService::getAllowedMimeMap(),
+            'mimes' => UploadService::getAllowedMimeMap(),
         ];
-        $uploadedFiles = []; // Initialize the array
+        $uploadedFiles = [];
+        $files = is_object($files) ? [$files] : (array) $files;
 
-        if(is_object($files)) {
-            $files = [$files];
-        }
+        $this->_overrideUploadDir();
+        try {
+            foreach ($files as $file) {
+                $filesArray = $file->toArray();
+                $filesArray['tmp_name'] = $file->getRealPath();
+                $extraData = Arr::only($filesArray, ['name', 'size']);
+                if (empty($filesArray['error']) && is_file($filesArray['tmp_name'])) {
+                    $filesArray['size'] = filesize($filesArray['tmp_name']);
+                    $filesArray['size_in_bytes'] = $filesArray['size'];
+                    (new UploadService())->validateFile($filesArray);
+                }
+                $uploadsData = wp_handle_upload($filesArray, $uploadOverrides);
+                if (!empty($uploadsData['error']) || empty($uploadsData['file'])) {
+                    throw new Exception($uploadsData['error'] ?? __('File upload failed.', 'fluent-boards'));
+                }
 
-        foreach ((array)$files as $file) {
-
-            $filesArray = $file->toArray();
-
-            // tmp_name is the path to the uploaded file which is required for wp_handle_upload, new framework update
-            // changed the way to get the tmp_name Reference to line # 448 in File.php
-            $filesArray['tmp_name'] = $file->getRealPath();
-
-            $extraData = Arr::only($filesArray, ['name', 'size']);
-            $uploadsData = \wp_handle_upload($filesArray, $uploadOverrides);
-            // Add the full path to the file
-            $uploadsData['full_path'] = $this->_getAbsolutePathOfFile($uploadsData['file']);
-            $uploadedFiles[] = array_merge($extraData, $uploadsData);
+                // Keep WordPress's actual path; callers also expect a legacy bare filename.
+                $uploadsData['full_path'] = $uploadsData['file'];
+                $uploadsData['file'] = basename($uploadsData['file']);
+                $uploadedFiles[] = array_merge($extraData, $uploadsData);
+            }
+        } catch (Exception $exception) {
+            // The batch fails as a whole, so remove files this call already stored.
+            foreach ($uploadedFiles as $uploadedFile) {
+                wp_delete_file($uploadedFile['full_path']);
+            }
+            throw $exception;
+        } finally {
+            remove_filter('wp_handle_upload_prefilter', [$this, '_renameFileName']);
+            remove_filter('upload_dir', [$this, '_setCustomUploadDir']);
         }
 
         return $uploadedFiles;
@@ -324,17 +276,8 @@ class FileSystem
      */
     public function _overrideUploadDir()
     {
-        add_filter('wp_handle_upload_prefilter', function ($file) {
-            add_filter('upload_dir', [$this, '_setCustomUploadDir']);
-
-            add_filter('wp_handle_upload', function ($fileinfo) {
-                remove_filter('upload_dir', [$this, '_setCustomUploadDir']);
-                $fileinfo['file'] = basename($fileinfo['file']);
-                return $fileinfo;
-            });
-
-            return $this->_renameFileName($file);
-        });
+        add_filter('wp_handle_upload_prefilter', [$this, '_renameFileName']);
+        add_filter('upload_dir', [$this, '_setCustomUploadDir']);
     }
 
     /**
@@ -347,16 +290,14 @@ class FileSystem
         $fbsUploadDir = apply_filters('fluent_boards/upload_folder_name', FLUENT_BOARDS_UPLOAD_DIR);
 
         if ($this->subDir) {
-            $fbsUploadDir .= DIRECTORY_SEPARATOR . $this->subDir;
-            if (!is_dir($param['basedir'] . $fbsUploadDir)) {
-                // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Creating custom upload subdirectory during upload process, WP_Filesystem not initialized
-                @mkdir($param['basedir'] . $fbsUploadDir, 0755);
-            }
+            $fbsUploadDir .= '/' . $this->subDir;
         }
 
-        $param['url'] = $param['baseurl'] . DIRECTORY_SEPARATOR . $fbsUploadDir;
-
-        $param['path'] = $param['basedir'] . DIRECTORY_SEPARATOR . $fbsUploadDir;
+        $param['url'] = trailingslashit($param['baseurl']) . trim($fbsUploadDir, '/');
+        $param['path'] = trailingslashit($param['basedir']) . trim($fbsUploadDir, '/');
+        if (!wp_mkdir_p($param['path'])) {
+            $param['error'] = __('Could not create the upload directory.', 'fluent-boards');
+        }
 
         return $param;
     }
@@ -377,10 +318,16 @@ class FileSystem
 
     public function _deleteDir($dir)
     {
-        $dir = $this->getDir() . DIRECTORY_SEPARATOR . $dir;
-        if (is_dir($dir)) {
-            $this->deleteContents($dir);
+        $root = realpath($this->_getDir());
+        $path = $root ? $root . DIRECTORY_SEPARATOR . $dir : '';
+        $resolved = $path ? realpath($path) : false;
+        // Never remove the storage root, escape it, or follow a directory symlink.
+        if (!$root || !$resolved || is_link($path)
+            || strpos($resolved, $root . DIRECTORY_SEPARATOR) !== 0) {
+            return false;
         }
+
+        return is_dir($resolved) ? $this->deleteContents($resolved) : false;
     }
 
     /**
@@ -393,7 +340,7 @@ class FileSystem
     {
         $files = array_diff(scandir($dir), ['.', '..']);
         foreach ($files as $file) {
-            if(is_dir("$dir/$file")) {
+            if (!is_link("$dir/$file") && is_dir("$dir/$file")) {
                 // Recursively delete subdirectory
                 $this->deleteContents("$dir/$file");
             } else {

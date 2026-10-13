@@ -75,8 +75,14 @@ class ExternalPages
         if (ob_get_level()) {
             ob_end_clean();
         }
-        header("Content-Type: {$attachment->attachment_type}");
-        header("Content-Disposition: inline; filename=\"{$attachment->title}\"");
+        // Stored MIME values and titles may come from legacy or imported records.
+        $mime = wp_get_image_mime($filePath);
+        $safeImages = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'image/tiff', 'image/x-icon', 'image/heic'];
+        $inline = in_array($mime, $safeImages, true);
+        $filename = sanitize_file_name($attachment->title ?: basename($filePath));
+        header('Content-Type: ' . ($inline ? $mime : 'application/octet-stream'));
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . ($filename ?: 'attachment') . '"');
         // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile -- Serving binary file content directly to browser, WP_Filesystem not suitable for this use case
         readfile($filePath);
         die();

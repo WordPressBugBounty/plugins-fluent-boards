@@ -2,6 +2,8 @@
 
 namespace FluentBoards\App\Modules\MCP\Helpers;
 
+use DateTimeImmutable;
+use Exception;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
@@ -396,11 +398,11 @@ class MCPHelper
             return null;
         }
 
-        $timestamp = strtotime((string) $value);
-        if (!$timestamp) {
+        try {
+            // Stored wall times use the site timezone; explicit offsets remain authoritative.
+            return (new DateTimeImmutable((string) $value, wp_timezone()))->format('c');
+        } catch (Exception $e) {
             return (string) $value;
         }
-
-        return date('c', $timestamp);
     }
 }

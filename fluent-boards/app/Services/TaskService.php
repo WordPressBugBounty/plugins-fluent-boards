@@ -3004,8 +3004,8 @@ class TaskService
         }
         $settings = $clonedTask->settings;
         $settings['subtask_count'] = $clonedTask->subtasks()->count();
+        $settings['subtask_completed_count'] = $completedSubtasksCount;
         $clonedTask['settings'] = $settings;
-        $clonedTask->settings['subtask_completed_count'] = $completedSubtasksCount;
         $clonedTask->save();
     }
     private function cloneSubtaskGroups(Task $originalTask, Task $clonedTask): array
