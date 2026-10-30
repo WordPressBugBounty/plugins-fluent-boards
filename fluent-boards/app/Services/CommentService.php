@@ -34,7 +34,7 @@ class CommentService
     }
 
     /**
-     * Get paginated parent comments with users, images, and replies preloaded.
+     * Get paginated comments with users, images, replies and reaction summaries.
      */
     public function getComments($id, $per_page, $filter, $boardId = null)
     {
@@ -54,6 +54,8 @@ class CommentService
         foreach ($comments as $comment) {
             $comment->replies_count = count($comment->replies);
         }
+
+        (new CommentReactionService())->hydrate($comments);
 
         return $comments;
     }

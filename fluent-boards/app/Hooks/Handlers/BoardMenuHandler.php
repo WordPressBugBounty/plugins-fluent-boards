@@ -154,6 +154,15 @@ class BoardMenuHandler
                 'role'      => 'admin'
             ],
             [
+                'key'       => 'share_board',
+                'icon_name' => 'link',
+                'label'     => __('Share Board', 'fluent-boards'),
+                'type'      => 'default',
+                'position'  => 10.4,
+                'role'      => 'manager',
+                'pro'       => true
+            ],
+            [
                 'key'       => 'export',
                 'icon_name' => 'export',
                 'label'     => __('Export', 'fluent-boards'),

@@ -9,7 +9,7 @@
     } else {
         // No logo: a solid initial tile keeps the brand row visible when clients invert colors.
         $fluent_boards_initial = function_exists('mb_substr') ? mb_substr($fluent_boards_site_title, 0, 1) : substr($fluent_boards_site_title, 0, 1);
-        $fluent_boards_email_header = '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+        $fluent_boards_email_header = '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse: separate; border-spacing: 0;"><tr>'
             . '<td class="fbs_email_logo_tile" width="28" height="28" align="center" style="width: 28px; height: 28px; border-radius: 7px; background: #222530; color: #FFFFFF; font-size: 14px; font-weight: 700; line-height: 28px; text-align: center;">' . esc_html(strtoupper($fluent_boards_initial)) . '</td>'
             . '<td class="fbs_email_text" style="padding-left: 10px; color: #0E121B; font-size: 15px; font-weight: 600; line-height: 20px;">' . esc_html($fluent_boards_site_title) . '</td>'
             . '</tr></table>';

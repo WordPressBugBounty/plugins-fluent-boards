@@ -89,6 +89,10 @@ class Constant{
 
     const USER_RECENT_BOARDS = 'user_recent_boards';
     const USER_GLOBAL_NOTIFICATIONS = 'user_global_notifications';
+    const USER_NOTIFICATION_PAUSE = 'notification_pause_until';
+    const USER_BOARD_NOTIFICATION_PAUSE_PREFIX = 'board_notification_pause_until_';
+    const NOTIFICATION_PAUSE_INDEFINITE = -1;
+    const NOTIFICATION_PAUSE_DURATIONS = [0, 30, 60, 240, 1440];
 
     const OBJECT_TYPE_BOARD = 'board';
 
@@ -426,6 +430,8 @@ class Constant{
     const TASK_DESCRIPTION = 'task_description';
 
     const COMMENT_IMAGE = 'comment_image';
+    const COMMENT_REACTIONS_META_PREFIX = 'comment-reactions:';
+    const COMMENT_REACTION_LIMIT = 5; // different emoji per comment or reply
 
     const ATTACHMENT_UPLOAD_BOARD_ID = 'upload_board_id';
     const ATTACHMENT_UPLOAD_USER_ID = 'upload_user_id';

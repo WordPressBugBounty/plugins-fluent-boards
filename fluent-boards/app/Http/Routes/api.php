@@ -11,7 +11,7 @@ use FluentBoards\App\Http\Controllers\LabelController;
 use FluentBoards\App\Http\Controllers\MCPSettingsController;
 use FluentBoards\App\Http\Controllers\NotificationController;
 use FluentBoards\App\Http\Controllers\OptionsController;
-use FluentBoards\App\Http\Controllers\PublicBoardController;
+use FluentBoards\App\Http\Controllers\SharedTaskController;
 use FluentBoards\App\Http\Controllers\ReportController;
 use FluentBoards\App\Http\Controllers\StageController;
 use FluentBoards\App\Http\Controllers\TaskController;
@@ -117,6 +117,8 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->post('/crm-contact', [BoardController::class, 'updateAssociateCrmContact'])->int('board_id');
     $router->get('/crm-contacts', [BoardController::class, 'getAssociateCrmContacts'])->int('board_id');
 
+    $router->get('/notification-pause', [NotificationController::class, 'getNotificationPause'])->int('board_id');
+    $router->put('/notification-pause', [NotificationController::class, 'updateNotificationPause'])->int('board_id');
     $router->get('/notification-settings', [NotificationController::class, 'getBoardNotificationSettings'])->int('board_id');
     $router->put('/update-notification-settings', [NotificationController::class, 'updateBoardNotificationSettings'])->int('board_id');
 
@@ -128,8 +130,6 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->put('/archive-board', [BoardController::class, 'archiveBoard'])->int('board_id');
     $router->put('/restore-board', [BoardController::class, 'restoreBoard'])->int('board_id');
     $router->get('/board-menu-items', [BoardController::class, 'getBoardMenuItems'])->int('board_id');
-    $router->get('/public-access-settings', [BoardController::class, 'getPublicAccessSettings'])->int('board_id');
-    $router->put('/toggle-public-access', [BoardController::class, 'togglePublicAccess'])->int('board_id');
 
 
     //# Tasks under a single board routes
@@ -157,6 +157,9 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->delete('/{task_id}', [TaskController::class, 'deleteTask'])->int('board_id')->int('task_id');
         $router->put('/{task_id}/move-to-next-stage', [TaskController::class, 'moveTaskToNextStage'])->int('board_id')->int('task_id');
         $router->put('/{task_id}/pin', [TaskController::class, 'toggleTaskPinned'])->int('board_id')->int('task_id');
+        $router->get('/{task_id}/share-link', [TaskController::class, 'getShareLink'])->int('board_id')->int('task_id');
+        $router->put('/{task_id}/share-link', [TaskController::class, 'updateShareLink'])->int('board_id')->int('task_id');
+        $router->delete('/{task_id}/share-link', [TaskController::class, 'deleteShareLink'])->int('board_id')->int('task_id');
 
         // AI task intelligence (summarize / subtasks / suggestions) — board-scoped.
         $router->post('/{task_id}/ai-assist', [AiController::class, 'taskAssist'])->int('board_id')->int('task_id');
@@ -165,6 +168,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         $router->post('/{task_id}/ai-apply-suggestions', [AiController::class, 'applySuggestions'])->int('board_id')->int('task_id');
 
         // Comments Routes Area
+        $router->post('/{task_id}/comments/{comment_id}/reactions', [CommentController::class, 'setReaction'])->int('board_id')->int('task_id')->int('comment_id');
         $router->get('/{task_id}/comments', [CommentController::class, 'getComments'])->int('board_id')->int('task_id');
         $router->post('/{task_id}/comments', [CommentController::class, 'create'])->int('board_id')->int('task_id');
         $router->put('/comments/{comment_id}', [CommentController::class, 'update'])->int('board_id')->int('comment_id');
@@ -264,6 +268,8 @@ $router->prefix('member/{id}')->withPolicy('UserPolicy')->group(function ($route
 
 // Notification routes
 $router->prefix('notifications')->withPolicy('UserPolicy')->group(function ($router) {
+    $router->get('/pause', [NotificationController::class, 'getNotificationPause']);
+    $router->put('/pause', [NotificationController::class, 'updateNotificationPause']);
     $router->get('/', [NotificationController::class, 'getAllNotifications']);
     $router->get('/unread', [NotificationController::class, 'getAllUnreadNotifications']);
     $router->get('/unread-count', [NotificationController::class, 'newNotificationNumber']);
@@ -274,12 +280,12 @@ $router->prefix('contacts/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->get('/', [TaskController::class, 'getAssociatedCrmContacts'])->int('board_id');
 });
 
-$router->prefix('public/boards/{board_id}')->withPolicy('PublicBoardPolicy')->group(function ($router) {
-    $router->get('/', [PublicBoardController::class, 'find'])->int('board_id');
-    $router->get('/tasks', [PublicBoardController::class, 'getTasksByBoard'])->int('board_id');
-    $router->get('/tasks/by-stage', [PublicBoardController::class, 'getTasksByBoardStage'])->int('board_id');
-    $router->get('/tasks/stage-page', [PublicBoardController::class, 'getStageTasksPage'])->int('board_id');
+// Task share links: anyone with the token, no WordPress account. Read-only.
+$router->prefix('shared-task')->withPolicy('SharedTaskPolicy')->group(function ($router) {
+    $router->get('/', [SharedTaskController::class, 'findSharedTask']);
+    $router->get('/comments', [SharedTaskController::class, 'getSharedTaskComments']);
 });
+
 
 // User utility routes
 $router->withPolicy('UserPolicy')->group(function ($router) {

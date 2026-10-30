@@ -15,7 +15,8 @@
 <style>
     :root { color-scheme: light dark; supported-color-schemes: light dark; }
     body { margin: 0; padding: 0; width: 100% !important; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
-    table { border-collapse: collapse; }
+    /* Collapsed borders suppress rounded corners on tables and their cells. */
+    table { border-collapse: separate; border-spacing: 0; }
     img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
     p { margin: 0; }
     a { color: #335CFF; }
@@ -25,7 +26,7 @@
     .fbs_email_url { word-break: break-all; overflow-wrap: anywhere; }
 
     @media only screen and (max-width: 480px) {
-        .fbs_email_outer { padding: 24px 12px !important; }
+        .fbs_email_outer_pad { padding: 24px 12px !important; }
         .fbs_email_card_pad { padding: 20px !important; }
         .fbs_email_heading { font-size: 20px !important; line-height: 28px !important; }
         .fbs_email_kv_label { width: 80px !important; }

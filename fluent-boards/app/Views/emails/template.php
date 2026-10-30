@@ -26,10 +26,11 @@ $fluent_boards_font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica,
 <?php if (!empty($pre_header)): ?>
     <div style="display: none; max-height: 0; max-width: 0; overflow: hidden; opacity: 0; mso-hide: all; font-size: 1px; line-height: 1px; color: #F5F7FA;"><?php echo esc_html($pre_header); ?>&#8203;&nbsp;&#8203;&nbsp;&#8203;&nbsp;&#8203;&nbsp;&#8203;&nbsp;&#8203;&nbsp;</div>
 <?php endif; ?>
-<table role="presentation" class="fbs_email_outer" width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #F5F7FA; padding: 40px 16px;">
+<table role="presentation" class="fbs_email_outer" width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #F5F7FA; border-collapse: separate; border-spacing: 0;">
     <tr>
-        <td align="center">
-            <table role="presentation" class="fbs_email_notification" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 560px; width: 100%; font-family: <?php echo esc_attr($fluent_boards_font); ?>;">
+        <?php // Keep outer spacing on a cell: table padding is ignored in collapsed layouts. ?>
+        <td class="fbs_email_outer_pad" align="center" style="padding: 40px 16px;">
+            <table role="presentation" class="fbs_email_notification" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: separate; border-spacing: 0; max-width: 560px; width: 100%; font-family: <?php echo esc_attr($fluent_boards_font); ?>;">
                 <tr>
                     <td align="left">
                         <?php include(FLUENT_BOARDS_PLUGIN_PATH . 'app/Views/emails/common-header.php'); ?>

@@ -17,6 +17,7 @@ use FluentBoards\App\Services\NotificationService;
 use FluentBoards\App\Services\UploadService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\App\Services\PermissionManager;
+use FluentBoards\App\Services\TaskShareService;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoardsPro\App\Services\AttachmentService;
 use FluentCrm\App\Models\Subscriber;
@@ -27,12 +28,15 @@ class TaskController extends Controller
 
     private NotificationService $notificationService;
 
-    public function __construct(TaskService $taskService, NotificationService $notificationService)
+    private TaskShareService $taskShareService;
+
+    public function __construct(TaskService $taskService, NotificationService $notificationService, TaskShareService $taskShareService)
     {
 
         parent::__construct();
         $this->taskService = $taskService;
         $this->notificationService = $notificationService;
+        $this->taskShareService = $taskShareService;
     }
 
     public function getTopTasksForBoards()
@@ -120,6 +124,7 @@ class TaskController extends Controller
         foreach ($stageIds as $stageId) {
             $stageTasks = $this->makeStageTasksQuery($board_id, $stageId, $includeArchived)
                 ->orderBy('position', 'ASC')
+                ->orderBy('id', 'ASC')
                 ->limit(20)
                 ->get();
 
@@ -141,6 +146,8 @@ class TaskController extends Controller
                 'has_more_after' => $hasMoreAfter,
                 'start_cursor' => $startCursor,
                 'end_cursor' => $endCursor,
+                'start_cursor_id' => $stageTasks->count() ? (int) $stageTasks->first()->id : null,
+                'end_cursor_id' => $stageTasks->count() ? (int) $stageTasks->last()->id : null,
             ];
         }
 
@@ -243,6 +250,7 @@ class TaskController extends Controller
         $limit = $request->getSafe('limit', 'intval', 20);
         $direction = $request->getSafe('direction', 'sanitize_text_field', 'next');
         $cursor = $request->getSafe('cursor', 'floatval');
+        $cursorId = $request->getSafe('cursor_id', 'absint', 0);
 
         if (!$stageId) {
             return $this->sendError(esc_html__('Invalid Stage', 'fluent-boards'), 400);
@@ -265,15 +273,12 @@ class TaskController extends Controller
         $stageTasksQuery = $this->makeStageTasksQuery($board_id, $stageId, $includeArchived);
 
         if ($cursor !== null) {
-            if ($direction === 'prev') {
-                $stageTasksQuery->where('position', '<', $cursor);
-            } else {
-                $stageTasksQuery->where('position', '>', $cursor);
-            }
+            $stageTasksQuery->wherePositionCursor($cursor, $cursorId, $direction);
         }
 
         $stageTasks = $stageTasksQuery
             ->orderBy('position', $direction === 'prev' ? 'DESC' : 'ASC')
+            ->orderBy('id', $direction === 'prev' ? 'DESC' : 'ASC')
             ->limit($limit + 1)
             ->get();
 
@@ -283,7 +288,7 @@ class TaskController extends Controller
         }
 
         if ($direction === 'prev') {
-            $stageTasks = $stageTasks->sortBy('position')->values();
+            $stageTasks = $stageTasks->reverse()->values();
         }
 
         $this->processTasks($stageTasks, $board, [
@@ -294,19 +299,21 @@ class TaskController extends Controller
 
         $startCursor = $stageTasks->count() ? (float) $stageTasks->first()->position : null;
         $endCursor = $stageTasks->count() ? (float) $stageTasks->last()->position : null;
+        $startCursorId = $stageTasks->count() ? (int) $stageTasks->first()->id : null;
+        $endCursorId = $stageTasks->count() ? (int) $stageTasks->last()->id : null;
 
         $hasMoreBefore = false;
         $hasMoreAfter = false;
 
         if ($startCursor !== null) {
             $hasMoreBefore = $this->makeStageTasksQuery($board_id, $stageId, $includeArchived)
-                ->where('position', '<', $startCursor)
+                ->wherePositionCursor($startCursor, $startCursorId, 'prev')
                 ->exists();
         }
 
         if ($endCursor !== null) {
             $hasMoreAfter = $this->makeStageTasksQuery($board_id, $stageId, $includeArchived)
-                ->where('position', '>', $endCursor)
+                ->wherePositionCursor($endCursor, $endCursorId, 'next')
                 ->exists();
         }
 
@@ -322,6 +329,8 @@ class TaskController extends Controller
                 'has_more_after' => $hasMoreAfter,
                 'start_cursor' => $startCursor,
                 'end_cursor' => $endCursor,
+                'start_cursor_id' => $startCursorId,
+                'end_cursor_id' => $endCursorId,
             ],
         ];
     }
@@ -566,16 +575,6 @@ class TaskController extends Controller
 
     }
 
-    public function getStageType(Request $request)
-    {
-        $stage_id = $request->getSafe('stage_id', 'intval');
-        $stage = Stage::findOrFail($stage_id);
-
-        return [
-            'stage' => $stage,
-        ];
-    }
-
     public function getActivities(Request $request, $board_id, $task_id)
     {
         $board_id = absint($board_id);
@@ -784,10 +783,8 @@ class TaskController extends Controller
             $value = $request->get('value');
             if (is_array($value)) {
                 $action = isset($value['action']) ? sanitize_text_field($value['action']) : 'start';
-                $value = [
-                    'userId' => isset($value['userId']) ? absint($value['userId']) : 0,
-                    'action' => in_array($action, ['start', 'stop'], true) ? $action : 'start',
-                ];
+                // Watching is self-service; any client-supplied userId is ignored.
+                $value = in_array($action, ['start', 'stop'], true) ? $action : 'start';
             } else {
                 $value = sanitize_text_field($value);
             }
@@ -959,6 +956,44 @@ class TaskController extends Controller
             'message'      => __('Dates have been updated', 'fluent-boards'),
             'updatedTasks' => $this->taskService->getLastOneMinuteUpdatedTasks($board_id),
         ];
+    }
+
+    /**
+     * Current share-link state (enabled, url, settings) for a board task.
+     */
+    public function getShareLink($board_id, $task_id)
+    {
+        $task = Task::where('board_id', absint($board_id))->findOrFail(absint($task_id));
+        $share = $this->taskShareService->getShare($task);
+
+        return $this->sendSuccess($share, 200);
+    }
+
+    /**
+     * Create the task's share link or update what it shows. The token survives setting changes.
+     */
+    public function updateShareLink(Request $request, $board_id, $task_id)
+    {
+        $task = Task::where('board_id', absint($board_id))->whereNull('archived_at')->findOrFail(absint($task_id));
+        $settings = $request->get('settings', []);
+        $settings = is_array($settings) ? $settings : [];
+        $share = $this->taskShareService->saveShare($task, $settings);
+        $share['message'] = __('Share link has been updated', 'fluent-boards');
+
+        return $this->sendSuccess($share, 200);
+    }
+
+    /**
+     * Disable the share link. Sharing again issues a new URL.
+     */
+    public function deleteShareLink($board_id, $task_id)
+    {
+        $task = Task::where('board_id', absint($board_id))->findOrFail(absint($task_id));
+
+        $share = $this->taskShareService->revokeShare($task);
+        $share['message'] = __('Share link has been disabled', 'fluent-boards');
+
+        return $this->sendSuccess($share, 200);
     }
 
     /**
@@ -1366,13 +1401,7 @@ class TaskController extends Controller
      */
     private function currentUserCanReadCrmContacts()
     {
-        $permissionManager = 'FluentCrm\\App\\Services\\PermissionManager';
-
-        if (!class_exists($permissionManager)) {
-            return false;
-        }
-
-        return (bool) $permissionManager::currentUserCan('fcrm_read_contacts');
+        return Helper::canViewCrmContacts();
     }
 
     /**
@@ -1464,7 +1493,7 @@ class TaskController extends Controller
             }
 
             $settings = $task->settings;
-            $this->taskService->deleteTaskCoverImage($settings);
+            $this->taskService->deleteTaskCoverImage($task);
             $publicUrl = (new CommentService())->createPublicUrl($fileUploadedData, $board_id);
 
             $settings['cover'] = [
@@ -1491,7 +1520,7 @@ class TaskController extends Controller
         try {
             $task = $this->taskService->findTaskOnBoard($task_id, $board_id);
             $settings = $task->settings;
-            $this->taskService->deleteTaskCoverImage($settings);
+            $this->taskService->deleteTaskCoverImage($task);
             unset($settings['cover']);
             $task->settings = $settings;
             $task->save();

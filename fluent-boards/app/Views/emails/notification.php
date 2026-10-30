@@ -62,7 +62,7 @@ ob_start();
 <?php endif; ?>
 
 <?php if (!empty($comment)): ?>
-    <table role="presentation" class="fbs_email_inset" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top: 24px; background: #F5F7FA; border: 1px solid #E1E4EA; border-radius: 10px;">
+    <table role="presentation" class="fbs_email_inset" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse: separate; border-spacing: 0; margin-top: 24px; background: #F5F7FA; border: 1px solid #E1E4EA; border-radius: 10px;">
         <?php if (!empty($parent_comment)): ?>
             <tr>
                 <td class="fbs_email_border" style="padding: 14px 16px; border-bottom: 1px solid #E1E4EA;">
@@ -100,7 +100,7 @@ ob_start();
     $fluent_boards_title_color = !empty($task_card['muted']) ? '#525866' : '#0E121B';
     $fluent_boards_title_class = !empty($task_card['muted']) ? 'fbs_email_text2' : 'fbs_email_text';
     ?>
-    <table role="presentation" class="fbs_email_border" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top: 24px; border: 1px solid #E1E4EA; border-radius: 10px;">
+    <table role="presentation" class="fbs_email_border" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse: separate; border-spacing: 0; margin-top: 24px; border: 1px solid #E1E4EA; border-radius: 10px;">
         <tr>
             <td style="padding: 18px 20px;">
                 <?php if (!empty($task_card['parent_title'])): ?>
@@ -135,7 +135,7 @@ ob_start();
 <?php endif; ?>
 
 <?php if (!empty($change['to'])): ?>
-    <table role="presentation" class="fbs_email_inset" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top: 24px; background: #F5F7FA; border: 1px solid #E1E4EA; border-radius: 10px;">
+    <table role="presentation" class="fbs_email_inset" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse: separate; border-spacing: 0; margin-top: 24px; background: #F5F7FA; border: 1px solid #E1E4EA; border-radius: 10px;">
         <tr>
             <td style="padding: 14px 16px; font-size: 13px; line-height: 20px;">
                 <?php if (!empty($change['from'])): ?>

@@ -59,25 +59,34 @@ class Init
             true
         );
 
-        wp_localize_script(
-            $handle,
-            'fluentBoardsCrmContactApp',
-            [
-                'slug'             => $slug,
-                'nonce'            => wp_create_nonce($slug),
-                'rest'             => $this->getRestInfo($app),
-                'ajaxurl'          => admin_url('admin-ajax.php'),
-                'asset_url'        => $assets,
-                'trans'            => TransStrings::getStrings(),
-                'base_url'         => fluent_boards_page_url(),
-                'admin_app_url'    => admin_url('admin.php?page=fluent-boards#/'),
-                'admin_url'        => admin_url('admin.php'),
-                'render_in'        => is_admin() ? 'admin' : 'front',
-                'has_pro'          => defined('FLUENT_BOARDS_PRO_VERSION'),
-                'advanced_modules' => fluent_boards_get_pref_settings(),
-                'features'         => fluent_boards_get_features_config(),
-            ]
-        );
+        $vars = [
+            'date_format'      => get_option('date_format', 'F j, Y'),
+            'time_format'      => get_option('time_format', 'g:i a'),
+            'locale'           => get_locale(),
+            'slug'             => $slug,
+            'nonce'            => wp_create_nonce($slug),
+            'rest'             => $this->getRestInfo($app),
+            'ajaxurl'          => admin_url('admin-ajax.php'),
+            'asset_url'        => $assets,
+            'trans'            => TransStrings::getStrings(),
+            'base_url'         => fluent_boards_page_url(),
+            'admin_app_url'    => admin_url('admin.php?page=fluent-boards#/'),
+            'admin_url'        => admin_url('admin.php'),
+            'render_in'        => is_admin() ? 'admin' : 'front',
+            'has_pro'          => defined('FLUENT_BOARDS_PRO_VERSION'),
+            'advanced_modules' => fluent_boards_get_pref_settings(),
+            'features'         => fluent_boards_get_features_config(),
+        ];
+
+        /**
+         * Filters the complete CRM contact application configuration, including translations.
+         * Contact selection happens client-side, so no contact is available at enqueue time.
+         *
+         * @param array $vars Localized application variables.
+         * @param object $app Fluent Boards application instance.
+         */
+        $vars = apply_filters('fluent_boards/crm_contact_app_vars', $vars, $app);
+        wp_localize_script($handle, 'fluentBoardsCrmContactApp', $vars);
     }
 
     public function registerAutomationFunnels()

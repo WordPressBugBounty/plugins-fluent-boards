@@ -141,6 +141,7 @@ class DescriptionMarkdownConverter
         return $out;
     }
 
+    /** Render HTML nodes as Markdown, keeping table cells as separate text blocks. */
     private static function renderNode(\DOMNode $node): string
     {
         if ($node->nodeType === XML_TEXT_NODE) {
@@ -164,6 +165,11 @@ class DescriptionMarkdownConverter
 
             case 'p':
             case 'div':
+            // Fluent Forms {all_data} uses table rows for field labels and values.
+            case 'table':
+            case 'tr':
+            case 'th':
+            case 'td':
                 $inner = trim(self::renderChildren($node));
                 return $inner === '' ? '' : "\n\n" . $inner . "\n\n";
 

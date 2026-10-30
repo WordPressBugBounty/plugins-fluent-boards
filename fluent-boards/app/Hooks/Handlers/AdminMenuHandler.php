@@ -362,6 +362,14 @@ class AdminMenuHandler
         do_action('fluent_boards/after_enqueue_assets', $app);
     }
 
+    /**
+     * General settings store switches as booleans or 'true'/'false' strings.
+     */
+    private function isTruthySetting($value)
+    {
+        return $value === true || $value === 'true' || $value === 1 || $value === '1';
+    }
+
     public function getAddonVars($app)
     {
         $currentUser = get_user_by('ID', get_current_user_id());
@@ -386,6 +394,7 @@ class AdminMenuHandler
             'can_manage_crm_contacts'         => $this->canManageCrmContacts(),
             'fluent_roadmap_exists'           => !defined('FLUENT_ROADMAP') ? false : true,
             'has_pro'                         => !!defined('FLUENT_BOARDS_PRO_VERSION'),
+            'task_dependencies_in_modal'      => $this->isTruthySetting(Arr::get($generalSettings, 'task_dependencies_in_modal')),
             'upgrade_url'                     => fluent_boards_get_upgrade_url(),
             'board_solid_colors'              => Constant::BOARD_BACKGROUND_DEFAULT_SOLID_COLORS,
             'board_gradient_colors'           => Constant::BOARD_BACKGROUND_DEFAULT_GRADIENT_COLORS,
@@ -409,6 +418,7 @@ class AdminMenuHandler
             'site_url'                        => site_url('/'),
             // 'server_time'                     => (new DateTime('now'))->format('Y-m-d H:i:s P'), // Server's default timezone
             'server_time'                       => (new DateTime('now', wp_timezone()))->format('Y-m-d H:i:s P'), // wordpress site time 
+            'site_timezone' => wp_timezone_string(),
             'server_time_zone'                => (new DateTime('now', wp_timezone()))->format( 'P'),
             'utc_offset'                      => current_time('timestamp') - strtotime(gmdate('Y-m-d H:i:s')),
             'trans'                           => TransStrings::getStrings(),
@@ -422,6 +432,10 @@ class AdminMenuHandler
             'advanced_modules'                => fluent_boards_get_pref_settings(),
             'crm_base_url'                    => defined('FLUENTCRM') ? fluentcrm_menu_url_base() : '',
             'start_of_week'                   => intval(get_option('start_of_week', 0)),
+            'date_format'                     => get_option('date_format', 'F j, Y'),
+            'locale'                          => get_locale(),
+            'crm_contact_statuses'            => function_exists('fluentcrm_subscriber_statuses') ? array_column(fluentcrm_subscriber_statuses(true), 'title', 'id') : [],
+            'crm_contact_types'               => function_exists('fluentcrm_contact_types') ? fluentcrm_contact_types() : [],
             'time_format'                     => get_option('time_format', 'g:i'),
             'priorities'                      => apply_filters('fluent_boards/task_priorities', $this->getDefaultPriorities()),
             'wpContentCss' => add_query_arg(
@@ -589,18 +603,6 @@ class AdminMenuHandler
             _.noConflict();
         }
         ";
-    }
-    public function singleBoardRender()
-    {
-        $config = App::getInstance('config');
-
-        $slug = $config->get('app.slug');
-
-
-
-        App::make('view')->render('admin.single_board_shortcode', [
-            'slug'         => $slug,
-        ]);
     }
 
 }

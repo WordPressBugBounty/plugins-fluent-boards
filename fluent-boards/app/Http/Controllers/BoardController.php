@@ -21,7 +21,6 @@ use FluentBoards\App\Services\FolderService;
 use FluentBoards\App\Services\UploadService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\App\Services\PermissionManager;
-use FluentBoards\App\Services\PublicAccessService;
 use FluentBoards\App\Hooks\Handlers\BoardHandler;
 use FluentBoards\App\Hooks\Handlers\BoardMenuHandler;
 use FluentBoards\App\Services\LabelService;
@@ -387,8 +386,8 @@ class BoardController extends Controller
                 $this->stageService->createDefaultStages($board);
             }
 
-            // if board is created from crm contact
-            if (isset($boardData['crm_contact_id'])) {
+            // if board is created from crm contact; linking needs FluentCRM read access, as on tasks
+            if (!empty($boardData['crm_contact_id']) && Helper::canViewCrmContacts()) {
                 $this->boardService->updateAssociateMember($boardData['crm_contact_id'], $board->id);
             }
 
@@ -1126,6 +1125,11 @@ class BoardController extends Controller
     public function updateAssociateCrmContact(Request $request, $board_id)
     {
         $value = $request->getSafe('value');
+        if (!empty($value) && !Helper::canViewCrmContacts()) {
+            return $this->sendError([
+                'message' => __('You do not have permission to link CRM contacts', 'fluent-boards'),
+            ], 403);
+        }
         $this->boardService->updateAssociateMember($value, $board_id);
 
         return $this->sendSuccess([
@@ -1497,43 +1501,6 @@ class BoardController extends Controller
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 500);
         }
-    }
-
-    public function getPublicAccessSettings($board_id)
-    {
-        $board_id = absint($board_id);
-        $board = Board::findOrFail($board_id);
-
-        $enabled = (bool) $board->getMetaByKey('public_access_enabled');
-        $shortcode = $enabled ? '[fluent_board_public id="' . $board_id . '"]' : '';
-
-        return $this->sendSuccess([
-            'enabled'   => $enabled,
-            'shortcode' => $shortcode,
-        ], 200);
-    }
-
-    public function togglePublicAccess(Request $request, $board_id)
-    {
-        $board_id = absint($board_id);
-        $board = Board::findOrFail($board_id);
-
-        $enabled = filter_var(
-            $request->getSafe('enabled', 'sanitize_text_field', false),
-            FILTER_VALIDATE_BOOLEAN
-        );
-
-        $board->updateMeta('public_access_enabled', $enabled ? '1' : '');
-
-        $shortcode = $enabled ? '[fluent_board_public id="' . $board_id . '"]' : '';
-
-        return $this->sendSuccess([
-            'message'   => $enabled
-                ? __('Public access has been enabled', 'fluent-boards')
-                : __('Public access has been disabled', 'fluent-boards'),
-            'enabled'   => $enabled,
-            'shortcode' => $shortcode,
-        ], 200);
     }
 
     /**

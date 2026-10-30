@@ -29,3 +29,17 @@ $restLocaleHandler = new RestLocaleHandler(
 );
 $app->addFilter('rest_request_before_callbacks', [$restLocaleHandler, 'switchToUserLocale'], 1, 3);
 $app->addFilter('rest_request_after_callbacks', [$restLocaleHandler, 'restoreLocale'], PHP_INT_MAX, 3);
+
+// Public board and task share responses: never cached or indexed, so turning access off takes effect at once.
+$app->addFilter('rest_post_dispatch', function ($response, $server, $request) {
+    $route = (string)$request->get_route();
+    if ($response instanceof \WP_REST_Response && preg_match('#^/fluent-boards/v2/(public/boards|shared-task)(/|$)#', $route)) {
+        foreach (wp_get_nocache_headers() as $name => $value) {
+            $response->header($name, $value);
+        }
+        $response->header('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+        $response->header('X-Robots-Tag', 'noindex, nofollow');
+        $response->header('Referrer-Policy', 'no-referrer');
+    }
+    return $response;
+}, 10, 3);

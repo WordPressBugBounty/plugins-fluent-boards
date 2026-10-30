@@ -93,7 +93,8 @@ class ContactAddedBoardTrigger extends BaseTrigger
         $board = $originalArgs[0];
         $contactId = $originalArgs[1];
 
-        $subscriber = Helper::crm_contact($contactId);
+        // Automations run on the system's behalf, not the acting user's CRM role.
+        $subscriber = Helper::crm_contact($contactId, false);
 
 
         $willProcess = $this->isProcessable($funnel, $board,  $subscriber);

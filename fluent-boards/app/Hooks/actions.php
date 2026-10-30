@@ -4,6 +4,7 @@ if (!defined('ABSPATH')) exit;
 
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\Libs\FileSystem;
+use FluentBoardsPro\App\Hooks\Handlers\ExternalPages as ProExternalPages;
 
 /**
  * All registered action's handlers should be in app\Hooks\Handlers,
@@ -172,7 +173,22 @@ if(isset($_GET['fbs']) && $_GET['fbs'] == 1) {
     // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public routing logic, security validated in handler
     if(isset($_GET['route']) && ($_GET['route'] == 'task')) {
         add_action('init', function() {
-            (new \FluentBoardsPro\App\Hooks\Handlers\ExternalPages())->handleTaskWebhook();
+            if (!class_exists(ProExternalPages::class)) {
+                wp_send_json_error([
+                    'message' => __('Task webhook is unavailable.', 'fluent-boards'),
+                    'type'    => 'webhook_unavailable'
+                ], 404);
+                return;
+            }
+
+            (new ProExternalPages())->handleTaskWebhook();
+        });
+    }
+
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public share page, access validated by the share token in handler
+    if(isset($_GET['fbs_shared_task'])) {
+        add_action('init', function() {
+            (new \FluentBoards\App\Hooks\Handlers\ExternalPages())->view_shared_task();
         });
     }
 

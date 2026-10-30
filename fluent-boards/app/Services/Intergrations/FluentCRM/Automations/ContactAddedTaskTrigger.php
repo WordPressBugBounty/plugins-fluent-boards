@@ -93,7 +93,8 @@ class ContactAddedTaskTrigger extends BaseTrigger
     {
         $task = $originalArgs[0];
 
-        $subscriber = Helper::crm_contact($task->crm_contact_id);
+        // Automations run on the system's behalf, not the acting user's CRM role.
+        $subscriber = Helper::crm_contact($task->crm_contact_id, false);
 
         $willProcess = $this->isProcessable($funnel, $task,  $subscriber);
 

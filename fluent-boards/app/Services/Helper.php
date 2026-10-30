@@ -164,8 +164,11 @@ class Helper
             'is_image'        => 'rest_sanitize_boolean',
             'color'           => 'sanitize_text_field', // sanitize_hex_color doesn't work when color code is greater than 6 characters
             'reset'           => 'rest_sanitize_boolean',
-            'created_by'      => 'intval',
         ];
+
+        // Ownership is assigned by the server; a client-supplied creator would make
+        // another user the board admin.
+        unset($data['created_by']);
 
         return self::sanitizeData($data, $fieldMaps);
     }
@@ -350,13 +353,42 @@ class Helper
     }
 
     /** Format a CRM contact, avoiding a database lookup for unassociated tasks. */
-    public static function crm_contact($id)
+    /**
+     * Whether the current user may read FluentCRM contact data through Fluent Boards.
+     *
+     * Board membership alone must not expose CRM records; FluentCRM's own contact
+     * permission is the boundary.
+     */
+    public static function canViewCrmContacts()
+    {
+        $permissionManager = 'FluentCrm\\App\\Services\\PermissionManager';
+
+        if (!defined('FLUENTCRM') || !class_exists($permissionManager)) {
+            return false;
+        }
+
+        return (bool) $permissionManager::currentUserCan('fcrm_read_contacts');
+    }
+
+    /**
+     * Serialize a FluentCRM contact for Boards responses.
+     *
+     * @param int  $id
+     * @param bool $checkPermission false only for internal callers that act on
+     *                              behalf of the system (automations, cron), never
+     *                              for data returned to the browser.
+     */
+    public static function crm_contact($id, $checkPermission = true)
     {
         if (!defined('FLUENTCRM')) {
             return '';
         }
 
         if (!$id) {
+            return null;
+        }
+
+        if ($checkPermission && !self::canViewCrmContacts()) {
             return null;
         }
 

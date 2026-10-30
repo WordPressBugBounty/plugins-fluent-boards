@@ -5,7 +5,9 @@ namespace FluentBoards\App\Hooks\Handlers;
 use FluentBoards\App\Models\CommentImage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Services\AttachmentAccessService;
+use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\PermissionManager;
+use FluentBoards\App\Services\TaskShareService;
 use FluentBoards\App\Services\Libs\FileSystem;
 
 class ExternalPages
@@ -58,6 +60,41 @@ class ExternalPages
         }
 
         $this->serveLocalAttachment($attachment, $filePath);
+    }
+
+    /**
+     * Standalone read-only page for a task share link (?fbs=1&fbs_shared_task=TOKEN).
+     * Rendered outside the theme; the token alone grants access, no WordPress account involved.
+     */
+    public function view_shared_task()
+    {
+        nocache_headers();
+        header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+        // The token is in the URL: never leak it to sites linked from the task, never index the page.
+        header('Referrer-Policy: no-referrer');
+        header('X-Robots-Tag: noindex, nofollow');
+
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only page; the share token is the credential
+        $token = isset($_GET['fbs_shared_task']) && is_string($_GET['fbs_shared_task'])
+            ? sanitize_text_field(wp_unslash($_GET['fbs_shared_task'])) : '';
+
+        $shared = (new TaskShareService())->findSharedTask($token);
+        status_header($shared ? 200 : 404);
+
+        if ($shared) {
+            (new ShortcodeHandler())->enqueuePublicAssets();
+        }
+
+        // The page is printed outside the theme, so wp_enqueue_scripts never runs and core never
+        // unhooks its deprecated emoji printer (WP 6.4+); it would emit a deprecation notice.
+        remove_action('wp_print_styles', 'print_emoji_styles');
+
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- View escapes its own output
+        echo Helper::loadView('frontend.shared_task', [
+            'token' => $shared ? $token : '',
+            'title' => $shared ? $shared['task']->title : __('Link not available', 'fluent-boards'),
+        ]);
+        exit;
     }
 
     public function view_comment_image()

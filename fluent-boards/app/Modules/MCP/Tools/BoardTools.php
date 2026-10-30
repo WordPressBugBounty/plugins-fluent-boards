@@ -160,7 +160,7 @@ class BoardTools
 
         self::addBoardMembers($boardService, $board->id, $memberIds);
 
-        if (!empty($boardData['crm_contact_id'])) {
+        if (!empty($boardData['crm_contact_id']) && Helper::canViewCrmContacts()) {
             $boardService->updateAssociateMember($boardData['crm_contact_id'], $board->id);
         }
 

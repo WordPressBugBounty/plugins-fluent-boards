@@ -5,6 +5,7 @@ namespace FluentBoards\App\Models;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\TaskService;
+use FluentBoards\App\Services\TaskShareService;
 use FluentBoards\Framework\Database\Orm\Builder;
 use FluentBoardsPro\App\Models\TaskAttachment;
 use FluentBoards\App\Models\CustomField;
@@ -118,6 +119,21 @@ class Task extends Model
         });
     }
 
+
+    /** Use the task ID to cross position ties; retain position-only cursors for older callers. */
+    public function scopeWherePositionCursor($query, $position, $taskId, $direction)
+    {
+        $operator = $direction === 'prev' ? '<' : '>';
+
+        return $query->where(function ($query) use ($position, $taskId, $operator) {
+            $query->where('position', $operator, $position);
+            if ($taskId) {
+                $query->orWhere(function ($query) use ($position, $taskId, $operator) {
+                    $query->where('position', '=', $position)->where('id', $operator, $taskId);
+                });
+            }
+        });
+    }
 
     public function scopeType($query, $type)
     {
@@ -353,9 +369,11 @@ class Task extends Model
         return $this->belongsTo(Subscriber::class, 'crm_contact_id', 'id');
     }
 
+    /** Keep comment reaction actors out of general task metadata responses. */
     public function taskMeta()
     {
-        return $this->hasMany(TaskMeta::class, 'task_id', 'id');
+        return $this->hasMany(TaskMeta::class, 'task_id', 'id')
+            ->where('key', 'not like', Constant::COMMENT_REACTIONS_META_PREFIX . '%');
     }
 
     public function getPopularCount()
@@ -372,10 +390,13 @@ class Task extends Model
     public function getMetaAttribute()
     {
         if ($this->relationLoaded('taskMeta')) {
-            return $this->getRelation('taskMeta')->pluck('value', 'key');
+            $meta = $this->getRelation('taskMeta')->pluck('value', 'key');
+        } else {
+            $meta = $this->taskMeta()->get()->pluck('value', 'key');
         }
 
-        return $this->taskMeta()->get()->pluck('value', 'key');
+        // The share-link secret is a bearer credential: it is read only through TaskShareService.
+        return $meta->except([TaskShareService::TOKEN_META]);
     }
 
     public function stage()
@@ -496,37 +517,8 @@ class Task extends Model
      */
     public static function lead_contact($id)
     {
-        if ( ! defined('FLUENTCRM')) {
-            return '';
-        }
-
-        $contact = \FluentCrm\App\Models\Subscriber::with(['tags', 'lists'])
-                                                   ->find($id);
-
-        if ( ! $contact) {
-            return null;
-        }
-
-        return [
-            'id'              => $contact->id,
-            'email'           => $contact->email,
-            'first_name'      => $contact->first_name,
-            'last_name'       => $contact->last_name,
-            'full_name'       => $contact->full_name,
-            'avatar'          => $contact->avatar,
-            'photo'           => $contact->photo,
-            'status'          => $contact->status,
-            'contact_type'    => $contact->contact_type,
-            'last_activity'   => $contact->last_activity,
-            'life_time_value' => $contact->life_time_value,
-            'total_points'    => $contact->total_points,
-            'user_id'         => $contact->user_id,
-            'created_at'      => $contact->created_at,
-            'tags'            => Helper::getIdTitleArray($contact->tags),
-            'lists'           => Helper::getIdTitleArray($contact->lists),
-
-        ];
-
+        // Single gated implementation: CRM data is only serialized for users with CRM read access.
+        return Helper::crm_contact($id);
     }
 
     public function getMeta($key, $default = null)

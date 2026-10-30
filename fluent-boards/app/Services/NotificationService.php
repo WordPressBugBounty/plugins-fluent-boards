@@ -2,6 +2,8 @@
 
 namespace FluentBoards\App\Services;
 
+use InvalidArgumentException;
+use RuntimeException;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Models\Notification;
@@ -12,6 +14,131 @@ use FluentBoards\App\Models\User;
 
 class NotificationService
 {
+    /** Return UTC expiries or the indefinite sentinel; expired values need no cron cleanup. */
+    public function getNotificationPause($userId, $boardId = 0)
+    {
+        $userId = absint($userId);
+        $boardId = absint($boardId);
+        $now = time();
+        $keys = [Constant::USER_NOTIFICATION_PAUSE];
+        if ($boardId) {
+            $keys[] = Constant::USER_BOARD_NOTIFICATION_PAUSE_PREFIX . $boardId;
+        }
+        $pauses = Meta::where('object_type', Constant::OBJECT_TYPE_USER)
+            ->where('object_id', $userId)
+            ->whereIn('key', $keys)
+            ->get(['key', 'value']);
+        $globalUntil = 0;
+        $boardUntil = 0;
+        foreach ($pauses as $pause) {
+            $until = (int) $pause->value;
+            if ($until !== Constant::NOTIFICATION_PAUSE_INDEFINITE && $until <= $now) {
+                continue;
+            }
+            if ($pause->key === Constant::USER_NOTIFICATION_PAUSE) {
+                $globalUntil = $globalUntil === Constant::NOTIFICATION_PAUSE_INDEFINITE || $until === Constant::NOTIFICATION_PAUSE_INDEFINITE
+                    ? Constant::NOTIFICATION_PAUSE_INDEFINITE : max($globalUntil, $until);
+            } else {
+                $boardUntil = $boardUntil === Constant::NOTIFICATION_PAUSE_INDEFINITE || $until === Constant::NOTIFICATION_PAUSE_INDEFINITE
+                    ? Constant::NOTIFICATION_PAUSE_INDEFINITE : max($boardUntil, $until);
+            }
+        }
+
+        return [
+            'global_until' => $globalUntil,
+            'board_until' => $boardUntil,
+            'effective_until' => $globalUntil === Constant::NOTIFICATION_PAUSE_INDEFINITE || $boardUntil === Constant::NOTIFICATION_PAUSE_INDEFINITE
+                ? Constant::NOTIFICATION_PAUSE_INDEFINITE : max($globalUntil, $boardUntil),
+            'server_time' => $now,
+        ];
+    }
+
+    /** Validate access to a personal pause without granting board mutation permissions. */
+    public function authorizeNotificationPause($boardId = 0)
+    {
+        $boardId = absint($boardId);
+        if (!get_current_user_id() || !PermissionManager::hasAppAccess()) {
+            throw new RuntimeException(__('You do not have permission to change notification preferences.', 'fluent-boards'), 403);
+        }
+        if ($boardId && (!Board::find($boardId) || !PermissionManager::userHasBoardPermission($boardId, 'GET'))) {
+            throw new RuntimeException(__('You do not have access to this board.', 'fluent-boards'), 403);
+        }
+    }
+
+    /** Save a preset, custom UTC expiry or indefinite pause; zero resumes only this scope. */
+    public function updateNotificationPause($duration, $boardId = 0, $customUntil = null)
+    {
+        $boardId = absint($boardId);
+        $this->authorizeNotificationPause($boardId);
+        if ($duration === 'indefinite') {
+            $until = Constant::NOTIFICATION_PAUSE_INDEFINITE;
+        } elseif ($duration === 'custom') {
+            // The client converts its local date/time to UTC seconds; do not apply the site timezone.
+            $until = (is_int($customUntil) || is_string($customUntil))
+                ? filter_var($customUntil, FILTER_VALIDATE_INT) : false;
+            if ($until === false || $until <= time() || (int) gmdate('Y', $until) > 9999) {
+                throw new InvalidArgumentException(__('Please select a future date and time.', 'fluent-boards'), 422);
+            }
+        } else {
+            if ((!is_int($duration) && !(is_string($duration) && ctype_digit($duration))) ||
+                !in_array((int) $duration, Constant::NOTIFICATION_PAUSE_DURATIONS, true)) {
+                throw new InvalidArgumentException(__('Please select a valid notification pause duration.', 'fluent-boards'), 422);
+            }
+            $duration = (int) $duration;
+            $until = $duration ? time() + $duration * MINUTE_IN_SECONDS : 0;
+        }
+
+        $userId = get_current_user_id();
+        $key = $boardId ? Constant::USER_BOARD_NOTIFICATION_PAUSE_PREFIX . $boardId : Constant::USER_NOTIFICATION_PAUSE;
+        $query = Meta::where('object_type', Constant::OBJECT_TYPE_USER)
+            ->where('object_id', $userId)
+            ->where('key', $key);
+        if ($query->exists()) {
+            // Update all matching rows, including duplicates from older concurrent saves.
+            $query->update(['value' => $until]);
+        } else {
+            Meta::create(['object_type' => Constant::OBJECT_TYPE_USER, 'object_id' => $userId, 'key' => $key, 'value' => $until]);
+        }
+        do_action('fluent_boards/notification_pause_updated', $userId, $boardId, $until);
+
+        return $this->getNotificationPause($userId, $boardId);
+    }
+
+    /** Filter recipients in one metadata query, preserving independent global and board pauses. */
+    public function filterUnmutedUserIds($boardId, $userIds)
+    {
+        $boardId = absint($boardId);
+        $userIds = array_values(array_unique(array_filter(array_map('absint', (array) $userIds))));
+        if (!$userIds) {
+            return [];
+        }
+        $keys = [Constant::USER_NOTIFICATION_PAUSE];
+        if ($boardId) {
+            $keys[] = Constant::USER_BOARD_NOTIFICATION_PAUSE_PREFIX . $boardId;
+        }
+        $pauses = Meta::where('object_type', Constant::OBJECT_TYPE_USER)
+            ->whereIn('object_id', $userIds)
+            ->whereIn('key', $keys)
+            ->get(['object_id', 'value']);
+        $mutedIds = [];
+        $now = time();
+        foreach ($pauses as $pause) {
+            if ((int) $pause->value === Constant::NOTIFICATION_PAUSE_INDEFINITE || (int) $pause->value > $now) {
+                $mutedIds[(int) $pause->object_id] = true;
+            }
+        }
+
+        return array_values(array_filter($userIds, function ($userId) use ($mutedIds) {
+            return !isset($mutedIds[$userId]);
+        }));
+    }
+
+    /** Check pause state at delivery time rather than trusting a queued preference snapshot. */
+    public function isNotificationMuted($userId, $boardId = 0)
+    {
+        return empty($this->filterUnmutedUserIds($boardId, [$userId]));
+    }
+
     public function getAllNotifications($per_page, $page, $action = 'all')
     {
         $per_page = Sanitize::perPage($per_page);
@@ -360,11 +487,16 @@ class NotificationService
             }
         }
 
-        return array_values(array_unique($enabledUserIds));
+        return $this->filterUnmutedUserIds($boardId, $enabledUserIds);
     }
 
+    /** Apply personal pauses before the existing board email preference. */
     public function checkIfEmailEnabled($boardId, $userId, $purpose)
     {
+        if ($this->isNotificationMuted($userId, $boardId)) {
+            return false;
+        }
+
         $boardSettings = $this->getBoardNotificationSettingsOfUser($boardId, $userId);
 
         if($boardSettings){
@@ -415,6 +547,7 @@ class NotificationService
         }));
     }
 
+    /** Skip paused mention recipients before enqueueing, so these events are never replayed. */
     public function mentionInComment($comment, $mentionedUserIds)
     {
         $currentUserId = get_current_user_id();
@@ -423,6 +556,11 @@ class NotificationService
             return $mentionedUserId !== $currentUserId;
         }));
 
+        $task = Task::find($comment->task_id);
+        if (!$task) {
+            return;
+        }
+        $uniqueIds = $this->filterUnmutedUserIds($task->board_id, $uniqueIds);
         if (!$uniqueIds) {
             return;
         }

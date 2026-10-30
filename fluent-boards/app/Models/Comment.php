@@ -89,6 +89,9 @@ class Comment extends Model
         });
 
         static::deleted(function ($model) {
+            // Clean up after row deletion so a concurrent reaction cannot leave an orphan.
+            TaskMeta::where('task_id', $model->task_id)
+                ->where('key', Constant::COMMENT_REACTIONS_META_PREFIX . $model->id)->delete();
             if ($model->type == 'comment') {
                 $task = $model->task;
                 if ($task) {

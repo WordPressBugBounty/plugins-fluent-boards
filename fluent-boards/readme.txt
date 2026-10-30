@@ -4,7 +4,7 @@ Tags: project management, task manager, kanban, project, task management
 Requires at least: 5.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.2.2
+Stable tag: 2.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -172,6 +172,29 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v2.3.0 (Date: October 30, 2026) =
+
+- New: Read-only task share links, no login needed
+- New: Share Board controls for layouts and visibility
+- New: Emoji in comments and reactions
+- New: Pause notifications globally or per board, with scheduled or manual resume
+- New: Save and create another task
+- New: Task dependencies in task details, with search and blocked indicators
+- Improvement: Save boards and tasks as templates through MCP
+- Improvement: Board filters persist, with an active count
+- Improvement: Dates follow WordPress language and date settings
+- Improvement: Trello import recovery and cover retries
+- Improvement: Refreshed public boards with flexible layouts, search, task details, and theme styling
+- Fixed: Security hardening for board access on task covers, watchers, dependencies, CRM contact links, and template status
+- Fixed: Duplicate comment and mention emails
+- Fixed: Missing unread counts on Kanban cards
+- Fixed: List view not loading more tasks on scroll
+- Fixed: Recurring tasks use the site timezone
+- Fixed: Invitations keep the selected role and clear once accepted
+- Fixed: Missing or duplicate tasks in JSON imports
+- Fixed: Field spacing in Fluent Forms task descriptions
+- Other improvements and bug fixes
 
 = v2.2.2 (Date: October 16, 2026) =
 

@@ -4,87 +4,12 @@ namespace FluentBoards\App\Services;
 
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Relation;
+use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Services\Constant;
 
 class PermissionManager
 {
-    public static function getFormattedBoardPermissions()
-    {
-        return [
-            'board_admin'  => 'Board Admin',
-            'create_tasks' => 'Create Tasks',
-            'edit_tasks'   => 'Edit Tasks',
-            'delete_tasks' => 'Delete Tasks',
-        ];
-    }
-
-    public static function getTopLevelPermissions()
-    {
-        return [
-            'all_board_admin'        => 'All Board Admin',
-            'create_boards'          => 'Create Boards',
-            'edit_boards'            => 'Edit Boards',
-            'delete_boards'          => 'Delete Boards',
-            'can_manage_permissions' => 'Can Manage Permissions',
-        ];
-    }
-
-    public static function getBoardPermissions($boardId, $userId)
-    {
-        if (user_can($userId, 'manage_options')) {
-            return array_keys(self::getFormattedBoardPermissions());
-        }
-
-        $globalPermissions = self::getTopUserPermission($userId);
-
-        if (in_array('all_board_admin', $globalPermissions)) {
-            return array_keys(self::getFormattedBoardPermissions());
-        }
-
-        // The user does not have global permission now we are checking for board permission
-
-        $isUserOn = Relation::query()->where('board_id', $boardId)->where('user_id', $userId)->exists();
-
-        $permissions = [
-
-        ];
-
-        if (in_array('board_admin', $permissions)) {
-            return array_keys(self::getFormattedBoardPermissions());
-        }
-
-        return $permissions;
-    }
-
-    private static function getTopUserPermission($userId)
-    {
-        $allAccesses = ['all_board_admin'];
-
-        $userPermission = ['create_boards', 'edit_boards', 'delete_boards', 'can_manage_permissions'];
-
-        return array_intersect($allAccesses, $userPermission);
-    }
-
-    public static function userHasBoardAccess($boardId, $userId = null, $permissions = [])
-    {
-        if (!$userId) {
-            $userId = get_current_user_id();
-        }
-
-        if (!$userId) {
-            return false;
-        }
-
-        $userPermissions = self::getBoardPermissions($boardId, $userId);
-
-        if (!$permissions) {
-            return false;
-        }
-
-        return (bool)array_intersect($permissions, $userPermissions);
-    }
-
     public static function isBoardManager($boardId, $userId = null, $useCache = false)
     {
         if (!$userId) {
@@ -347,9 +272,22 @@ class PermissionManager
             }
         }
 
-        return Relation::where('foreign_id', $userId)
+        // A stale watch row must not expose tasks on boards the user can no longer access.
+        $boardIds = static::getBoardIdsForUser($userId);
+        if (!$boardIds) {
+            return [];
+        }
+
+        $taskIds = Relation::where('foreign_id', $userId)
             ->where('object_type', Constant::OBJECT_TYPE_USER_TASK_WATCH)
             ->pluck('object_id')->toArray();
+        if (!$taskIds) {
+            return [];
+        }
+
+        return Task::whereIn('id', $taskIds)
+            ->whereIn('board_id', $boardIds)
+            ->pluck('id')->toArray();
     }
 
     public static function userCan($permission, $userId = null)

@@ -2,6 +2,7 @@
 
 namespace FluentBoards\App\Http\Controllers;
 
+use Exception;
 use FluentBoards\App\Services\NotificationService;
 use FluentBoards\Framework\Http\Request\Request;
 
@@ -14,6 +15,37 @@ class NotificationController extends Controller
         parent::__construct();
         $this->notificationService = $notificationService;
     }
+    /** Read the authenticated user's pause, taking board scope only from the URL. */
+    public function getNotificationPause(Request $request)
+    {
+        try {
+            $params = $request->get_url_params();
+            $boardId = absint($params['board_id'] ?? 0);
+            $this->notificationService->authorizeNotificationPause($boardId);
+            return $this->sendSuccess([
+                'pause' => $this->notificationService->getNotificationPause(get_current_user_id(), $boardId),
+            ]);
+        } catch (Exception $e) {
+            return $this->sendError($e->getMessage(), $e->getCode() === 403 ? 403 : 400);
+        }
+    }
+
+    /** Pause or resume the caller's selected scope without accepting a target user ID. */
+    public function updateNotificationPause(Request $request)
+    {
+        try {
+            $params = $request->get_url_params();
+            $pause = $this->notificationService->updateNotificationPause(
+                $request->get('duration'),
+                absint($params['board_id'] ?? 0),
+                $request->get('until')
+            );
+            return $this->sendSuccess(['pause' => $pause]);
+        } catch (Exception $e) {
+            return $this->sendError($e->getMessage(), in_array($e->getCode(), [403, 422], true) ? $e->getCode() : 400);
+        }
+    }
+
     public function getAllNotifications(Request $request)
     {
         try {

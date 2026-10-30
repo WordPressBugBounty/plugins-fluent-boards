@@ -894,7 +894,7 @@ class ReportService
     }
 
     /**
-     * Turns an activity's action + column into the verb phrase the feed shows.
+     * Returns a translated sentence template; the feed inserts the actor and task safely.
      */
     private function describeActivity($activity)
     {
@@ -902,41 +902,52 @@ class ReportService
         $action = strtolower((string) $activity->action);
 
         if ($column === 'stage' && $action === 'changed') {
-            return __('moved', 'fluent-boards');
+            /* translators: 1: actor name, 2: task title. */
+            return __('%1$s moved %2$s', 'fluent-boards');
         }
 
         if ($column === 'comment' && $action === 'added') {
-            return __('commented on', 'fluent-boards');
+            /* translators: 1: actor name, 2: task title. */
+            return __('%1$s commented on %2$s', 'fluent-boards');
         }
 
         if ($column === 'attachment' && $action === 'added') {
-            return __('attached a file to', 'fluent-boards');
+            /* translators: 1: actor name, 2: task title. */
+            return __('%1$s attached a file to %2$s', 'fluent-boards');
         }
 
         if ($column === 'subtask' && in_array($action, ['added', 'cloned'], true)) {
-            return __('added a subtask to', 'fluent-boards');
+            /* translators: 1: actor name, 2: task title. */
+            return __('%1$s added a subtask to %2$s', 'fluent-boards');
         }
 
         if ($column === 'label') {
-            return $action === 'removed'
-                ? __('removed a label from', 'fluent-boards')
-                : __('labelled', 'fluent-boards');
+            if ($action === 'removed') {
+                /* translators: 1: actor name, 2: task title. */
+                return __('%1$s removed a label from %2$s', 'fluent-boards');
+            }
+
+            /* translators: 1: actor name, 2: task title. */
+            return __('%1$s labelled %2$s', 'fluent-boards');
         }
 
         if ($column === 'due date') {
-            return __('set a due date on', 'fluent-boards');
+            /* translators: 1: actor name, 2: task title. */
+            return __('%1$s set a due date on %2$s', 'fluent-boards');
         }
 
         if ($column === 'task' && $action === 'created') {
-            return __('created', 'fluent-boards');
+            /* translators: 1: actor name, 2: task title. */
+            return __('%1$s created %2$s', 'fluent-boards');
         }
 
         if ($column === 'task' && $action === 'closed') {
-            return __('completed', 'fluent-boards');
+            /* translators: 1: actor name, 2: task title. */
+            return __('%1$s completed %2$s', 'fluent-boards');
         }
 
-        /* translators: 1: action verb, 2: field name */
-        return trim(sprintf('%1$s %2$s', $action, $column));
+        /* translators: 1: actor name, 2: task title. */
+        return __('%1$s updated %2$s', 'fluent-boards');
     }
 
     /*

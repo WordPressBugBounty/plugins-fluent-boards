@@ -7,6 +7,7 @@ use FluentBoards\App\Models\User;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Notification;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\NotificationService;
 
 class NotificationHandler
 {
@@ -74,10 +75,15 @@ class NotificationHandler
         }));
     }
 
+    /** Create mention notifications only for recipients without an active personal pause. */
     public function mentionInCommentNotification($comment, $mentionIds)
     {
         if($comment){
             $task = Task::findOrFail($comment->task_id);
+            $mentionIds = (new NotificationService())->filterUnmutedUserIds($task->board_id, $mentionIds);
+            if (!$mentionIds) {
+                return;
+            }
             $plainDescription = wp_strip_all_tags($comment->description);
             $action = 'task_comment_mentioned';
             $message = $plainDescription;
@@ -187,9 +193,10 @@ class NotificationHandler
         }
     }
 
+    /** Respect personal pauses for direct assignment notifications. */
     public function assigneeAddedNotification($task, $newAssigneeId)
     {
-        if($newAssigneeId != get_current_user_id()){
+        if($newAssigneeId != get_current_user_id() && !(new NotificationService())->isNotificationMuted($newAssigneeId, $task->board_id)){
             $action = 'task_assignee_changed';
             $message = __('has added you as an assignee.','fluent-boards');
             $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
@@ -197,9 +204,10 @@ class NotificationHandler
         }
     }
 
+    /** Respect personal pauses for direct assignment notifications. */
     public function assigneeRemovedNotification($task, $newAssigneeId)
     {
-        if($newAssigneeId != get_current_user_id()){
+        if($newAssigneeId != get_current_user_id() && !(new NotificationService())->isNotificationMuted($newAssigneeId, $task->board_id)){
             $action = 'task_assignee_changed';
             $message = __('has removed you as an assignee.','fluent-boards');
             $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
@@ -224,6 +232,7 @@ class NotificationHandler
         return Notification::create($data);
     }
 
+    /** Exclude the actor and personally paused watchers before creating notifications. */
     public function findUsersWhoWillGetNotification($task)
     {
         $currentUserId = get_current_user_id();
@@ -234,6 +243,6 @@ class NotificationHandler
                 $watchersExceptCurrentUser[] = $watcher->ID;
             }
         }
-        return $watchersExceptCurrentUser;
+        return (new NotificationService())->filterUnmutedUserIds($task->board_id, $watchersExceptCurrentUser);
     }
 }

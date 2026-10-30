@@ -4,16 +4,16 @@ namespace FluentBoards\App\Hooks\Handlers;
 
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Comment;
-use FluentBoards\App\Models\Meta;
-use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
+use FluentBoards\App\Services\NotificationService;
 use FluentBoards\App\Services\Libs\Mailer;
 
 class ScheduleHandler
 {
+    /** Deliver queued mail only after rechecking recipient preferences and personal pauses. */
     public function sendEmailForComment(
         $commentId,
         $recipientUserIds,
@@ -34,7 +34,7 @@ class ScheduleHandler
                 return;
             }
 
-            $usersToSendEmail = $this->getEligibleCommentRecipientEmails(
+            $usersToSendEmail = $this->getEligibleRecipientEmails(
                 $recipientUserIds,
                 $task->board_id
             );
@@ -98,6 +98,7 @@ class ScheduleHandler
         }
     }
 
+    /** Deliver queued mail only after rechecking recipient preferences and personal pauses. */
     public function sendEmailForMention($commentId, $recipientUserIds, $current_user_id)
     {
         $context = ['type' => 'mention', 'comment_id' => $commentId];
@@ -116,7 +117,7 @@ class ScheduleHandler
                 return;
             }
 
-            $usersToSendEmail = $this->getEligibleCommentRecipientEmails(
+            $usersToSendEmail = $this->getEligibleRecipientEmails(
                 $recipientUserIds,
                 $task->board_id
             );
@@ -157,6 +158,7 @@ class ScheduleHandler
         }
     }
 
+    /** Deliver queued mail only after rechecking recipient preferences and personal pauses. */
     public function sendEmailForAddAssignee(
         $taskId,
         $newAssigneeId,
@@ -165,6 +167,9 @@ class ScheduleHandler
         $context = ['type' => 'add_assignee', 'task_id' => $taskId];
         try {
             $task     = Task::findOrFail($taskId);
+            if (!(new NotificationService())->checkIfEmailEnabled($task->board_id, $newAssigneeId, Constant::BOARD_EMAIL_TASK_ASSIGN)) {
+                return;
+            }
             $board    = $task->board;
             $assignee = User::findOrFail($newAssigneeId);
 
@@ -227,6 +232,7 @@ class ScheduleHandler
         }
     }
 
+    /** Deliver queued mail only after rechecking recipient preferences and personal pauses. */
     public function sendEmailForRemoveAssignee(
         $taskId,
         $newAssigneeId,
@@ -235,6 +241,9 @@ class ScheduleHandler
         $context = ['type' => 'remove_assignee', 'task_id' => $taskId];
         try {
             $task     = Task::findOrFail($taskId);
+            if (!(new NotificationService())->checkIfEmailEnabled($task->board_id, $newAssigneeId, Constant::BOARD_EMAIL_REMOVE_FROM_TASK)) {
+                return;
+            }
             $board    = $task->board;
             $assignee = User::findOrFail($newAssigneeId);
 
@@ -299,6 +308,7 @@ class ScheduleHandler
     }
 
 
+    /** Deliver queued mail only after rechecking recipient preferences and personal pauses. */
     public function sendEmailForChangeStage(
         $taskId,
         $newAssigneeEmails,
@@ -307,6 +317,10 @@ class ScheduleHandler
         $context = ['type' => 'stage_change', 'task_id' => $taskId];
         try {
             $task  = Task::findOrFail($taskId);
+            $newAssigneeEmails = $this->getEligibleRecipientEmails($newAssigneeEmails, $task->board_id, Constant::BOARD_EMAIL_STAGE_CHANGE);
+            if (!$newAssigneeEmails) {
+                return;
+            }
             $board = $task->board;
 
             $userData = $this->getUserData($current_user_id);
@@ -340,6 +354,7 @@ class ScheduleHandler
         }
     }
 
+    /** Deliver queued mail only after rechecking recipient preferences and personal pauses. */
     public function sendEmailForDueDateUpdate(
         $taskId,
         $newAssigneeEmails,
@@ -348,6 +363,10 @@ class ScheduleHandler
         $context = ['type' => 'due_date_update', 'task_id' => $taskId];
         try {
             $task  = Task::findOrFail($taskId);
+            $newAssigneeEmails = $this->getEligibleRecipientEmails($newAssigneeEmails, $task->board_id, Constant::BOARD_EMAIL_DUE_DATE_CHANGE);
+            if (!$newAssigneeEmails) {
+                return;
+            }
             $board = $task->board;
 
             $userData = $this->getUserData($current_user_id);
@@ -381,6 +400,7 @@ class ScheduleHandler
         }
     }
 
+    /** Deliver queued mail only after rechecking recipient preferences and personal pauses. */
     public function sendEmailForArchivedTask(
         $taskId,
         $newAssigneeEmails,
@@ -389,6 +409,10 @@ class ScheduleHandler
         $context = ['type' => 'task_archived', 'task_id' => $taskId];
         try {
             $task  = Task::findOrFail($taskId);
+            $newAssigneeEmails = $this->getEligibleRecipientEmails($newAssigneeEmails, $task->board_id, Constant::BOARD_EMAIL_TASK_ARCHIVE);
+            if (!$newAssigneeEmails) {
+                return;
+            }
             $board = $task->board;
 
             $userData = $this->getUserData($current_user_id);
@@ -427,16 +451,17 @@ class ScheduleHandler
     }
 
     /**
-     * Resolve current recipient emails after revalidating board access and preferences.
+     * Resolve queued IDs or legacy emails after revalidating board access, preferences and pauses.
      *
      * Email values are accepted only for queued actions created before recipient IDs
      * were introduced. They are mapped back to current WordPress users before checks.
      *
      * @param array $queuedRecipients
      * @param int $boardId
+     * @param string $purpose
      * @return array
      */
-    private function getEligibleCommentRecipientEmails($queuedRecipients, $boardId)
+    private function getEligibleRecipientEmails($queuedRecipients, $boardId, $purpose = Constant::BOARD_EMAIL_COMMENT)
     {
         $legacyEmails = [];
         foreach ((array) $queuedRecipients as $queuedRecipient) {
@@ -482,25 +507,10 @@ class ScheduleHandler
             return [];
         }
 
-        $eligibleRecipientIds = [];
-        $boardRelations = Relation::where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
-            ->where('object_id', absint($boardId))
-            ->whereIn('foreign_id', $recipientUserIds)
-            ->get(['foreign_id', 'preferences']);
-
-        foreach ($boardRelations as $boardRelation) {
-            $preferences = maybe_unserialize($boardRelation->preferences);
-            if (!is_array($preferences)) {
-                continue;
-            }
-
-            if (
-                !array_key_exists(Constant::BOARD_EMAIL_COMMENT, $preferences) ||
-                $preferences[Constant::BOARD_EMAIL_COMMENT]
-            ) {
-                $eligibleRecipientIds[absint($boardRelation->foreign_id)] = true;
-            }
-        }
+        $eligibleRecipientIds = array_fill_keys(
+            (new NotificationService())->getEmailEnabledUserIds($boardId, $recipientUserIds, $purpose),
+            true
+        );
 
         if (!$eligibleRecipientIds) {
             return [];

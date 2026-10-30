@@ -735,6 +735,8 @@ class StageService
     {
         $stage = Stage::findOrFail($stage_id);
         if ($stage) {
+            // Only board members (or admins) can be default assignees.
+            $assignees = PermissionManager::getUserIdsWithBoardAccess($stage->board_id, (array) $assignees);
             $settings = $stage->settings;
             $settings['default_task_assignees'] = $assignees;
             $stage->settings = $settings;
@@ -750,6 +752,8 @@ class StageService
     {
         $stage = Stage::findOrFail($stage_id);
         if ($stage) {
+            // Only board members (or admins) can be default watchers.
+            $watchers = PermissionManager::getUserIdsWithBoardAccess($stage->board_id, (array) $watchers);
             $settings = $stage->settings;
             $settings['default_task_watchers'] = $watchers;
             $stage->settings = $settings;

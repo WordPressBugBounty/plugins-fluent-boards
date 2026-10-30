@@ -2,12 +2,14 @@
 
 namespace FluentBoards\App\Http\Controllers;
 
+use FluentBoards\Framework\Database\Orm\ModelNotFoundException;
 use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Services\NotificationService;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\UploadService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\App\Services\CommentService;
+use FluentBoards\App\Services\CommentReactionService;
 use FluentBoardsPro\App\Services\AttachmentService;
 
 class CommentController extends Controller
@@ -20,6 +22,24 @@ class CommentController extends Controller
         parent::__construct();
         $this->commentService = $commentService;
         $this->notificationService = $notificationService;
+    }
+
+    /** Set the actor's emoji state using the route's board, task and comment scope. */
+    public function setReaction(Request $request, $board_id, $task_id, $comment_id)
+    {
+        try {
+            $reactions = (new CommentReactionService())->setReaction(
+                $board_id, $task_id, $comment_id, $request->get('emoji'), $request->get('active')
+            );
+            return $this->sendSuccess(['reactions' => $reactions]);
+        } catch (ModelNotFoundException $e) {
+            return $this->sendError(__('Comment not found.', 'fluent-boards'), 404);
+        } catch (\Exception $e) {
+            if (in_array($e->getCode(), [403, 422], true)) {
+                return $this->sendError($e->getMessage(), $e->getCode());
+            }
+            return $this->sendError(__('Could not save your reaction.', 'fluent-boards'), 500);
+        }
     }
 
     public function getComments(Request $request, $board_id, $task_id)
@@ -101,12 +121,14 @@ class CommentController extends Controller
                 {
                     $recipientUserIds[] = absint($commenterId);
                 }
-                $this->sendMailAfterComment($comment->id, $recipientUserIds);
             } else {
                 // Queue revocable IDs; the worker rechecks membership and preferences before sending.
                 $recipientUserIds = $this->notificationService->getCommentRecipientUserIds($task_id);
-                $this->sendMailAfterComment($comment->id, $recipientUserIds);
             }
+
+            // Mention emails take priority over generic comment and reply emails.
+            $recipientUserIds = array_values(array_diff($recipientUserIds, $mentionData));
+            $this->sendMailAfterComment($comment->id, $recipientUserIds);
 
             if(!empty($mentionData))
             {
@@ -127,6 +149,7 @@ class CommentController extends Controller
         }
     }
 
+    /** Update content and retain reaction summaries in the replacement comment response. */
     public function update(Request $request, $board_id, $comment_id)
     {
         $requestData = [
@@ -175,6 +198,7 @@ class CommentController extends Controller
             }
 
             $comment->load('user');
+            (new CommentReactionService())->hydrate([$comment]);
 
             return $this->sendSuccess([
                 'comment' => $comment,
@@ -334,6 +358,7 @@ class CommentController extends Controller
 
     }
 
+    /** Toggle privacy while retaining comment and reply reaction summaries. */
     public function updateCommentPrivacy($board_id, $comment_id)
     {
         $comment = $this->commentService->findCommentOnBoard($comment_id, $board_id);
@@ -346,6 +371,7 @@ class CommentController extends Controller
         // Toggle privacy
         $comment->privacy = ($comment->privacy === 'public') ? 'private' : 'public';
         $comment->save();
+        (new CommentReactionService())->hydrate([$comment]);
 
         return $this->sendSuccess([
             'comment' => $comment,

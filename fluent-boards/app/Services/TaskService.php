@@ -11,6 +11,7 @@ use FluentBoards\App\Models\Notification;
 use FluentBoards\App\Models\NotificationUser;
 use FluentBoards\App\Models\TaskImage;
 use FluentBoards\App\Services\Constant;
+use FluentBoards\App\Services\TaskShareService;
 use FluentBoards\App\Models\Label;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
@@ -78,7 +79,8 @@ class TaskService
         $assigneeIds = array_key_exists('assignees', $context)
             ? $context['assignees']
             : $template->assignees()->get()->pluck('ID')->toArray();
-        foreach (array_unique(array_filter(array_map('absint', (array) $assigneeIds))) as $assigneeId) {
+        // Copied assignees may have left the board since; skip them instead of failing the copy.
+        foreach (PermissionManager::getUserIdsWithBoardAccess($task->board_id, (array) $assigneeIds) as $assigneeId) {
             $this->updateAssignee($assigneeId, $task);
         }
         foreach ($template->labels as $label) {
@@ -161,6 +163,34 @@ class TaskService
 
         if ((int) $stage->board_id !== (int) $boardId) {
             throw new \Exception(esc_html__("Stage doesn't exists", 'fluent-boards'));
+        }
+
+        // Only request-facing fields may be set on create. Ownership (created_by),
+        // provenance (source, source_id, type) and counters are server-maintained.
+        $data = array_intersect_key($data, array_flip([
+            'title', 'description', 'board_id', 'stage_id', 'parent_id', 'priority',
+            'due_at', 'started_at', 'remind_at', 'reminder_type', 'lead_value', 'log_minutes',
+            'position', 'settings', 'assignees', 'labels', 'crm_contact_id', 'is_template', 'scope',
+        ]));
+
+        // Every related id must belong to this board or its members.
+        if (!empty($data['parent_id'])) {
+            $this->findTaskOnBoard($data['parent_id'], $boardId, false);
+        }
+
+        if (!empty($data['labels'])) {
+            $data['labels'] = Label::where('board_id', $boardId)
+                ->whereIn('id', array_filter(array_map('intval', (array) $data['labels'])))
+                ->pluck('id')
+                ->all();
+        }
+
+        if (!empty($data['assignees'])) {
+            $data['assignees'] = PermissionManager::getUserIdsWithBoardAccess($boardId, (array) $data['assignees']);
+        }
+
+        if (!empty($data['crm_contact_id']) && !Helper::canViewCrmContacts()) {
+            throw new \Exception(esc_html__('You do not have permission to link CRM contacts', 'fluent-boards'));
         }
 
         $data['status'] = $stage->defaultTaskStatus();
@@ -333,6 +363,7 @@ class TaskService
                     return $notification && $notification->task && is_null($notification->task->archived_at) && is_null($notification->task->parent_id);
                 })->pluck('notification.task_id')->unique();
                 $validTasks = Task::whereIn('id', $taskIds)
+                    ->whereIn('board_id', PermissionManager::getBoardIdsForUser($currentUserId))
                     ->with(['assignees', 'board', 'stage'])
                     ->onActiveAvailableBoards()
                     ->get();
@@ -349,7 +380,7 @@ class TaskService
 
     public function getTaskCountForBoardsByCategory($category, $taskIds)
     {
-        if (empty($taskIds)) {
+        if (empty($taskIds) && $category !== 'mentioned') {
             return 0;
         }
 
@@ -407,7 +438,9 @@ class TaskService
                     ->pluck('notification.task_id')
                     ->unique();
 
-                return Task::whereIn('id', $taskIds)->onActiveAvailableBoards()->count();
+                return Task::whereIn('id', $taskIds)
+                    ->whereIn('board_id', PermissionManager::getBoardIdsForUser($currentUserId))
+                    ->onActiveAvailableBoards()->count();
             default:
                 return 0;
         }
@@ -468,14 +501,17 @@ class TaskService
             $value = DescriptionMarkdownConverter::normalize($value);
         }
 
+        if ($col === 'settings') {
+            $value = $this->keepStoredCoverImage($value, $task);
+        }
+
         if (in_array($col, $validColumns) && $task->{$col} != $value) {
             if ($col === 'remind_at') {
                 $value = Helper::normalizeDateValue($value);
             }
 
             if ($col == 'settings' && isset($value['cover']['backgroundColor']) && $value['cover']['backgroundColor']) {
-                $settings = $task->settings;
-                $this->deleteTaskCoverImage($settings);
+                $this->deleteTaskCoverImage($task);
                 unset($value['cover']['imageId']);
                 unset($value['cover']['backgroundImage']);
             }
@@ -590,6 +626,18 @@ class TaskService
 
     public function updateAssignee($payloadAssigneeId, $task)
     {
+        $payloadAssigneeId = absint($payloadAssigneeId);
+        if (!$payloadAssigneeId) {
+            throw new \Exception(esc_html__('Invalid assignee', 'fluent-boards'));
+        }
+
+        // Removing a stale assignee is always allowed; adding one requires board access,
+        // otherwise any member could assign (and email) arbitrary WordPress users.
+        $isCurrentAssignee = in_array($payloadAssigneeId, $task->assignees->pluck('ID')->all());
+        if (!$isCurrentAssignee && !PermissionManager::userHasPermission($task->board_id, $payloadAssigneeId)) {
+            throw new \Exception(esc_html__('Only board members can be assigned to a task', 'fluent-boards'));
+        }
+
         $operation = $task->addOrRemoveAssignee($payloadAssigneeId);
         $task->load('assignees');
         $task->updated_at = current_time('mysql');
@@ -652,6 +700,10 @@ class TaskService
         // if task has no crm contact and got value null then return current task
         if (($task->crm_contact_id == null || $task->crm_contact_id == 0) && $value == null) {
             return $task;
+        }
+
+        if (!empty($value) && !Helper::canViewCrmContacts()) {
+            throw new \Exception(esc_html__('You do not have permission to link CRM contacts', 'fluent-boards'));
         }
 
         $oldAssociateId = $task->crm_contact_id;
@@ -765,13 +817,13 @@ class TaskService
         do_action('fluent_boards/task_priority_changed', $task, $oldPriority);
     }
 
+    /** Watching is self-service: a user may only start or stop their own watch. */
     public function updateObservationOfUser($value, $task)
 {
-    if (is_array($value) && isset($value['userId'])) {
-        $userId = intval($value['userId']);
+    $userId = get_current_user_id();
+    if (is_array($value)) {
         $action = isset($value['action']) ? $value['action'] : 'start';
     } else {
-        $userId = get_current_user_id();
         $action = is_string($value) ? $value : 'start';
     }
 
@@ -1114,11 +1166,17 @@ class TaskService
             // REMOVE: Recurring task settings for security
             $this->removeRecurringTaskSettings($task->id);
 
+            // REMOVE: Share link; it was granted for the old board's context
+            (new TaskShareService())->revokeShare($task);
+
             $task->save();
             do_action('fluent_boards/task_moved_update_time_tracking', $task);
 
             // MOVE: Subtasks to new board (preserves subtask groups)
             $this->moveSubtasksToNewBoard($task->id, $oldBoardId, $targetBoardId, $newBoard->type, $attachmentFileService);
+
+            // REMOVE: Dependency links to tasks that stay on other boards
+            $this->removeCrossBoardDependencies($task->id, (int) $targetBoardId);
 
             $dbInstance->commit();
             $attachmentFileService->commitMovedOriginalFiles();
@@ -2436,6 +2494,8 @@ class TaskService
             $models['activity'] = $activityQuery->with('user')->whereIn('id', $selectedIds['activity'])->get()->keyBy('id')->all();
         }
 
+        (new CommentReactionService())->hydrate($models['comment']);
+
         $paginatedResults = [];
         foreach ($entries as $entry) {
             if (isset($models[$entry[0]][$entry[1]])) {
@@ -2538,8 +2598,12 @@ class TaskService
             $stage = Stage::findOrFail($stageId);
         }
         $assignmentsChanged = false;
-        if ($stage && isset($stage->settings['default_task_assignees'])) {
-            $defaultAssignees = $stage->settings['default_task_assignees'];
+        if ($stage && !empty($stage->settings['default_task_assignees'])) {
+            // Defaults may predate a member's removal; skip anyone no longer on the board.
+            $defaultAssignees = PermissionManager::getUserIdsWithBoardAccess(
+                $task->board_id,
+                (array) $stage->settings['default_task_assignees']
+            );
             foreach ($defaultAssignees as $assigneeId) {
                 $alreadyAssigneeIds = $task->assignees->pluck('ID')->toArray();
                 $IfAlreadyAssignee = in_array($assigneeId, $alreadyAssigneeIds);
@@ -2642,10 +2706,77 @@ class TaskService
 
         return $task;
     }
-    public function deleteTaskCoverImage($settings)
+    /**
+     * Cover image fields are server-managed: only the cover upload route sets them.
+     * Replace client-supplied imageId/backgroundImage with the stored values so a
+     * settings update cannot plant a foreign attachment ID or an arbitrary image URL.
+     */
+    private function keepStoredCoverImage($value, Task $task)
     {
+        if (!is_array($value) || !isset($value['cover']) || !is_array($value['cover'])) {
+            return $value;
+        }
+
+        $storedCover = Arr::get(is_array($task->settings) ? $task->settings : [], 'cover', []);
+        foreach (['imageId', 'backgroundImage'] as $key) {
+            if (is_array($storedCover) && isset($storedCover[$key])) {
+                $value['cover'][$key] = $storedCover[$key];
+            } else {
+                unset($value['cover'][$key]);
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * Drop dependency links between a moved task (or its subtasks) and tasks on other boards.
+     * Otherwise members of either board could read the other board's task through the link.
+     */
+    private function removeCrossBoardDependencies($taskId, $boardId)
+    {
+        $movedIds = Task::where('parent_id', $taskId)->pluck('id')->toArray();
+        $movedIds[] = (int) $taskId;
+
+        $relations = Relation::where('object_type', Constant::OBJECT_TYPE_TASK_DEPENDENCY)
+            ->where(function ($query) use ($movedIds) {
+                $query->whereIn('object_id', $movedIds)
+                    ->orWhereIn('foreign_id', $movedIds);
+            })
+            ->get(['id', 'object_id', 'foreign_id']);
+        if ($relations->isEmpty()) {
+            return;
+        }
+
+        $linkedIds = [];
+        foreach ($relations as $relation) {
+            $linkedIds[] = (int) $relation->object_id;
+            $linkedIds[] = (int) $relation->foreign_id;
+        }
+        $sameBoardIds = array_map('intval', Task::whereIn('id', array_unique($linkedIds))
+            ->where('board_id', $boardId)
+            ->pluck('id')->toArray());
+
+        $staleIds = [];
+        foreach ($relations as $relation) {
+            if (!in_array((int) $relation->object_id, $sameBoardIds, true) || !in_array((int) $relation->foreign_id, $sameBoardIds, true)) {
+                $staleIds[] = $relation->id;
+            }
+        }
+        if ($staleIds) {
+            Relation::whereIn('id', $staleIds)->delete();
+        }
+    }
+
+    /** Delete only a description image owned by this task; ignore stale or forged cover IDs. */
+    public function deleteTaskCoverImage(Task $task)
+    {
+        $settings = $task->settings;
         if (isset($settings['cover']['imageId']) && $settings['cover']['imageId']) {
-            $image = TaskImage::find($settings['cover']['imageId']);
+            $image = TaskImage::where('id', $settings['cover']['imageId'])
+                ->where('object_id', $task->id)
+                ->where('object_type', Constant::TASK_DESCRIPTION)
+                ->first();
             if ($image) {
                 $deletedImage = clone $image;
                 $deletedImage->delete();
@@ -2828,10 +2959,17 @@ class TaskService
         return $index !== false ? $index + 2 : 1; // Return 1-based index
     }
 
+    /** Copy task metadata without inheriting sharing, comment reactions or the original subtask groups. */
     private function cloneTaskMeta(Task $originalTask, Task $clonedTask): void
     {
+        // A clone is never shared implicitly, so share-link credentials and settings stay behind.
         $taskMetas = TaskMeta::where('task_id', $originalTask->id)
-            ->where('key', '!=', Constant::SUBTASK_GROUP_NAME)
+            ->where('key', 'not like', Constant::COMMENT_REACTIONS_META_PREFIX . '%')
+            ->whereNotIn('key', [
+                Constant::SUBTASK_GROUP_NAME,
+                TaskShareService::TOKEN_META,
+                TaskShareService::SETTINGS_META,
+            ])
             ->get();
         foreach ($taskMetas as $meta) {
             TaskMeta::create([

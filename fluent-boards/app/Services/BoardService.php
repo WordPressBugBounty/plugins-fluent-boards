@@ -220,7 +220,8 @@ class BoardService
             'description' => DescriptionMarkdownConverter::normalize($boardData['description'] ?? ''),
             'currency'    => isset($boardData['currency']) ? $boardData['currency'] : 'USD',
             'background'  => isset($boardData['background']) ? $boardData['background'] : '',
-            'created_by'  => isset($boardData['created_by']) ? $boardData['created_by'] : get_current_user_id()
+            // The creator becomes the board admin, so it is never taken from the request.
+            'created_by'  => get_current_user_id()
         ];
 
         $boardData = apply_filters('fluent_boards/before_create_board', $boardData);
@@ -985,6 +986,8 @@ class BoardService
 
     public function sendInvitationToBoard($boardId, $email, $role = 'member')
     {
+        $boardId = absint($boardId);
+        $email = sanitize_email($email);
         $role = sanitize_text_field($role);
         if (!in_array($role, ['manager', 'member', 'viewer'], true)) {
             $role = 'member';
@@ -1004,12 +1007,21 @@ class BoardService
 
     }
 
+    /**
+     * Return unused, unexpired invitations as a list, including legacy records without expiry.
+     */
     public function getInvitations($boardId)
     {
-        return Meta::query()->where('object_id', $boardId)
+        $now = time();
+        return Meta::query()->where('object_id', absint($boardId))
             ->where('object_type', Constant::OBJECT_TYPE_BOARD)
             ->where('key', Constant::BOARD_INVITATION)
-            ->get();
+            ->get()
+            ->filter(function ($invitation) use ($now) {
+                $value = $invitation->value;
+                return is_array($value) && empty($value['used'])
+                    && (empty($value['expires_at']) || $now <= (int) $value['expires_at']);
+            })->values();
     }
 
     /**

@@ -7,7 +7,6 @@ if(!defined( 'ABSPATH' ))  exit;
  * require_once "shortcodes.php";
  * require_once "crontasks.php";
  */
-require_once "shortcodes.php";
 
 /**
  * @var $app WPFluent\Foundation\Application

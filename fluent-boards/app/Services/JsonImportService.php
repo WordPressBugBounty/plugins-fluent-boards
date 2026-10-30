@@ -5,6 +5,7 @@ namespace FluentBoards\App\Services;
 use InvalidArgumentException;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\Framework\Support\Arr;
+use FluentBoards\App\App;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Meta;
 use FluentBoards\App\Services\FolderService;
@@ -65,7 +66,7 @@ class JsonImportService
             ]);
         }
 
-        $fileSize = (int)$file['size'];
+        $fileSize = (int) filesize($file['tmp_name']);
         $maxFileSize = (int)apply_filters('fluent_boards/import_max_file_size', 64 * 1024 * 1024);
         if ($fileSize <= 0 || $fileSize > $maxFileSize) {
             return $this->fail([
@@ -158,7 +159,7 @@ class JsonImportService
             ]);
         }
 
-        if ($chunkIndex < 0 || $totalChunks < 1) {
+        if ($chunkIndex < 0 || $totalChunks < 1 || $chunkIndex >= $totalChunks) {
             return $this->fail([
                 'message' => __('Invalid chunk information.', 'fluent-boards')
             ]);
@@ -171,26 +172,51 @@ class JsonImportService
             ]);
         }
 
-        // All chunks for this upload go into the same file
+        // Use a bounded set of stable locks so unrelated uploads need not wait on one global lock.
         $filePath = $dirPath . $fileName;
+        $statePath = $filePath . '.state';
+        $lock = $this->acquireImportLock($dirPath, $fileName);
 
-        // If this is the first chunk, remove any leftover file from a previous attempt
-        if ($chunkIndex === 0 && file_exists($filePath)) {
-            @unlink($filePath);
+        try {
+            if ($chunkIndex === 0) {
+                if (file_exists($filePath)) {
+                    if (!unlink($filePath)) {
+                        return $this->fail(__('Could not reset the import upload.', 'fluent-boards'));
+                    }
+                }
+                if (file_exists($statePath) && !unlink($statePath)) {
+                    return $this->fail(__('Could not reset the import upload.', 'fluent-boards'));
+                }
+                $state = ['next' => 0, 'total' => $totalChunks];
+            } else {
+                $state = is_file($statePath) ? json_decode(file_get_contents($statePath), true) : null;
+            }
+            if (!is_array($state) || ($state['next'] ?? null) !== $chunkIndex || ($state['total'] ?? null) !== $totalChunks) {
+                return $this->fail(__('Invalid chunk order. Restart the import upload.', 'fluent-boards'));
+            }
+
+            $chunkContent = file_get_contents($chunk['tmp_name']);
+            clearstatcache(true, $filePath);
+            $writtenSoFar = is_file($filePath) ? filesize($filePath) : 0;
+            $maxFileSize = (int) apply_filters('fluent_boards/import_max_file_size', 64 * 1024 * 1024);
+            if ($chunkContent === false || $writtenSoFar + strlen($chunkContent) > $maxFileSize) {
+                return $this->fail(__('The import file is unreadable or exceeds the allowed size.', 'fluent-boards'));
+            }
+            if (file_put_contents($filePath, $chunkContent, FILE_APPEND) !== strlen($chunkContent)) {
+                wp_delete_file($filePath);
+                wp_delete_file($statePath);
+                return $this->fail(__('Could not write the import file. Restart the upload.', 'fluent-boards'));
+            }
+            $state['next'] = $chunkIndex + 1;
+            $stateData = wp_json_encode($state);
+            if (file_put_contents($statePath, $stateData) !== strlen($stateData)) {
+                wp_delete_file($filePath);
+                wp_delete_file($statePath);
+                return $this->fail(__('Could not save the import upload state.', 'fluent-boards'));
+            }
+        } finally {
+            $this->releaseImportLock($lock);
         }
-
-        $maxFileSize = (int)apply_filters('fluent_boards/import_max_file_size', 64 * 1024 * 1024);
-        $writtenSoFar = file_exists($filePath) ? (int)filesize($filePath) : 0;
-        if (($writtenSoFar + (int)$chunk['size']) > $maxFileSize) {
-            @unlink($filePath);
-            return $this->fail([
-                'message' => __('The import file exceeds the allowed size.', 'fluent-boards')
-            ]);
-        }
-
-        // Read the chunk bytes and APPEND to the file
-        $chunkContent = file_get_contents($chunk['tmp_name']);
-        file_put_contents($filePath, $chunkContent, FILE_APPEND | LOCK_EX);
 
         return [
             'chunkIndex' => $chunkIndex,
@@ -208,6 +234,8 @@ class JsonImportService
     {
         $uploadDir = wp_upload_dir();
         $blockedDirs = array_filter([
+            realpath(ABSPATH),
+            !empty($_SERVER['DOCUMENT_ROOT']) ? realpath($_SERVER['DOCUMENT_ROOT']) : '',
             defined('WP_CONTENT_DIR') ? realpath(WP_CONTENT_DIR) : '',
             !empty($uploadDir['basedir']) ? realpath($uploadDir['basedir']) : '',
         ]);
@@ -333,11 +361,43 @@ class JsonImportService
             return $this->initializeJsonImport($request, $processPerRequest);
         }
 
-        return $this->processJsonImportPage($boardId, $page, $processPerRequest);
+        $directory = $this->getImportDirPath();
+        if (!$directory) {
+            return $this->fail(__('Could not lock the import session.', 'fluent-boards'));
+        }
+        $lock = $this->acquireImportLock($directory, 'board-' . $boardId);
+        try {
+            return $this->processJsonImportPage($boardId, $page, $processPerRequest);
+        } finally {
+            $this->releaseImportLock($lock);
+        }
     }
 
     /** Validate the target folder, create the imported board, and stage task batches. */
     private function initializeJsonImport(Request $request, $processPerRequest)
+    {
+        $filePath = $this->resolveImportFilePath($request->get('filePath'));
+        if (!$filePath) {
+            return $this->fail(__('Import file not found.', 'fluent-boards'));
+        }
+        $lock = $this->acquireImportLock(dirname($filePath) . '/', basename($filePath));
+        try {
+            $statePath = $filePath . '.state';
+            $state = is_file($statePath) ? json_decode(file_get_contents($statePath), true) : null;
+            if (!is_array($state) || empty($state['total']) || ($state['next'] ?? null) !== $state['total']) {
+                return $this->fail(__('The upload is incomplete. Restart the import upload.', 'fluent-boards'));
+            }
+            return $this->initializeCompletedJsonImport($request, $processPerRequest);
+        } finally {
+            if (!is_file($filePath)) {
+                wp_delete_file($filePath . '.state');
+            }
+            $this->releaseImportLock($lock);
+        }
+    }
+
+    /** Process a complete upload while holding the staging-directory lock. */
+    private function initializeCompletedJsonImport(Request $request, $processPerRequest)
     {
         // Never trust a filesystem path from the client: the reference is
         // reduced to a file name and resolved inside the import directory.
@@ -410,46 +470,62 @@ class JsonImportService
         unset($importData); // Free the huge array from memory
 
         $importDir = $this->getImportDirPath() . 'import_' . $boardId . '/';
-        wp_mkdir_p($importDir);
+        if (!wp_mkdir_p($importDir)) {
+            $this->abortInitialization($boardId, $importDir, __('Could not create the import batch directory.', 'fluent-boards'));
+        }
 
         $totalPages = max(1, ceil($totalTasks / $processPerRequest));
         for ($i = 0; $i < $totalPages; $i++) {
             $pageTasks = array_slice($tasks, $i * $processPerRequest, $processPerRequest);
-            file_put_contents(
-                $importDir . 'tasks_page_' . ($i + 1) . '.json',
-                wp_json_encode($pageTasks)
-            );
+            $pageData = wp_json_encode($pageTasks);
+            if ($pageData === false || file_put_contents($importDir . 'tasks_page_' . ($i + 1) . '.json', $pageData) !== strlen($pageData)) {
+                $this->abortInitialization($boardId, $importDir, __('Could not write the import batch. The uploaded source has been kept.', 'fluent-boards'));
+            }
         }
         unset($tasks); // Free memory
 
-        // Save import session to database so page 2+ can access the mappers
-        Meta::create([
-            'object_id'   => $boardId,
-            'object_type' => Constant::JSON_IMPORT,
-            'key'         => 'json_import_' . $boardId,
-            'value'       => [
-                'mappers'    => $result['mappers'],
-                'siteUrl'    => $result['siteUrl'],
-                'totalTasks' => $totalTasks,
-                'totalPages' => $totalPages,
-                'importDir'  => $importDir,
-            ],
-        ]);
-
-        // Delete the original large file — we have page files now
-        @unlink($filePath);
-
-        // Process the first batch
+        // Process the first batch only after all staged writes have succeeded.
         $pageFile = $importDir . 'tasks_page_1.json';
+        if (!is_file($pageFile)) {
+            $this->abortInitialization($boardId, $importDir, __('The import batch is missing. The uploaded source has been kept.', 'fluent-boards'));
+        }
         if (file_exists($pageFile)) {
             $taskBatch = json_decode(file_get_contents($pageFile), true);
-            if ($taskBatch) {
-                FluentBoardsImporter::processTaskBatch(
-                    $board, $result['mappers'], $result['siteUrl'], $taskBatch
-                );
+            if (!is_array($taskBatch) || count($taskBatch) !== min($processPerRequest, $totalTasks)) {
+                $this->abortInitialization($boardId, $importDir, __('The import batch could not be read. The uploaded source has been kept.', 'fluent-boards'));
             }
-            @unlink($pageFile); // Delete after processing
+            // Publish continuation state only after page one is complete, so another
+            // request cannot process page one while initialization still holds its upload lock.
+            $committed = $this->commitImportBatch(function () use ($board, $result, $taskBatch, $totalPages, $boardId, $totalTasks, $importDir) {
+                if ($taskBatch) {
+                    FluentBoardsImporter::processTaskBatch(
+                        $board, $result['mappers'], $result['siteUrl'], $taskBatch
+                    );
+                }
+                if ($totalPages <= 1) {
+                    return true;
+                }
+                return (bool) Meta::create([
+                    'object_id' => $boardId,
+                    'object_type' => Constant::JSON_IMPORT,
+                    'key' => 'json_import_' . $boardId,
+                    'value' => [
+                        'mappers' => $result['mappers'],
+                        'siteUrl' => $result['siteUrl'],
+                        'totalTasks' => $totalTasks,
+                        'totalPages' => $totalPages,
+                        'last_completed_page' => 1,
+                        'importDir' => $importDir,
+                    ],
+                ])->id;
+            });
+            if (!$committed) {
+                $this->abortInitialization($boardId, $importDir, __('Could not save the import progress. The uploaded source has been kept.', 'fluent-boards'));
+            }
+            @unlink($pageFile); // Delete after recording progress
         }
+
+        @unlink($filePath);
 
         $completed = min($processPerRequest, $totalTasks);
         $hasMore = $completed < $totalTasks;
@@ -498,23 +574,35 @@ class JsonImportService
         $totalTasks = $session['totalTasks'];
         $totalPages = $session['totalPages'];
 
-        // Skip pages whose file is already gone (processed during a timed-out request)
-        while ($page <= $totalPages) {
-            $pageFile = $importDir . 'tasks_page_' . $page . '.json';
-            if (file_exists($pageFile)) {
-                break; // Found an unprocessed page
-            }
-            $page++; // This page was already done, skip it
+        // A missing file is not proof that its tasks were imported.
+        if (!array_key_exists('last_completed_page', $session)) {
+            return $this->fail(__('This import session must be restarted to verify its progress.', 'fluent-boards'));
+        }
+        $page = (int) $session['last_completed_page'] + 1;
+        if ($page <= $totalPages && !is_file($importDir . 'tasks_page_' . $page . '.json')) {
+            return $this->fail(__('The import batch is missing. Restart the import.', 'fluent-boards'));
         }
 
         // Process the page if it exists
         if ($page <= $totalPages) {
             $pageFile = $importDir . 'tasks_page_' . $page . '.json';
             $taskBatch = json_decode(file_get_contents($pageFile), true);
-            if ($taskBatch) {
-                FluentBoardsImporter::processTaskBatch(
-                    $board, $session['mappers'], $session['siteUrl'], $taskBatch
-                );
+            $expectedTasks = min($processPerRequest, $totalTasks - ($page - 1) * $processPerRequest);
+            if (!is_array($taskBatch) || count($taskBatch) !== $expectedTasks) {
+                return $this->fail(__('The import batch could not be read. No progress was recorded.', 'fluent-boards'));
+            }
+            $session['last_completed_page'] = $page;
+            $committed = $this->commitImportBatch(function () use ($board, $session, $taskBatch, $meta) {
+                if ($taskBatch) {
+                    FluentBoardsImporter::processTaskBatch(
+                        $board, $session['mappers'], $session['siteUrl'], $taskBatch
+                    );
+                }
+                $meta->value = $session;
+                return (bool) $meta->save();
+            });
+            if (!$committed) {
+                return $this->fail(__('Could not save the import progress. No tasks from this batch were kept; retry to continue.', 'fluent-boards'));
             }
             @unlink($pageFile);
         }
@@ -543,6 +631,58 @@ class JsonImportService
     /**
      * Clean up after import is complete: delete the Meta session and any leftover page files.
      */
+    /**
+     * Take a non-blocking import lock. A held lock means another request is already
+     * working on this import, so answer busy instead of tying up a PHP worker.
+     */
+    private function acquireImportLock($directory, $name)
+    {
+        $lock = fopen($directory . '.upload-' . substr(hash('sha256', $name), 0, 2) . '.lock', 'c');
+        if (!$lock) {
+            $this->fail(__('Could not lock the import.', 'fluent-boards'));
+        }
+        if (!flock($lock, LOCK_EX | LOCK_NB)) {
+            fclose($lock);
+            $this->fail(__('Another import request is in progress. Please try again in a moment.', 'fluent-boards'), 409);
+        }
+        return $lock;
+    }
+
+    private function releaseImportLock($lock)
+    {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+
+    /**
+     * Create a batch's tasks and record its progress atomically, so a failed
+     * checkpoint rolls the tasks back and a retry cannot duplicate them.
+     */
+    private function commitImportBatch(callable $work)
+    {
+        $db = App::getInstance('db');
+        $db->beginTransaction();
+        try {
+            if (!$work()) {
+                $db->rollBack();
+                return false;
+            }
+            $db->commit();
+            return true;
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            throw $e;
+        }
+    }
+
+    /** Roll back a board whose staging failed, so a retry creates exactly one board. */
+    private function abortInitialization($boardId, $importDir, $message)
+    {
+        $this->cleanupImportSession($boardId, $importDir);
+        (new BoardService())->deleteBoard($boardId);
+        $this->fail($message);
+    }
+
     private function cleanupImportSession($boardId, $importDir)
     {
         Meta::where('object_id', $boardId)

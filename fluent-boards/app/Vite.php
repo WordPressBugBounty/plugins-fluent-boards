@@ -105,8 +105,13 @@ class Vite
         }
     }
 
+    /** Enqueue an app entry with the WordPress date runtime used by its display helpers. */
     public static function enqueueScript($handle, $src, $dependency = [], $version = null, $inFooter = false): Vite
     {
+        if (in_array($src, ['admin/app.js', 'admin/public_board.js', 'admin/crm-contact-app3/app.js'], true)) {
+            $dependency = array_unique(array_merge($dependency, ['wp-date']));
+        }
+
         return static::getInstance()->enqueue_script(
             $handle, $src, $dependency, $version, $inFooter
         );

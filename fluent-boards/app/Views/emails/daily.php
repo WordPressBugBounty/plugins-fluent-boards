@@ -48,7 +48,7 @@ ob_start();
     $fluent_boards_board = $fluent_boards_group['board'];
     $fluent_boards_board_url = $page_url . 'boards/' . $fluent_boards_board->id;
     ?>
-    <table role="presentation" class="fbs_email_border" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 12px; border: 1px solid #E1E4EA; border-radius: 10px;">
+    <table role="presentation" class="fbs_email_border" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse: separate; border-spacing: 0; margin-bottom: 12px; border: 1px solid #E1E4EA; border-radius: 10px;">
         <tr>
             <td class="fbs_email_inset" style="padding: 12px 16px; background: #F5F7FA; border-bottom: 1px solid #E1E4EA; border-radius: 10px 10px 0 0; font-size: 13px; line-height: 18px;">
                 <a class="fbs_email_text" href="<?php echo esc_url($fluent_boards_board_url); ?>" target="_blank" style="color: #0E121B; font-weight: 600; text-decoration: none;"><?php echo esc_html($fluent_boards_board->title); ?></a>

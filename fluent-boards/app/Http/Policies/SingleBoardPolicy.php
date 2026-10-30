@@ -21,6 +21,13 @@ class SingleBoardPolicy extends BasePolicy
         return PermissionManager::userHasBoardPermission($boardId, $request->getMethod());
     }
 
+    /** A personal pause is allowed for viewers and never changes the board itself. */
+    public function updateNotificationPause(Request $request)
+    {
+        $params = $request->get_url_params();
+        return get_current_user_id() && PermissionManager::userHasBoardPermission(absint($params['board_id'] ?? 0), 'GET');
+    }
+
     public function delete(Request $request)
     {
         return PermissionManager::isAdmin();
@@ -145,11 +152,15 @@ class SingleBoardPolicy extends BasePolicy
     }
 
     /**
-     * Restrict public board exposure to board managers.
+     * A share link is a bearer credential, so reading it needs the same edit-level access as
+     * creating or disabling it (PUT/DELETE); viewer-only members are denied.
      */
-    public function togglePublicAccess(Request $request)
+    public function getShareLink(Request $request)
     {
-        return $this->userIsBoardManager($request);
+        $routeParams = $request->get_url_params();
+        $boardId = absint($routeParams['board_id'] ?? 0);
+
+        return PermissionManager::userHasBoardPermission($boardId, 'PUT');
     }
 
     /**
