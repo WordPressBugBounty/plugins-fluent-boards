@@ -24,7 +24,7 @@ class LabelTools
         }
 
         if (!MCPHelper::canReadBoard($board->id)) {
-            return MCPHelper::error('forbidden', __('You do not have access to this board', 'fluent-boards'));
+            return MCPHelper::boardForbidden($board->id);
         }
 
         $service = new LabelService();
@@ -50,7 +50,7 @@ class LabelTools
         }
 
         if (!MCPHelper::canWriteBoard($board->id)) {
-            return MCPHelper::error('forbidden', __('You do not have permission to manage labels on this board', 'fluent-boards'));
+            return MCPHelper::boardForbidden($board->id, true);
         }
 
         $service = new LabelService();
@@ -76,7 +76,7 @@ class LabelTools
         }
 
         if (empty($labelData['label']) && empty($labelData['bg_color'])) {
-            return MCPHelper::error('invalid_param', __('Provide a label title or a background color', 'fluent-boards'));
+            return MCPHelper::invalid(['title', 'bg_color'], 'A label needs a title or a bg_color. Send title, or bg_color for a colour-only label.');
         }
 
         if ($isUpdate) {
@@ -94,9 +94,7 @@ class LabelTools
 
         return [
             'label'   => self::formatLabel($label),
-            'message' => $isUpdate
-                ? __('Label has been updated', 'fluent-boards')
-                : __('Label has been created', 'fluent-boards'),
+            'created' => !$isUpdate,
         ];
     }
 
@@ -108,7 +106,7 @@ class LabelTools
         }
 
         if (!MCPHelper::canWriteBoard($board->id)) {
-            return MCPHelper::error('forbidden', __('You do not have permission to manage labels on this board', 'fluent-boards'));
+            return MCPHelper::boardForbidden($board->id, true);
         }
 
         $service = new LabelService();
@@ -120,9 +118,10 @@ class LabelTools
         $service->deleteLabelOfBoard($label->id, $board->id);
 
         return [
+            'deleted'  => true,
             'board_id' => (int) $board->id,
             'label_id' => (int) $label->id,
-            'message'  => __('Label has been deleted', 'fluent-boards'),
+            'title'    => (string) $label->title,
         ];
     }
 
@@ -144,7 +143,7 @@ class LabelTools
         }
 
         if (!MCPHelper::canWriteBoard($task->board_id)) {
-            return MCPHelper::error('forbidden', __('You do not have permission to update this task', 'fluent-boards'));
+            return MCPHelper::boardForbidden($task->board_id, true);
         }
 
         $service = new LabelService();
@@ -154,9 +153,35 @@ class LabelTools
         }
 
         if (!$labels) {
-            return MCPHelper::error('invalid_param', __('Provide label_id, label_ids or label_titles', 'fluent-boards'));
+            return MCPHelper::invalid(['label_id', 'label_ids', 'label_titles'], 'Send label_id, label_ids or label_titles: the labels to ' . ($mode === 'add' ? 'attach' : 'remove') . '. get-board lists the labels of the board.');
         }
 
+        $changedIds = self::changeTaskLabels($task, $labels, $mode);
+
+        if (count($changedIds) < count($labels)) {
+            MCPHelper::addWarning($mode === 'add'
+                ? 'Some of the labels were already on the task; changed lists the label ids that were added.'
+                : 'Some of the labels were not on the task; changed lists the label ids that were removed.');
+        }
+
+        return [
+            'task_id'  => (int) $task->id,
+            'board_id' => (int) $task->board_id,
+            'changed'  => $changedIds,
+            'labels'   => MCPHelper::formatLabelList($task->labels),
+        ];
+    }
+
+    /**
+     * Attach labels to a task, or detach them, and fire one event per changed label.
+     *
+     * @param \FluentBoards\App\Models\Task $task
+     * @param array                         $labels Label models on the task's board.
+     * @param string                        $mode   add or remove.
+     * @return int[] Ids of the labels that changed.
+     */
+    public static function changeTaskLabels($task, $labels, $mode)
+    {
         $labelIds = array_map(function ($label) {
             return (int) $label->id;
         }, $labels);
@@ -195,18 +220,10 @@ class LabelTools
                 continue;
             }
 
-            $label = $labelsById[$labelId];
-            do_action('fluent_boards/task_label', $task, $label, $mode === 'add' ? 'added' : 'removed');
+            do_action('fluent_boards/task_label', $task, $labelsById[$labelId], $mode === 'add' ? 'added' : 'removed');
         }
 
-        return [
-            'task_id'  => (int) $task->id,
-            'board_id' => (int) $task->board_id,
-            'labels'   => MCPHelper::formatLabelList($task->labels),
-            'message'  => $mode === 'add'
-                ? __('Labels have been added to the task', 'fluent-boards')
-                : __('Labels have been removed from the task', 'fluent-boards'),
-        ];
+        return $changedIds;
     }
 
     /**
@@ -216,7 +233,7 @@ class LabelTools
      *
      * @return array|\WP_Error List of Label models.
      */
-    private static function resolveLabels($service, $params, $boardId)
+    public static function resolveLabels($service, $params, $boardId)
     {
         $ids = MCPHelper::sanitizeIdArray($params['label_ids'] ?? []);
 
@@ -238,9 +255,7 @@ class LabelTools
         $titles = array_values(array_unique($titles));
 
         if (count($ids) + count($titles) > self::MAX_LABELS_PER_CALL) {
-            return MCPHelper::error('invalid_param', __('Too many labels in one call', 'fluent-boards'), [
-                'max' => self::MAX_LABELS_PER_CALL,
-            ]);
+            return MCPHelper::invalid(['label_ids', 'label_titles'], sprintf('A call takes at most %d labels in total.', self::MAX_LABELS_PER_CALL));
         }
 
         if (!$ids && !$titles) {
@@ -260,29 +275,55 @@ class LabelTools
 
         foreach ($ids as $id) {
             if (!isset($byId[$id])) {
-                return MCPHelper::error('not_found', __('Label not found on this board', 'fluent-boards'), [
-                    'label_id' => $id,
-                ]);
+                return self::labelNotFound($id, $boardId, !empty($params['label_id']) && absint($params['label_id']) === $id ? 'label_id' : 'label_ids');
             }
             $resolved[$id] = $byId[$id];
         }
 
         foreach ($titles as $title) {
-            $match = null;
+            $matches = [];
             foreach ($byId as $label) {
                 if (strcasecmp((string) $label->title, $title) === 0) {
-                    $match = $label;
-                    break;
+                    $matches[] = $label;
                 }
             }
 
-            if (!$match) {
-                return MCPHelper::error('not_found', __('Label not found on this board', 'fluent-boards'), [
-                    'title' => $title,
-                ]);
+            if (!$matches) {
+                $known = [];
+                foreach ($byId as $label) {
+                    if ((string) $label->title !== '') {
+                        $known[] = (string) $label->title;
+                    }
+                }
+
+                return MCPHelper::error('not_found', sprintf(
+                    'Board %d has no label titled "%s". Use a title from details.label_titles, or create the label with save-label.',
+                    (int) $boardId,
+                    $title
+                ), ['fields' => ['label_titles'], 'label_titles' => array_slice($known, 0, 50)]);
             }
 
-            $resolved[(int) $match->id] = $match;
+            // Titles that differ only in letter case: the one written exactly as asked is meant.
+            if (count($matches) > 1) {
+                $exact = array_values(array_filter($matches, function ($label) use ($title) {
+                    return (string) $label->title === $title;
+                }));
+                if (count($exact) === 1) {
+                    $matches = $exact;
+                }
+            }
+
+            // Two labels can share a title. Picking one would attach a label the user did not mean.
+            if (count($matches) > 1) {
+                return MCPHelper::invalid('label_titles', sprintf(
+                    '%d labels on board %d are titled "%s". Send the one you mean by id in label_ids; details.labels lists them.',
+                    count($matches),
+                    (int) $boardId,
+                    $title
+                ), ['labels' => MCPHelper::formatLabelList($matches)]);
+            }
+
+            $resolved[(int) $matches[0]->id] = $matches[0];
         }
 
         return array_values($resolved);
@@ -292,16 +333,23 @@ class LabelTools
     {
         $labelId = absint($labelId);
         if (!$labelId) {
-            return MCPHelper::error('invalid_param', __('Provide label_id', 'fluent-boards'));
+            return MCPHelper::invalid('label_id', 'label_id is required: a label id from get-board or list-labels.');
         }
 
         try {
             return $service->findLabelOnBoard($labelId, $boardId);
         } catch (\Exception $e) {
-            return MCPHelper::error('not_found', __('Label not found on this board', 'fluent-boards'), [
-                'label_id' => $labelId,
-            ]);
+            return self::labelNotFound($labelId, $boardId, 'label_id');
         }
+    }
+
+    private static function labelNotFound($labelId, $boardId, $field)
+    {
+        return MCPHelper::error('not_found', sprintf(
+            'Board %d has no label with id %d. get-board and list-labels return the label ids.',
+            (int) $boardId,
+            (int) $labelId
+        ), ['fields' => [$field]]);
     }
 
     private static function formatLabel($label)

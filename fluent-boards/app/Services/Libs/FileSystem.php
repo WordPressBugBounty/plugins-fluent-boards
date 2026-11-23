@@ -228,7 +228,13 @@ class FileSystem
                     $filesArray['size_in_bytes'] = $filesArray['size'];
                     (new UploadService())->validateFile($filesArray);
                 }
-                $uploadsData = wp_handle_upload($filesArray, $uploadOverrides);
+                $fileOverrides = $uploadOverrides;
+                if (UploadService::isStoredAsText(Arr::get($filesArray, 'name'))) {
+                    // Extension was validated above; the stored copy is renamed to .txt,
+                    // so skip WP's content sniff, which would reject text/html as .txt.
+                    $fileOverrides['test_type'] = false;
+                }
+                $uploadsData = wp_handle_upload($filesArray, $fileOverrides);
                 if (!empty($uploadsData['error']) || empty($uploadsData['file'])) {
                     throw new Exception($uploadsData['error'] ?? __('File upload failed.', 'fluent-boards'));
                 }
@@ -312,6 +318,9 @@ class FileSystem
         $prefix = wp_generate_uuid4() . '-';
         $prefix = apply_filters('fluent_boards/uploaded_file_name_prefix', $prefix);
         $file['name'] = $prefix . $file['name'];
+        if (UploadService::isStoredAsText($file['name'])) {
+            $file['name'] .= '.txt';
+        }
 
         return $file;
     }

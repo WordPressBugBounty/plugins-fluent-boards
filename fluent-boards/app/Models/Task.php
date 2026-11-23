@@ -61,10 +61,14 @@ class Task extends Model
 
     public static function withoutTaskCreatedEvent($callback)
     {
+        $wasSkipped = static::$skipTaskCreatedEvent;
         static::$skipTaskCreatedEvent = true;
-        $result = $callback();
-        static::$skipTaskCreatedEvent = false;
-        return $result;
+
+        try {
+            return $callback();
+        } finally {
+            static::$skipTaskCreatedEvent = $wasSkipped;
+        }
     }
 
     public static function boot()
@@ -98,6 +102,7 @@ class Task extends Model
                     do_action('fluent_boards/contact_added_to_task', $model);
                 }
             } else {
+                // subtask_added is fired by SubtaskService, not here, so imports and templates don't fire it per row.
                 self::adjustSubtaskCount($model->parent_id);
             }
         });
@@ -396,7 +401,7 @@ class Task extends Model
         }
 
         // The share-link secret is a bearer credential: it is read only through TaskShareService.
-        return $meta->except([TaskShareService::TOKEN_META]);
+        return $meta->except([TaskShareService::TOKEN_META, TaskShareService::AUTHOR_META, TaskShareService::AUTHOR_ID_META]);
     }
 
     public function stage()
@@ -517,8 +522,8 @@ class Task extends Model
      */
     public static function lead_contact($id)
     {
-        // Single gated implementation: CRM data is only serialized for users with CRM read access.
-        return Helper::crm_contact($id);
+        // Board-scoped: basic identity for board members, full record with CRM read access.
+        return Helper::boardCrmContact($id);
     }
 
     public function getMeta($key, $default = null)

@@ -5,6 +5,7 @@ namespace FluentBoards\App\Http\Controllers;
 use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\StageService;
+use FluentBoards\App\Services\TaskService;
 use FluentBoards\Framework\Http\Request\Request;
 
 class StageController extends Controller
@@ -34,6 +35,52 @@ class StageController extends Controller
             ], 200);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 404);
+        }
+    }
+
+    public function copyStage(Request $request, $board_id, $stage_id)
+    {
+        $board_id = absint($board_id);
+        $stage_id = absint($stage_id);
+
+        try {
+            $this->findStageOnBoard($stage_id, $board_id);
+
+            // Sync cursor taken before the copy, so a long copy still returns every new row.
+            $startedAt = date_i18n('Y-m-d H:i:s', current_time('timestamp') - 5);
+
+            $result = $this->stageService->copyStage($board_id, $stage_id, [
+                'title'      => $request->getSafe('title', 'sanitize_text_field'),
+                'with_tasks' => filter_var($request->get('with_tasks'), FILTER_VALIDATE_BOOLEAN),
+            ]);
+
+            $message = __('Stage has been copied', 'fluent-boards');
+
+            if ($result['failed_tasks']) {
+                $message = sprintf(
+                    /* translators: 1: number of copied tasks, 2: number of tasks that could not be copied */
+                    __('Stage has been copied with %1$d tasks. %2$d tasks could not be copied.', 'fluent-boards'),
+                    $result['copied_tasks'],
+                    $result['failed_tasks']
+                );
+            } elseif ($result['copied_tasks']) {
+                $message = sprintf(
+                    /* translators: %d is the number of copied tasks */
+                    _n('Stage has been copied with %d task', 'Stage has been copied with %d tasks', $result['copied_tasks'], 'fluent-boards'),
+                    $result['copied_tasks']
+                );
+            }
+
+            return $this->sendSuccess([
+                'message'       => $message,
+                'stage'         => $result['stage'],
+                'copied_tasks'  => $result['copied_tasks'],
+                'failed_tasks'  => $result['failed_tasks'],
+                'updatedStages' => $this->stageService->getLastOneMinuteUpdatedStages($board_id, $startedAt),
+                'updatedTasks'  => $result['copied_tasks'] ? (new TaskService())->getLastOneMinuteUpdatedTasks($board_id, $startedAt) : [],
+            ], 200);
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage(), 400);
         }
     }
 

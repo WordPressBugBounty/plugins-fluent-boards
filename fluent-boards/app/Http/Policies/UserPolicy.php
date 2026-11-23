@@ -66,9 +66,5 @@ class UserPolicy extends BasePolicy
         return $this->getMcpConnections($request);
     }
 
-    public function globalSearch(Request $request)
-    {
-        return true;
-    }
 
 }

@@ -125,6 +125,16 @@ class AdminMenuHandler
             [$this, 'render']
         );
 
+        // Automations will ship in a later release.
+        // add_submenu_page(
+        //     'fluent-boards',
+        //     __('Automations', 'fluent-boards'),
+        //     __('Automations', 'fluent-boards'),
+        //     'manage_options',
+        //     'fluent-boards#/automations',
+        //     [$this, 'render']
+        // );
+
         add_submenu_page(
             'fluent-boards',
             __('Addons', 'fluent-boards'),
@@ -212,6 +222,12 @@ class AdminMenuHandler
         $isAdmin = PermissionManager::isAdmin();
 
         if ($isAdmin) {
+            // Automations will ship in a later release.
+            // $menuItems['automations'] = [
+            //     'key'       => 'automations',
+            //     'label'     => __('Automations', 'fluent-boards'),
+            //     'permalink' => $baseUrl . 'automations'
+            // ];
             $menuItems['help'] = [
                 'key'       => 'help',
                 'label'     => __('Community', 'fluent-boards'),
@@ -394,7 +410,15 @@ class AdminMenuHandler
             'can_manage_crm_contacts'         => $this->canManageCrmContacts(),
             'fluent_roadmap_exists'           => !defined('FLUENT_ROADMAP') ? false : true,
             'has_pro'                         => !!defined('FLUENT_BOARDS_PRO_VERSION'),
+            // Telegram, Slack and Discord notifications will ship in a later release.
+            // 'telegram_notifications'          => true,
+            // // Per-board Telegram preferences exist only in core; a legacy Pro owner has no such routes.
+            // 'telegram_board_preferences'      => \FluentBoards\App\Services\TelegramService::coreOwnsTelegram(),
+            // 'slack_notifications'           => true,
+            // 'discord_notifications'           => true,
             'task_dependencies_in_modal'      => $this->isTruthySetting(Arr::get($generalSettings, 'task_dependencies_in_modal')),
+            'allow_board_sharing'             => fluent_boards_is_sharing_allowed('board'),
+            'allow_task_sharing'              => fluent_boards_is_sharing_allowed('task'),
             'upgrade_url'                     => fluent_boards_get_upgrade_url(),
             'board_solid_colors'              => Constant::BOARD_BACKGROUND_DEFAULT_SOLID_COLORS,
             'board_gradient_colors'           => Constant::BOARD_BACKGROUND_DEFAULT_GRADIENT_COLORS,
@@ -603,6 +627,18 @@ class AdminMenuHandler
             _.noConflict();
         }
         ";
+    }
+    public function singleBoardRender()
+    {
+        $config = App::getInstance('config');
+
+        $slug = $config->get('app.slug');
+
+
+
+        App::make('view')->render('admin.single_board_shortcode', [
+            'slug'         => $slug,
+        ]);
     }
 
 }

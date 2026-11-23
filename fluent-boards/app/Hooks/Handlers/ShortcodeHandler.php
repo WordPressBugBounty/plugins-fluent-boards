@@ -3,11 +3,51 @@
 namespace FluentBoards\App\Hooks\Handlers;
 
 use FluentBoards\App\App;
+use FluentBoards\App\Models\Board;
+use FluentBoards\App\Services\Helper;
+use FluentBoards\App\Services\PermissionManager;
 use FluentBoards\App\Services\TransStrings;
 use FluentBoards\App\Vite;
 
 class ShortcodeHandler
 {
+    public function register()
+    {
+        add_shortcode('fluent_board', [$this, 'renderBoard']);
+    }
+
+    public function renderBoard($atts = [])
+    {
+        $atts = shortcode_atts([
+            'id' => 0,
+        ], (array)$atts, 'fluent_board');
+
+        $boardId = absint($atts['id']);
+        if (!$boardId) {
+            return '';
+        }
+
+        // Check login before the lookup so visitors can't probe which board ids exist.
+        if (!is_user_logged_in()) {
+            return $this->loginRequiredHtml();
+        }
+
+        if (!PermissionManager::userHasPermission($boardId)) {
+            return '';
+        }
+
+        $board = Board::where('id', $boardId)->whereNull('archived_at')->first();
+        if (!$board) {
+            return '';
+        }
+
+        $this->enqueueAssets($boardId);
+
+        return Helper::loadView('frontend.public_board', [
+            'board_id' => $boardId
+        ]);
+    }
+
     /**
      * Assets for the read-only public apps (board view and task share page): the shared
      * stylesheet plus the standalone public bundle. The admin SPA is never loaded for visitors.
@@ -43,6 +83,38 @@ class ShortcodeHandler
         ]);
     }
 
+    private function enqueueAssets($boardId)
+    {
+        $app = App::getInstance();
+        $slug = $app->config->get('app.slug');
+
+        // Inject Vite HMR client in dev mode
+        Vite::injectViteClient();
+
+        $this->enqueueStyles($app, '_public_board_app');
+
+        Vite::enqueueStaticScript(
+            $slug . '_public_global_admin',
+            'admin/global_admin.js',
+            [],
+            FLUENT_BOARDS_PLUGIN_VERSION,
+            true
+        );
+
+        Vite::enqueueScript(
+            $slug . '_public_single_board',
+            'admin/single_board.js',
+            ['jquery'],
+            FLUENT_BOARDS_PLUGIN_VERSION,
+            true
+        );
+
+        wp_localize_script(
+            $slug . '_public_single_board',
+            'fluentAddonVars',
+            $this->getPrivateAddonVars($app)
+        );
+    }
 
     /**
      * Shared board stylesheet (+ merged chunk CSS in production, + RTL overrides). Returns whether RTL is active.
@@ -87,5 +159,24 @@ class ShortcodeHandler
         return $isRtl;
     }
 
+    private function getPrivateAddonVars($app)
+    {
+        $vars = (new AdminMenuHandler())->getAddonVars($app);
+        $baseUrl = get_permalink() ?: site_url('/');
+        $vars['base_url'] = rtrim($baseUrl, '/') . '/#/';
+        $vars['render_in'] = 'front';
 
+        return $vars;
+    }
+
+    private function loginRequiredHtml()
+    {
+        $loginUrl = wp_login_url(get_permalink() ?: site_url('/'));
+        return '<p>' . sprintf(
+            // translators: %1$s is the opening login link tag, %2$s is the closing login link tag.
+            esc_html__('Please %1$slog in%2$s to view this board.', 'fluent-boards'),
+            '<a href="' . esc_url($loginUrl) . '">',
+            '</a>'
+        ) . '</p>';
+    }
 }

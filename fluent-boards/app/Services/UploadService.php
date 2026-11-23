@@ -87,13 +87,16 @@ class UploadService
             'gz|gzip'   => 'application/gzip',
         ];
 
+        // HTML is stored as .txt (see isStoredAsText()) and always served as a download.
+        $extraMimes['html|htm'] = 'text/plain';
+
         $map = array_merge(get_allowed_mime_types(), $extraMimes);
         $map = apply_filters('fluent_boards/upload_allowed_mimes', $map);
 
         // Never allow executable or browser-active formats through plugin filters.
         $blockedExtensions = [
             'php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phtml', 'phar',
-            'html', 'htm', 'shtml', 'xhtml', 'xht',
+            'shtml', 'xhtml', 'xht',
             'js', 'mjs', 'svg', 'svgz', 'xml', 'xsl', 'xslt', 'swf', 'htaccess',
         ];
         $safeMap = [];
@@ -106,6 +109,17 @@ class UploadService
         }
 
         return $safeMap;
+    }
+
+    /**
+     * HTML must never reach disk with a browser-active extension: it gets a .txt suffix,
+     * so no web server renders it even where the uploads .htaccess deny is ignored (nginx).
+     */
+    public static function isStoredAsText($fileName)
+    {
+        $extension = strtolower(pathinfo((string) $fileName, PATHINFO_EXTENSION));
+
+        return in_array($extension, ['html', 'htm'], true);
     }
 
 }

@@ -199,8 +199,7 @@ class Board extends Model
                 $newIds,
                 [
                     'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
-                    'settings'    => maybe_serialize(Constant::BOARD_USER_SETTINGS),
-                    'preferences' => maybe_serialize(Constant::BOARD_NOTIFICATION_TYPES)
+                    'settings'    => maybe_serialize(Constant::BOARD_USER_SETTINGS)
                 ]
             );
         }

@@ -14,6 +14,8 @@ use FluentBoards\App\Models\User;
 
 class NotificationService
 {
+    const READ_BATCH_SIZE = 20;
+
     /** Return UTC expiries or the indefinite sentinel; expired values need no cron cleanup. */
     public function getNotificationPause($userId, $boardId = 0)
     {
@@ -185,6 +187,54 @@ class NotificationService
         return $unreadNotifications;
     }
 
+    /** Return persisted read receipts, including IDs already read during an earlier attempt. */
+    public function markBatchRead($ids)
+    {
+        $userId = get_current_user_id();
+        if (!$userId) {
+            throw new RuntimeException(__('You are not allowed to do that', 'fluent-boards'), 403);
+        }
+        if (!is_array($ids) || count($ids) > self::READ_BATCH_SIZE) {
+            throw new InvalidArgumentException(__('Invalid notification selection.', 'fluent-boards'), 422);
+        }
+        foreach ($ids as $id) {
+            if ((!is_int($id) && !is_string($id)) || !ctype_digit((string) $id) || (int) $id < 1) {
+                throw new InvalidArgumentException(__('Invalid notification selection.', 'fluent-boards'), 422);
+            }
+        }
+        $ids = array_unique(array_map('intval', $ids));
+        if (!$ids) {
+            return [];
+        }
+        $selected = NotificationUser::where('user_id', $userId)->whereIn('notification_id', $ids);
+        (clone $selected)->whereNull('marked_read_at')->update(['marked_read_at' => current_time('mysql')]);
+        return $selected->whereNotNull('marked_read_at')->get(['notification_id', 'marked_read_at']);
+    }
+
+    /**
+     * Mark every unread notification the current user has on one task as read.
+     * Opening a task counts as reading it, so the unread badge on its card clears.
+     *
+     * @return int Number of notifications that were unread before this call.
+     */
+    public function markTaskNotificationsRead($taskId)
+    {
+        $userId = get_current_user_id();
+        if (!$userId) {
+            throw new RuntimeException(__('You are not allowed to do that', 'fluent-boards'), 403);
+        }
+        $taskId = absint($taskId);
+        if (!$taskId) {
+            throw new InvalidArgumentException(__('Invalid task.', 'fluent-boards'), 422);
+        }
+
+        // Only this user's own read receipts are touched, so no board access check is needed.
+        return (int) NotificationUser::where('user_id', $userId)
+            ->whereNull('marked_read_at')
+            ->whereIn('notification_id', Notification::query()->select('id')->where('task_id', $taskId))
+            ->update(['marked_read_at' => current_time('mysql')]);
+    }
+
     public function markAllRead()
     {
         $user = wp_get_current_user();
@@ -280,6 +330,7 @@ class NotificationService
         $boardSettings =  Relation::where('object_type', Constant::OBJECT_TYPE_BOARD_USER)
             ->where('object_id', $id)
             ->where('foreign_id', $userId)
+            ->orderBy('id', 'ASC')
             ->first();
 
         return $boardSettings;
@@ -290,6 +341,7 @@ class NotificationService
         $settings =  Meta::where('object_type', Constant::OBJECT_TYPE_USER)
             ->where('object_id', $userId)
             ->where('key', Constant::USER_GLOBAL_NOTIFICATIONS)
+            ->orderBy('id')
             ->first();
 
         return $settings;
@@ -300,21 +352,28 @@ class NotificationService
      */
     public function getBoardNotificationSettingsWithDefaults($boardId, $userId)
     {
-        $settings = $this->getDefaultBoardNotificationSettings($userId);
+        return $this->boardNotificationPreferences($boardId, $userId)['currentSettings'];
+    }
 
-        $boardSettings = $this->getBoardNotificationSettingsOfUser($boardId, $userId);
-        if ($boardSettings && $boardSettings->preferences) {
-            $preferences = maybe_unserialize($boardSettings->preferences);
-            if (is_array($preferences)) {
-                $settings = array_merge($settings, array_intersect_key($preferences, $settings));
-            }
-        }
+    /** An empty membership preference set inherits global choices. Legacy saved sets are overrides. */
+    public function boardNotificationPreferences($boardId, $userId)
+    {
+        $membership = $this->getBoardNotificationSettingsOfUser($boardId, $userId);
+        $board = (array) ($membership->preferences ?? []);
+        $globalRow = $this->getGlobalNotificationSettingsOfUser($userId);
+        $global = $this->applyMentionFallback((array) ($globalRow->value ?? []));
+        $watch = $this->getWatchNotificationDefaults();
+        $defaults = array_merge(Constant::BOARD_NOTIFICATION_TYPES, $watch);
+        // Legacy boards without watch keys used the member's global auto-watch settings.
+        $values = $board ? array_replace(array_intersect_key($global, $watch), $this->applyMentionFallback($board)) : $global;
+        $settings = array_replace($defaults, array_intersect_key($values, $defaults));
 
-        foreach ($settings as $key => $value) {
-            $settings[$key] = $this->normalizePreferenceValue($value);
-        }
-
-        return $settings;
+        return [
+            'currentSettings' => array_map([$this, 'normalizePreferenceValue'], $settings),
+            'same_as_global' => !$board,
+            'legacy_email_settings' => $this->hasLegacyEmailSettings($board),
+            'is_member' => (bool) $membership,
+        ];
     }
 
     /**
@@ -327,40 +386,6 @@ class NotificationService
         return array_key_exists($preferenceKey, $settings) && $this->normalizePreferenceValue($settings[$preferenceKey]);
     }
 
-    /**
-     * Get global watch preferences for fallback when a board has no saved watch keys.
-     */
-    private function getGlobalWatchNotificationSettings($userId)
-    {
-        $watchSettings = $this->getWatchNotificationDefaults();
-
-        $globalSettings = $this->getGlobalNotificationSettingsOfUser($userId);
-        if (!$globalSettings || !$globalSettings->value) {
-            return $watchSettings;
-        }
-
-        $preferences = maybe_unserialize($globalSettings->value);
-        if (!is_array($preferences)) {
-            return $watchSettings;
-        }
-
-        foreach (array_keys($watchSettings) as $key) {
-            if (array_key_exists($key, $preferences)) {
-                $watchSettings[$key] = $this->normalizePreferenceValue($preferences[$key]);
-            }
-        }
-
-        return $watchSettings;
-    }
-
-    private function getDefaultBoardNotificationSettings($userId)
-    {
-        return array_merge(
-            Constant::BOARD_NOTIFICATION_TYPES,
-            $this->getGlobalWatchNotificationSettings($userId)
-        );
-    }
-
     private function getWatchNotificationDefaults()
     {
         return [
@@ -371,6 +396,18 @@ class NotificationService
     }
 
     /**
+     * Mention emails used to follow the comment preference. Until a mention value is saved, reuse the comment one.
+     */
+    private function applyMentionFallback(array $preferences)
+    {
+        if (!array_key_exists(Constant::BOARD_EMAIL_MENTION, $preferences) && array_key_exists(Constant::BOARD_EMAIL_COMMENT, $preferences)) {
+            $preferences[Constant::BOARD_EMAIL_MENTION] = $preferences[Constant::BOARD_EMAIL_COMMENT];
+        }
+
+        return $preferences;
+    }
+
+    /**
      * Convert stored preference values into strict booleans.
      */
     private function normalizePreferenceValue($value)
@@ -378,30 +415,30 @@ class NotificationService
         return true === $value || 1 === $value || '1' === $value || 'true' === $value;
     }
 
-    public function updateBoardNotificationSettings($newSettings, $id)
+    private function hasLegacyEmailSettings($preferences)
+    {
+        return !empty($preferences) && empty($preferences[Constant::BOARD_EMAIL_OVERRIDE]);
+    }
+
+    /** Store a complete board override, or clear it to resume live global inheritance. */
+    public function updateBoardNotificationSettings($newSettings, $id, $merge = false)
     {
         $userId = get_current_user_id();
-        $boardSettings =  $this->getBoardNotificationSettingsOfUser($id, $userId);
-        if(empty($boardSettings)){
-            return;
+        $membership = $this->getBoardNotificationSettingsOfUser($id, $userId);
+        if (!$membership) {
+            throw new RuntimeException(__('You must be a board member to update notification settings.', 'fluent-boards'));
         }
 
-        $allowedSettings = array_merge(
-            Constant::BOARD_NOTIFICATION_TYPES,
-            $this->getWatchNotificationDefaults()
-        );
-        $filteredSettings = [];
-        foreach ($newSettings as $index => $setting) {
-            if (!array_key_exists($index, $allowedSettings)) {
-                continue;
-            }
-
-            $filteredSettings[$index] = $this->normalizePreferenceValue($setting);
+        $allowed = array_merge(Constant::BOARD_NOTIFICATION_TYPES, $this->getWatchNotificationDefaults());
+        $settings = $merge ? $this->getBoardNotificationSettingsWithDefaults($id, $userId) : [];
+        foreach (array_intersect_key($newSettings, $allowed) as $key => $value) {
+            $settings[$key] = $this->normalizePreferenceValue($value);
         }
-
-        $boardSettings->preferences = $filteredSettings;
-        $boardSettings->save();
-
+        if ($settings) {
+            $settings[Constant::BOARD_EMAIL_OVERRIDE] = true;
+        }
+        $membership->preferences = $settings;
+        $membership->save();
     }
 
     public function filterAssigneeToSendEmail($taskId, $emailPurpose){
@@ -432,21 +469,14 @@ class NotificationService
     public function getCommentRecipientUserIds($taskId)
     {
         $task = Task::findOrFail(absint($taskId));
-        $currentUserId = get_current_user_id();
-        $watchers = $task->watchers;
-        $watcherIds = array_diff($watchers->pluck('ID')->toArray(), [$currentUserId]);
-        $eligibleIds = $this->getEmailEnabledUserIds($task->board_id, $watcherIds, Constant::BOARD_EMAIL_COMMENT);
-        $eligibleLookup = array_fill_keys($eligibleIds, true);
-        $recipientUserIds = [];
+        return $this->getWatcherEmailRecipientIds($task, Constant::BOARD_EMAIL_COMMENT);
+    }
 
-        foreach ($watchers as $watcher) {
-            $watcherId = absint($watcher->ID);
-            if (isset($eligibleLookup[$watcherId])) {
-                $recipientUserIds[] = $watcherId;
-            }
-        }
-
-        return array_values(array_unique($recipientUserIds));
+    /** Snapshot eligible watcher IDs so queued mail can recheck each account at delivery. */
+    public function getWatcherEmailRecipientIds($task, $purpose)
+    {
+        $watcherIds = array_diff($task->watchers->pluck('ID')->toArray(), [get_current_user_id()]);
+        return $this->getEmailEnabledUserIds($task->board_id, $watcherIds, $purpose);
     }
 
     public function checkIfEmailEnable($userId, $emailPurpose, $boardId)
@@ -461,7 +491,7 @@ class NotificationService
     }
 
     /**
-     * Resolve board email recipients in one query; missing preference keys default to enabled without writes.
+     * Resolve membership overrides and inherited global preferences in batches.
      */
     public function getEmailEnabledUserIds($boardId, $userIds, $purpose)
     {
@@ -479,11 +509,28 @@ class NotificationService
             ->get(['foreign_id', 'preferences'])
             ->unique('foreign_id');
 
+        $inheritingIds = [];
+        foreach ($relations as $relation) {
+            if (empty($relation->preferences)) {
+                $inheritingIds[] = (int) $relation->foreign_id;
+            }
+        }
+        $globals = [];
+        if ($inheritingIds) {
+            $globals = Meta::where('object_type', Constant::OBJECT_TYPE_USER)
+                ->where('key', Constant::USER_GLOBAL_NOTIFICATIONS)
+                ->whereIn('object_id', $inheritingIds)
+                ->orderBy('id')
+                ->get(['object_id', 'value'])->unique('object_id')->keyBy('object_id');
+        }
+
         $enabledUserIds = [];
         foreach ($relations as $relation) {
-            $preferences = (array) maybe_unserialize($relation->preferences);
-            if (!array_key_exists($purpose, $preferences) || $preferences[$purpose]) {
-                $enabledUserIds[] = (int) $relation->foreign_id;
+            $id = (int) $relation->foreign_id;
+            $values = $relation->preferences ?: ($globals[$id]->value ?? []);
+            $preferences = $this->applyMentionFallback((array) $values);
+            if ($this->normalizePreferenceValue($preferences[$purpose] ?? true)) {
+                $enabledUserIds[] = $id;
             }
         }
 
@@ -493,24 +540,7 @@ class NotificationService
     /** Apply personal pauses before the existing board email preference. */
     public function checkIfEmailEnabled($boardId, $userId, $purpose)
     {
-        if ($this->isNotificationMuted($userId, $boardId)) {
-            return false;
-        }
-
-        $boardSettings = $this->getBoardNotificationSettingsOfUser($boardId, $userId);
-
-        if($boardSettings){
-            $preferences = maybe_unserialize($boardSettings['preferences']);
-            if(!array_key_exists($purpose, $preferences)){
-                $preferences[$purpose] = true;
-                $boardSettings->preferences = $preferences;
-                $boardSettings->save();
-                return true;
-            }
-            return $preferences[$purpose];
-        }
-
-        return false;
+        return !empty($this->getEmailEnabledUserIds($boardId, [$userId], $purpose));
     }
 
     /**
@@ -566,23 +596,19 @@ class NotificationService
         }
 
         // Queued delivery revalidates membership and preferences before sending.
-        $this->sendMailAfterMention($comment->id, $uniqueIds);
+        $this->sendMailAfterMention($comment->id, $uniqueIds, $task->board_id);
 
         //sending desktop notifications
         do_action('fluent_boards/mention_comment_notification', $comment, $uniqueIds);
     }
 
-    public function sendMailAfterMention($commentId, $recipientUserIds)
+    public function sendMailAfterMention($commentId, $recipientUserIds, $boardId = 0)
     {
         if (empty($recipientUserIds)) {
             return;
         }
 
-        $current_user_id = get_current_user_id();
-
-        /* this will run in background as soon as possible */
-        /* sending Model or Model Instance won't work here */
-        as_enqueue_async_action('fluent_boards/one_time_schedule_send_email_for_mention', [$commentId, $recipientUserIds, $current_user_id], 'fluent-boards');
+        TaskEmailDigest::enqueue('mention', $commentId, $recipientUserIds, $boardId);
     }
 
     public function getUnreadNotificationsOfTasks($task)

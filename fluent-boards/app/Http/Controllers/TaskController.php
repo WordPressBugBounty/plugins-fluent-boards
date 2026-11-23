@@ -8,6 +8,7 @@ use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\TaskMeta;
+use FluentBoards\App\Services\AssigneeSuggestionService;
 use FluentBoards\App\Services\CommentService;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\Helper;
@@ -448,7 +449,7 @@ class TaskController extends Controller
             $task->isOverdue = $task->isOverdue();
             $task->isUpcoming = $task->upcoming();
             if ($includeContact) {
-                $task->contact = Helper::crm_contact($task->crm_contact_id); // Handle possible null contact
+                $task->contact = Helper::boardCrmContact($task->crm_contact_id); // Handle possible null contact
             }
             if ($includeObserverState) {
                 $task->is_watching = $task->isWatching();
@@ -510,6 +511,17 @@ class TaskController extends Controller
             }
 
             $task = $this->taskService->createTask($taskData, $board_id);
+
+            // Count the people the user picked in the create form, not the stage's default assignees.
+            // Suggest assignee feature is disabled for now.
+            // if (!empty($taskData['assignees'])) {
+            //     (new AssigneeSuggestionService())->recordAssigned(
+            //         $board_id,
+            //         $task->id,
+            //         array_intersect($taskData['assignees'], $task->assignees->pluck('ID')->all())
+            //     );
+            // }
+
             $message = $task->type === 'roadmap'
                 ? __('Idea has been successfully created', 'fluent-boards')
                 : __('Task has been successfully created', 'fluent-boards');
@@ -596,7 +608,8 @@ class TaskController extends Controller
         $sanitizedParams = [
             'per_page' => $request->getSafe('per_page', 'intval', 20),
             'page' => $request->getSafe('page', 'intval', 1),
-            'query' => $request->getSafe('searchInput', 'sanitize_text_field', '') 
+            'query' => $request->getSafe('searchInput', 'sanitize_text_field', ''),
+            'order' => $request->getSafe('order', 'sanitize_text_field', 'DESC')
         ];
 
 
@@ -648,7 +661,7 @@ class TaskController extends Controller
                     // Prepare task for response (same as single task update)
                     $task->isOverdue = $task->isOverdue();
                     $task->isUpcoming = $task->upcoming();
-                    $task->contact = Helper::crm_contact($task->crm_contact_id);
+                    $task->contact = Helper::boardCrmContact($task->crm_contact_id);
                     $task->is_watching = $task->isWatching();
                     $task->assignees = Helper::sanitizeUserCollections($task->assignees);
                     
@@ -822,10 +835,24 @@ class TaskController extends Controller
             $task->save();
         }
         
+        $assigneeIdsBefore = $col === 'assignees' ? $task->assignees->pluck('ID')->all() : [];
+
         $task = $this->taskService->updateTaskProperty($col, $validatedData[$col], $task);
+
+        // Suggest assignee feature is disabled for now.
+        // if ($col === 'assignees') {
+        //     // Only picks made here, in the app UI, feed the user's assignee suggestions.
+        //     (new AssigneeSuggestionService())->recordChange(
+        //         $board_id,
+        //         $task->id,
+        //         $assigneeIdsBefore,
+        //         $task->assignees->pluck('ID')->all()
+        //     );
+        // }
+
         $task->isOverdue = $task->isOverdue();
         $task->isUpcoming = $task->upcoming();
-        $task->contact = Helper::crm_contact($task->crm_contact_id);
+        $task->contact = Helper::boardCrmContact($task->crm_contact_id);
         $task->is_watching = $task->isWatching();
         $task->assignees = Helper::sanitizeUserCollections($task->assignees);
 
@@ -958,6 +985,13 @@ class TaskController extends Controller
         ];
     }
 
+    public function getSharedTasks(Request $request, $board_id)
+    {
+        return $this->sendSuccess([
+            'tasks' => $this->taskShareService->getSharedTasks($board_id, $request->get('page', 1)),
+        ]);
+    }
+
     /**
      * Current share-link state (enabled, url, settings) for a board task.
      */
@@ -974,6 +1008,12 @@ class TaskController extends Controller
      */
     public function updateShareLink(Request $request, $board_id, $task_id)
     {
+        if (!fluent_boards_is_sharing_allowed('task')) {
+            return $this->sendError([
+                'message' => __('Task sharing is turned off in General Settings.', 'fluent-boards')
+            ], 403);
+        }
+
         $task = Task::where('board_id', absint($board_id))->whereNull('archived_at')->findOrFail(absint($task_id));
         $settings = $request->get('settings', []);
         $settings = is_array($settings) ? $settings : [];
@@ -1330,7 +1370,7 @@ class TaskController extends Controller
             do_action('fluent_boards/task_stage_updated', $task, $oldStageId);
 
             $usersToSendEmail = $this->notificationService->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_STAGE_CHANGE);
-            $this->taskService->sendMailAfterTaskModify('stage_change', $usersToSendEmail, $task->id);
+            $this->taskService->sendMailAfterTaskModify('stage_change', $usersToSendEmail, $task, $oldStageId);
         }
 
         do_action('fluent_boards/task_updated', $task, 'position');
@@ -1376,11 +1416,7 @@ class TaskController extends Controller
 
     public function sendMailAfterStageChange($usersToSendEmail, $taskId)
     {
-        $current_user_id = get_current_user_id();
-
-        /* this will run in background as soon as possible */
-        /* sending Model or Model Instance won't work here */
-        as_enqueue_async_action('fluent_boards/one_time_schedule_send_email_for_stage_change', [$taskId, $usersToSendEmail, $current_user_id], 'fluent-boards');
+        $this->taskService->sendMailAfterTaskModify('stage_change', $usersToSendEmail, $taskId);
     }
     public function getAssociatedTasks($associated_id)
     {
@@ -1731,6 +1767,8 @@ class TaskController extends Controller
     }
     public function getAssociatedCrmContacts($board_id)
     {
+        // Board members may see the basic identity (name, email, photo) of contacts
+        // linked to this board's tasks; the same rule as Helper::boardCrmContact().
         $board_id = absint($board_id);
         $contactsInTasks = Task::where('board_id', $board_id)
                                 ->whereNotNull('crm_contact_id')
@@ -1825,6 +1863,20 @@ class TaskController extends Controller
             }
 
             $result = $this->taskService->bulkActions($taskIds, $action, $params, $board_id);
+
+            // One bulk assignment is one choice, however many tasks it touched.
+            // Suggest assignee feature is disabled for now.
+            // if ($action === 'assign_members' && !empty($result['successful_tasks']) && !empty($params['user_ids'])) {
+            //     $assignedIds = [];
+            //     foreach ($result['successful_tasks'] as $successfulTask) {
+            //         $assignedIds = array_merge($assignedIds, $successfulTask->assignees->pluck('ID')->all());
+            //     }
+            //     (new AssigneeSuggestionService())->recordAssigned(
+            //         $board_id,
+            //         0,
+            //         array_intersect(array_map('absint', (array) $params['user_ids']), $assignedIds)
+            //     );
+            // }
 
             // Process successful tasks the same way as getTasksByBoard
             if (!empty($result['successful_tasks'])) {

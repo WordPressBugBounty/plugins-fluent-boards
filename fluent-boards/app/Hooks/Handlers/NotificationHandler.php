@@ -2,6 +2,7 @@
 
 namespace FluentBoards\App\Hooks\Handlers;
 
+use FluentBoards\App\Models\Stage;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Models\Board;
@@ -28,7 +29,7 @@ class NotificationHandler
             $userIdsWhoGetNotification = $this->findUsersWhoWillGetNotification($task);
             $userIdsWhoGetNotification = $this->excludeMentionedUsersFromNotificationRecipients($userIdsWhoGetNotification, $mentionedUserIds);
             if(count($userIdsWhoGetNotification) > 0){
-                $plainDescription = wp_strip_all_tags($comment->description);
+                $plainDescription = $this->commentPlainText($comment->description);
                 $action = $comment->parent_id ? 'task_reply_added' : 'comment_created';
                 $message = $plainDescription;
                 $settings = [ 'comment_id' => $comment->parent_id ?? $comment->id ];
@@ -84,7 +85,7 @@ class NotificationHandler
             if (!$mentionIds) {
                 return;
             }
-            $plainDescription = wp_strip_all_tags($comment->description);
+            $plainDescription = $this->commentPlainText($comment->description);
             $action = 'task_comment_mentioned';
             $message = $plainDescription;
             $settings = [ 'comment_id' => $comment->parent_id ?? $comment->id ];
@@ -105,35 +106,48 @@ class NotificationHandler
         }
     }
 
-    public function changeDueDateNotification($task, $oldDate)
+    public function changeDueDateNotification($task, $oldDate = null)
     {
         $userIdsWhoGetNotification = $this->findUsersWhoWillGetNotification($task);
         if(count($userIdsWhoGetNotification) > 0){
             $action = 'task_due_date_changed';
-            $message = date_i18n('F j, Y, g:i a', strtotime($task->due_at));
-            $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
+            $message = $task->due_at ? date_i18n('F j, Y, g:i a', strtotime($task->due_at)) : __('No due date', 'fluent-boards');
+            $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message, [
+                'previous' => $oldDate,
+                'current' => $task->due_at
+            ]);
             $notification->users()->attach($userIdsWhoGetNotification);
         }
     }
 
-    public function changeStartDateNotification($task, $oldDate)
+    public function changeStartDateNotification($task, $oldDate = null)
     {
         $userIdsWhoGetNotification = $this->findUsersWhoWillGetNotification($task);
         if(count($userIdsWhoGetNotification) > 0){
             $action = 'task_start_date_changed';
-            $message = date_i18n('F j, Y, g:i a', strtotime($task->started_at));
-            $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
+            $message = $task->started_at ? date_i18n('F j, Y, g:i a', strtotime($task->started_at)) : __('No start date', 'fluent-boards');
+            $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message, [
+                'previous' => $oldDate,
+                'current' => $task->started_at
+            ]);
             $notification->users()->attach($userIdsWhoGetNotification);
         }
     }
 
-    public function changeStageNotification($task, $oldStageId)
+    public function changeStageNotification($task, $oldStageId, $context = [])
     {
         $userIdsWhoGetNotification = $this->findUsersWhoWillGetNotification($task);
         if(count($userIdsWhoGetNotification) > 0){
             $action = 'task_moved_to_new_stage';
+            $source = $context['source'] ?? null;
+            $previous = $source instanceof Stage && (int) $source->id === (int) $oldStageId && (int) $source->board_id === (int) $task->board_id
+                ? $source->title
+                : Stage::where('board_id', $task->board_id)->where('id', $oldStageId)->value('title');
             $message = $task->stage->title;
-            $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
+            $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message, [
+                'previous' => $previous,
+                'current' => $message
+            ]);
             $notification->users()->attach($userIdsWhoGetNotification);
         }
     }
@@ -144,7 +158,10 @@ class NotificationHandler
         if(count($userIdsWhoGetNotification) > 0){
             $action = 'task_priority_changed';
             $message = $task->priority;
-            $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
+            $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message, [
+                'previous' => $oldPriority,
+                'current' => $message
+            ]);
             $notification->users()->attach($userIdsWhoGetNotification);
         }
     }
@@ -165,15 +182,15 @@ class NotificationHandler
         }
     }
 
-    public function changeTitleNotification($task, $col, $oldTask)
+    public function changeContentNotification($task, $col, $oldTask)
     {
-        if ($col !== 'title') {
+        if (!in_array($col, ['title', 'description'], true) || (string) $task->{$col} === (string) $oldTask->{$col}) {
             return;
         }
 
         $userIdsWhoGetNotification = $this->findUsersWhoWillGetNotification($task);
         if(count($userIdsWhoGetNotification) > 0){
-            $action = 'task_title_updated';
+            $action = $col === 'title' ? 'task_title_updated' : 'task_description_updated';
             $message = $task->title;
             $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
             $notification->users()->attach($userIdsWhoGetNotification);
@@ -213,6 +230,12 @@ class NotificationHandler
             $notification = $this->createNotification($task, Constant::OBJECT_TYPE_BOARD_NOTIFICATION, $action, $message);
             $notification->users()->attach($newAssigneeId);
         }
+    }
+
+    /** Comments are stored as HTML; notifications show plain text (mustache), so decode entities too. */
+    protected function commentPlainText($html)
+    {
+        return html_entity_decode(wp_strip_all_tags((string) $html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     public function createNotification($task, $objectType, $action, $description, $settings = null)

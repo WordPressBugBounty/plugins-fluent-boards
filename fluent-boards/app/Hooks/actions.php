@@ -2,7 +2,10 @@
 //if accessed directly exit
 if (!defined('ABSPATH')) exit;
 
+// use FluentBoards\App\Services\DiscordService;
 use FluentBoards\App\Services\Helper;
+use FluentBoards\App\Services\TaskEmailDigest;
+// use FluentBoards\App\Services\SlackService;
 use FluentBoards\App\Services\Libs\FileSystem;
 use FluentBoardsPro\App\Hooks\Handlers\ExternalPages as ProExternalPages;
 
@@ -114,26 +117,41 @@ $app->addCustomAction('comment_created', 'NotificationHandler@addCommentNotifica
 $app->addCustomAction('mention_comment_notification', 'NotificationHandler@mentionInCommentNotification', 10, 2);
 $app->addCustomAction('subtask_added', 'NotificationHandler@addSubtaskNotification', 10, 2);
 $app->addCustomAction('task_due_date_changed', 'NotificationHandler@changeDueDateNotification', 10, 2);
+$app->addCustomAction('task_due_date_removed', 'NotificationHandler@changeDueDateNotification', 10, 2);
 $app->addCustomAction('task_start_date_changed', 'NotificationHandler@changeStartDateNotification', 10, 2);
-$app->addCustomAction('task_stage_updated', 'NotificationHandler@changeStageNotification', 10, 2);
+$app->addCustomAction('task_start_date_removed', 'NotificationHandler@changeStartDateNotification', 10, 2);
+$app->addCustomAction('task_stage_updated', 'NotificationHandler@changeStageNotification', 10, 3);
 $app->addCustomAction('task_priority_changed', 'NotificationHandler@changePriorityNotification', 10, 2);
 $app->addCustomAction('task_archived', 'NotificationHandler@taskArchiveNotification', 10, 1);
-$app->addCustomAction('task_content_updated', 'NotificationHandler@changeTitleNotification', 10, 3);
-//$app->addCustomAction('description_changed_notification', 'NotificationHandler@changeDescriptionNotification', 10, 1);
+$app->addCustomAction('task_content_updated', 'NotificationHandler@changeContentNotification', 10, 3);
 $app->addCustomAction('board_changed_notification', 'NotificationHandler@changeBoardNotification', 10, 2);
 $app->addCustomAction('task_assignee_added', 'NotificationHandler@assigneeAddedNotification', 10, 2);
 $app->addCustomAction('task_assignee_removed', 'NotificationHandler@assigneeRemovedNotification', 10, 2);
 
-$app->addCustomAction('one_time_schedule_send_email_for_comment', 'ScheduleHandler@sendEmailForComment', 10, 3);
-$app->addCustomAction('one_time_schedule_send_email_for_mention', 'ScheduleHandler@sendEmailForMention', 10, 3);
-$app->addCustomAction('one_time_schedule_send_email_for_add_assignee', 'ScheduleHandler@sendEmailForAddAssignee', 10, 3);
-$app->addCustomAction('one_time_schedule_send_email_for_remove_assignee', 'ScheduleHandler@sendEmailForRemoveAssignee', 10, 3);
-$app->addCustomAction('one_time_schedule_send_email_for_stage_change', 'ScheduleHandler@sendEmailForChangeStage', 10, 3);
+$emailDigest = new TaskEmailDigest();
+add_action('fluent_boards/expand_task_email_digest', [$emailDigest, 'importLegacy']);
+add_action('fluent_boards/send_task_email_digest', [$emailDigest, 'importLegacy']);
+add_action('init', [TaskEmailDigest::class, 'ensureRecoverySweep']);
+add_action(TaskEmailDigest::RECOVERY_SWEEP, [$emailDigest, 'recoverOverdue']);
+add_action(TaskEmailDigest::DIGEST_HOOK, [$emailDigest, 'sendDigest'], 10, 3);
+add_action(TaskEmailDigest::RECOVERY_HOOK, [$emailDigest, 'sendDigest'], 10, 3);
+$app->addCustomAction('one_time_schedule_send_email_for_comment', 'ScheduleHandler@queueTaskEmail', 10, 7);
+$app->addCustomAction('one_time_schedule_send_email_for_mention', 'ScheduleHandler@queueTaskEmail', 10, 7);
+$app->addCustomAction('one_time_schedule_send_email_for_add_assignee', 'ScheduleHandler@queueTaskEmail', 10, 7);
+$app->addCustomAction('one_time_schedule_send_email_for_remove_assignee', 'ScheduleHandler@queueTaskEmail', 10, 7);
+$app->addCustomAction('one_time_schedule_send_email_for_stage_change', 'ScheduleHandler@queueTaskEmail', 10, 7);
 
 //Todo:: update handler
-$app->addCustomAction('one_time_schedule_send_email_for_due_date_update', 'ScheduleHandler@sendEmailForDueDateUpdate', 10, 3);
-$app->addCustomAction('one_time_schedule_send_email_for_task_archived', 'ScheduleHandler@sendEmailForArchivedTask', 10, 3);
+$app->addCustomAction('one_time_schedule_send_email_for_due_date_update', 'ScheduleHandler@queueTaskEmail', 10, 7);
+$app->addCustomAction('one_time_schedule_send_email_for_priority_change', 'ScheduleHandler@queueTaskEmail', 10, 7);
+$app->addCustomAction('one_time_schedule_send_email_for_description_update', 'ScheduleHandler@queueTaskEmail', 10, 7);
+$app->addCustomAction('one_time_schedule_send_email_for_task_archived', 'ScheduleHandler@queueTaskEmail', 10, 7);
 $app->addCustomAction('one_time_schedule_send_email_for_removed_from_task', 'ScheduleHandler@sendEmailForChangeStage', 10, 3);
+$app->addCustomAction('automation_resume', 'AutomationHandler@resume', 10, 1);
+$app->addCustomAction('automation_send_email', 'AutomationHandler@sendEmail', 10, 3);
+$app->addCustomAction('before_board_deleted', 'AutomationHandler@onBoardDeleted', 20, 1);
+$app->addAction('init', 'AutomationHandler@boot', 20, 0);
+$app->addAction('admin_init', 'AutomationHandler@maybeInstallSchema', 10, 0);
 
 $app->addCustomAction('task_attachment_added', 'ActivityHandler@taskAttachmentAdded', 10, 1);
 $app->addCustomAction('task_attachment_deleted', 'ActivityHandler@taskAttachmentDeleted', 10, 1);
@@ -257,17 +275,55 @@ add_action('init', function () {
     (new \FluentBoards\App\Modules\MCP\MCPInit())->init();
 }, 5);
 
-$invalidateMcpContext = [\FluentBoards\App\Modules\MCP\Tools\ContextTools::class, 'invalidateCache'];
-foreach ([
-    'fluent_boards/board_created',
-    'fluent_boards/board_updated',
-    'fluent_boards/before_board_deleted',
-    'fluent_boards/board_stage_added',
-    'fluent_boards/stage_updated',
-    'fluent_boards/stage_deleted',
-    'fluent_boards/board_label_created',
-    'fluent_boards/board_label_updated',
-    'fluent_boards/board_label_deleted',
-] as $mcpContextHook) {
-    add_action($mcpContextHook, $invalidateMcpContext);
-}
+// Telegram, Slack and Discord notifications will ship in a later release.
+// // Telegram delivery is independent of email notification preferences.
+// foreach (['task_assignee_added', 'task_assignee_removed', 'task_stage_updated', 'task_due_date_changed',
+    // 'task_due_date_removed', 'task_start_date_changed', 'task_start_date_removed', 'task_priority_changed', 'task_archived'] as $telegramTaskHook) {
+    // $app->addAction('fluent_boards/' . $telegramTaskHook, 'TelegramHandler@taskChanged', 20, 3);
+// }
+// $app->addAction('fluent_boards/task_content_updated', 'TelegramHandler@contentUpdated', 20, 3);
+// $app->addAction('fluent_boards/comment_created', 'TelegramHandler@commentCreated', 20, 1);
+// $app->addAction('fluent_boards/mention_comment_notification', 'TelegramHandler@commentCreated', 20, 2);
+// $app->addAction('action_scheduler_ensure_recurring_actions', 'TelegramHandler@reconcileDigests');
+// $app->addCustomAction('telegram_send_digest', 'TelegramHandler@sendDigest', 10, 3);
+// $app->addCustomAction('telegram_recover_digest', 'TelegramHandler@sendDigest', 10, 3);
+// $app->addAction('fluent_boards/telegram_deliver_notification', 'TelegramHandler@deliverNotification', 10, 7);
+// $app->addAction('action_scheduler_stored_action', 'TelegramHandler@notificationQueued', 10, 1);
+// $app->addAction('fluent_boards/task_assignees_added', 'TelegramHandler@assigneesAdded', 20, 2);
+
+// // Slack DMs mirror Telegram and are independent of email notification preferences.
+// foreach (['task_assignee_added', 'task_assignee_removed', 'task_stage_updated', 'task_archived'] as $slackTaskHook) {
+    // $app->addAction('fluent_boards/' . $slackTaskHook, 'SlackHandler@taskChanged', 20, 2);
+// }
+// foreach (['task_due_date_changed', 'task_due_date_removed', 'task_start_date_changed', 'task_start_date_removed'] as $dateHook) {
+    // $app->addAction('fluent_boards/' . $dateHook, 'SlackHandler@dateChanged', 20, 2);
+// }
+// $app->addAction('fluent_boards/task_priority_changed', 'SlackHandler@priorityChanged', 20, 2);
+// $app->addAction('fluent_boards/task_content_updated', 'SlackHandler@contentUpdated', 20, 3);
+// $app->addAction('fluent_boards/comment_created', 'SlackHandler@commentCreated', 20, 1);
+// $app->addAction('fluent_boards/mention_comment_notification', 'SlackHandler@commentCreated', 20, 2);
+// $app->addAction('action_scheduler_ensure_recurring_actions', 'SlackHandler@ensureReconciliation');
+// $app->addAction('fluent_boards/slack_settings_updated', 'SlackHandler@ensureReconciliation');
+// $app->addAction(SlackService::RECONCILE_HOOK, 'SlackHandler@reconcileDigests');
+// $app->addAction('fluent_boards/slack_recover_digest', 'SlackHandler@sendDigest', 10, 3);
+// $app->addAction('fluent_boards/slack_send_digest', 'SlackHandler@sendDigest', 10, 3);
+// $app->addAction('fluent_boards/task_assignees_added', 'SlackHandler@assigneesAdded', 20, 2);
+// $app->addAction('admin_post_fluent_boards_slack_callback', 'SlackHandler@oauthCallback');
+// $app->addAction('admin_post_nopriv_fluent_boards_slack_callback', 'SlackHandler@oauthCallbackSignedOut');
+// // Discord DMs mirror Telegram and are independent of email notification preferences.
+// foreach (['task_assignee_added', 'task_assignee_removed', 'task_stage_updated', 'task_due_date_changed',
+    // 'task_due_date_removed', 'task_start_date_changed', 'task_start_date_removed', 'task_archived'] as $discordTaskHook) {
+    // $app->addAction('fluent_boards/' . $discordTaskHook, 'DiscordHandler@taskChanged', 20, 2);
+// }
+// $app->addAction('fluent_boards/task_priority_changed', 'DiscordHandler@priorityChanged', 20, 2);
+// $app->addAction('fluent_boards/task_content_updated', 'DiscordHandler@contentUpdated', 20, 3);
+// $app->addAction('fluent_boards/comment_created', 'DiscordHandler@commentCreated', 20, 1);
+// $app->addAction('fluent_boards/mention_comment_notification', 'DiscordHandler@commentCreated', 20, 2);
+// $app->addAction('action_scheduler_ensure_recurring_actions', 'DiscordHandler@ensureReconciliation');
+// $app->addAction('fluent_boards/discord_settings_updated', 'DiscordHandler@ensureReconciliation');
+// $app->addAction(DiscordService::RECONCILE_HOOK, 'DiscordHandler@reconcileDigests');
+// $app->addAction('fluent_boards/discord_recover_digest', 'DiscordHandler@sendDigest', 10, 3);
+// $app->addAction('fluent_boards/discord_send_digest', 'DiscordHandler@sendDigest', 10, 3);
+// $app->addAction('fluent_boards/task_assignees_added', 'DiscordHandler@assigneesAdded', 20, 2);
+// $app->addAction('admin_post_fluent_boards_discord_callback', 'DiscordHandler@oauthCallback');
+// $app->addAction('admin_post_nopriv_fluent_boards_discord_callback', 'DiscordHandler@oauthCallbackSignedOut');

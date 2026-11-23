@@ -78,7 +78,7 @@ class Tasks
         $tasks->transform(function ($task) {
             $task->isOverdue = $task->isOverdue();
             $task->isUpcoming = $task->upcoming();
-            $task->contact = Helper::crm_contact($task->crm_contact_id);
+            $task->contact = Helper::boardCrmContact($task->crm_contact_id);
             $task->is_watching = $task->isWatching();
             return $task;
         });

@@ -28,6 +28,18 @@ class SingleBoardPolicy extends BasePolicy
         return get_current_user_id() && PermissionManager::userHasBoardPermission(absint($params['board_id'] ?? 0), 'GET');
     }
 
+    /** Personal chat preferences are allowed for viewers and never change the board itself. */
+    public function saveBoardPreferences(Request $request)
+    {
+        return $this->updateNotificationPause($request);
+    }
+
+    /** Email preferences also belong to the signed-in member, including board viewers. */
+    public function updateBoardNotificationSettings(Request $request)
+    {
+        return $this->updateNotificationPause($request);
+    }
+
     public function delete(Request $request)
     {
         return PermissionManager::isAdmin();
@@ -149,6 +161,11 @@ class SingleBoardPolicy extends BasePolicy
     public function uploadBoardBackground(Request $request)
     {
         return $this->userIsBoardManager($request);
+    }
+
+    public function getSharedTasks(Request $request)
+    {
+        return $this->getShareLink($request);
     }
 
     /**

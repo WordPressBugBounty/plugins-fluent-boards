@@ -541,6 +541,14 @@ class UserService
             $tasksQuery->whereIn('board_id', $boardIds);
         }
 
+        // Optional due-date range: site-time "Y-m-d H:i:s" bounds; any other value is ignored.
+        foreach (['dueFrom' => '>=', 'dueTo' => '<='] as $rangeKey => $operator) {
+            $bound = $requestData[$rangeKey] ?? null;
+            if (is_string($bound) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $bound)) {
+                $tasksQuery->where('due_at', $operator, $bound);
+            }
+        }
+
         $sortOptions = ['priority', 'due_at', 'position', 'created_at', 'title'];
         $orderOptions = ['ASC', 'DESC'];
 

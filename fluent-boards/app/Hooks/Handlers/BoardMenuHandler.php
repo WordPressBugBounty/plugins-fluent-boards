@@ -154,13 +154,13 @@ class BoardMenuHandler
                 'role'      => 'admin'
             ],
             [
-                'key'       => 'share_board',
-                'icon_name' => 'link',
-                'label'     => __('Share Board', 'fluent-boards'),
+                // One entry for board embeds, public access and task share links; the panel shows the tabs each user may use.
+                'key'       => 'share',
+                'icon_name' => 'share',
+                'label'     => __('Share', 'fluent-boards'),
                 'type'      => 'default',
-                'position'  => 10.4,
-                'role'      => 'manager',
-                'pro'       => true
+                'position'  => 10.3,
+                'role'      => ''
             ],
             [
                 'key'       => 'export',
@@ -209,6 +209,16 @@ class BoardMenuHandler
 
             if($key === 'associated_crm_contacts' && !defined('FLUENTCRM')) {
                 continue;
+            }
+
+            // Sharing switched off in General Settings: hide that tab, or the whole entry when both are off.
+            if ($key === 'share') {
+                $item['share_board_allowed'] = fluent_boards_is_sharing_allowed('board');
+                $item['share_tasks_allowed'] = fluent_boards_is_sharing_allowed('task');
+
+                if (!$item['share_board_allowed'] && !$item['share_tasks_allowed']) {
+                    continue;
+                }
             }
 
             // Enforce default item policy if in whitelist

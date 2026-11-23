@@ -235,7 +235,16 @@ class TaskHandler
      */
     public function onCommentCreated($comment)
     {
+        $settings = $comment->settings;
+        if (is_array($settings) && ($settings['source'] ?? '') === Constant::AUTOMATION_COMMENT_SOURCE) {
+            return;
+        }
+
         $task = $comment->task;
+        if (!$task) {
+            return;
+        }
+
         $userId = get_current_user_id();
 
         if (!$userId) {

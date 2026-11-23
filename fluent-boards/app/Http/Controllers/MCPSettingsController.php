@@ -53,7 +53,30 @@ class MCPSettingsController extends Controller
             'toolkit_download_url'           => 'https://github.com/WPManageNinja/fluent-toolkit',
             'current_user_login'             => $currentUser ? $currentUser->user_login : '',
             'is_local_dev'                   => MCPAccessService::isLocalDev(),
+            // FluentHub's one-URL connection, or null when FluentHub is not there.
+            'hub'                            => MCPAccessService::hubState(),
         ]);
+    }
+
+    /**
+     * Turn on the FluentHub MCP server (target "hub") or the MCP of another Fluent plugin
+     * on the site (target = its slug). Nothing can be turned off from this screen.
+     *
+     * The route is behind the admin policy and the REST nonce; FluentHub's call also
+     * checks that the user may manage the site.
+     */
+    public function enableHub(Request $request)
+    {
+        $result = MCPAccessService::enableHub((string) $request->get('target', 'hub'));
+
+        if ($result['status'] === 'done') {
+            return $this->sendSuccess([
+                'message' => $result['message'],
+                'hub'     => $result['hub'],
+            ]);
+        }
+
+        return $this->sendError(['message' => $result['message']], $result['status'] === 'forbidden' ? 403 : 422);
     }
 
     public function toggle(Request $request)

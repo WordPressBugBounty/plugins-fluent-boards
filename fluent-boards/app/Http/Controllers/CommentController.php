@@ -5,6 +5,7 @@ namespace FluentBoards\App\Http\Controllers;
 use FluentBoards\Framework\Database\Orm\ModelNotFoundException;
 use FluentBoards\App\Models\Comment;
 use FluentBoards\App\Services\NotificationService;
+use FluentBoards\App\Services\TaskEmailDigest;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\UploadService;
 use FluentBoards\Framework\Http\Request\Request;
@@ -128,7 +129,7 @@ class CommentController extends Controller
 
             // Mention emails take priority over generic comment and reply emails.
             $recipientUserIds = array_values(array_diff($recipientUserIds, $mentionData));
-            $this->sendMailAfterComment($comment->id, $recipientUserIds);
+            $this->sendMailAfterComment($comment->id, $recipientUserIds, $board_id);
 
             if(!empty($mentionData))
             {
@@ -143,7 +144,7 @@ class CommentController extends Controller
             return $this->sendSuccess([
                 'message' => __('Comment has been added', 'fluent-boards'),
                 'comment' => $comment
-            ], 201);
+            ]);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), $e->getCode() === 403 ? 403 : 400);
         }
@@ -266,17 +267,13 @@ class CommentController extends Controller
         }
     }
 
-    public function sendMailAfterComment($commentId, $recipientUserIds)
+    public function sendMailAfterComment($commentId, $recipientUserIds, $boardId = 0)
     {
         if (empty($recipientUserIds)) {
             return;
         }
 
-        $current_user_id = get_current_user_id();
-
-        /* this will run in background as soon as possible */
-        /* sending Model or Model Instance won't work here */
-        as_enqueue_async_action('fluent_boards/one_time_schedule_send_email_for_comment', [$commentId, $recipientUserIds, $current_user_id], 'fluent-boards');
+        TaskEmailDigest::enqueue('comment', $commentId, $recipientUserIds, $boardId);
     }
 
     /**

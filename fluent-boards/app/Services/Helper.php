@@ -13,6 +13,73 @@ use FluentBoards\App\Services\PermissionManager;
 
 class Helper
 {
+    /**
+     * Encrypt a secret (bot token, client secret) before it is stored in the database.
+     * Authenticated encryption (libsodium secretbox) keyed from the site's WordPress salts.
+     * Throws instead of ever falling back to plaintext.
+     */
+    public static function encryptSecret($plain)
+    {
+        $plain = (string) $plain;
+        if ($plain === '') {
+            return '';
+        }
+        if (!function_exists('sodium_crypto_secretbox')) {
+            throw new \RuntimeException(__('Secure storage is not available on this server, so the credentials cannot be saved.', 'fluent-boards'));
+        }
+        $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+        $cipher = sodium_crypto_secretbox($plain, $nonce, self::secretKey());
+        return base64_encode($nonce . $cipher); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+    }
+
+    /**
+     * Decrypt a value written by encryptSecret(). Returns an empty string when the value is
+     * missing, tampered with or the site salts changed, so callers treat it as "not configured".
+     */
+    public static function decryptSecret($stored)
+    {
+        if (!is_string($stored) || $stored === '' || !function_exists('sodium_crypto_secretbox_open')) {
+            return '';
+        }
+        $raw = base64_decode($stored, true); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+        if ($raw === false || strlen($raw) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES + SODIUM_CRYPTO_SECRETBOX_MACBYTES) {
+            return '';
+        }
+        $plain = sodium_crypto_secretbox_open(
+            substr($raw, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),
+            substr($raw, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),
+            self::secretKey()
+        );
+        return $plain === false ? '' : $plain;
+    }
+
+    /** Encrypt only the listed keys of a settings array; every other key stays readable. */
+    public static function encryptFields(array $data, array $keys)
+    {
+        foreach ($keys as $key) {
+            if (isset($data[$key])) {
+                $data[$key] = self::encryptSecret($data[$key]);
+            }
+        }
+        return $data;
+    }
+
+    /** Reverse of encryptFields(). */
+    public static function decryptFields(array $data, array $keys)
+    {
+        foreach ($keys as $key) {
+            if (isset($data[$key])) {
+                $data[$key] = self::decryptSecret($data[$key]);
+            }
+        }
+        return $data;
+    }
+
+    private static function secretKey()
+    {
+        return sodium_crypto_generichash('fluent-boards-secrets-v1|' . wp_salt('auth'), '', SODIUM_CRYPTO_SECRETBOX_KEYBYTES);
+    }
+
     public static function snake_case($string)
     {
         return strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $string));
@@ -37,10 +104,17 @@ class Helper
 
         $template = str_replace('.', DIRECTORY_SEPARATOR, $template);
 
+        $bufferLevel = ob_get_level();
         ob_start();
-        include FLUENT_BOARDS_PLUGIN_PATH . 'app/Views/' . $template . '.php';
-
-        return ob_get_clean();
+        try {
+            include FLUENT_BOARDS_PLUGIN_PATH . 'app/Views/' . $template . '.php';
+            return ob_get_clean();
+        } finally {
+            // A nested template or extension can throw with its output buffer still open.
+            while (ob_get_level() > $bufferLevel) {
+                ob_end_clean();
+            }
+        }
     }
 
     private static function sanitizeData($data, $fieldMaps)
@@ -420,6 +494,41 @@ class Helper
 
     }
 
+    /**
+     * Serialize the CRM contact linked to a task or board for a user who can access that board.
+     *
+     * Board members need to know which contact their work belongs to, so users without
+     * fcrm_read_contacts get the basic identity (name, email, photo) marked `is_limited`.
+     * The full record (status, tags, lists, CRM metrics) still needs fcrm_read_contacts.
+     * Only pass a contact ID read from a task or board the current user can access; never
+     * an ID from request input. Contact search stays fully gated (TaskHandler).
+     *
+     * @param int $id
+     * @return array|string|null
+     */
+    public static function boardCrmContact($id)
+    {
+        if (!defined('FLUENTCRM') || !$id || self::canViewCrmContacts()) {
+            return self::crm_contact($id);
+        }
+
+        $contact = \FluentCrm\App\Models\Subscriber::select(['id', 'first_name', 'last_name', 'email', 'avatar'])->find($id);
+
+        if (!$contact) {
+            return null;
+        }
+
+        return [
+            'id'         => (int) $contact->id,
+            'email'      => $contact->email,
+            'first_name' => $contact->first_name,
+            'last_name'  => $contact->last_name,
+            'full_name'  => $contact->full_name,
+            'photo'      => $contact->photo,
+            'is_limited' => true,
+        ];
+    }
+
     public static function getStagesByBoardGroup()
     {
         $boards = self::getBoards();
@@ -738,6 +847,24 @@ class Helper
         $allowedTypes = apply_filters('fluent_boards/task_reminder_types', $allowedTypes);
 
         return $allowedTypes;
+    }
+
+    /**
+     * Runs $callback with translations switched to the given user's language, so text built
+     * for that user (emails, mostly) is in their profile language instead of the site's or
+     * the acting user's. Falls back to the current locale when the user has no other one.
+     */
+    public static function withUserLocale($userId, callable $callback)
+    {
+        $userId = absint($userId);
+        $switched = $userId && function_exists('switch_to_locale') && switch_to_locale(get_user_locale($userId));
+        try {
+            return $callback();
+        } finally {
+            if ($switched) {
+                restore_previous_locale();
+            }
+        }
     }
 
     public static function translateActivities($activities)

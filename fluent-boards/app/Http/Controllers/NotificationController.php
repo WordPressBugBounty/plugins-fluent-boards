@@ -93,11 +93,7 @@ class NotificationController extends Controller
         $board_id = absint($board_id);
         try {
             $userId = get_current_user_id();
-            $currentSettings = $this->notificationService->getBoardNotificationSettingsWithDefaults($board_id, $userId);
-
-            return $this->sendSuccess([
-                'currentSettings' => $currentSettings,
-            ], 200);
+            return $this->sendSuccess($this->notificationService->boardNotificationPreferences($board_id, $userId));
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
         }
@@ -118,12 +114,40 @@ class NotificationController extends Controller
                     $newSettings[$sanitizedKey] = $sanitizedValue;
                 }
             }
-            $this->notificationService->updateBoardNotificationSettings($newSettings, $board_id);
+            // Clearing the override resumes inheritance. Turning inheritance off snapshots current choices.
+            $inherit = $request->get('same_as_global');
+            $sameAsGlobal = in_array($inherit, [true, 1, '1', 'true'], true);
+            $this->notificationService->updateBoardNotificationSettings(
+                $sameAsGlobal ? [] : $newSettings,
+                $board_id,
+                $inherit !== null && !$sameAsGlobal
+            );
             return $this->sendSuccess([
                 'message' => __('Board notification settings have been updated', 'fluent-boards'),
             ], 200);
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), 400);
+        }
+    }
+
+    public function readBatch(Request $request)
+    {
+        try {
+            $rows = $this->notificationService->markBatchRead($request->get('notification_ids', []));
+            return $this->sendSuccess(['notifications' => $rows]);
+        } catch (Exception $e) {
+            return $this->sendError($e->getMessage(), in_array($e->getCode(), [403, 422], true) ? $e->getCode() : 500);
+        }
+    }
+
+    /** Mark the current user's unread notifications on one task as read (the task was opened). */
+    public function readTaskNotifications(Request $request)
+    {
+        try {
+            $marked = $this->notificationService->markTaskNotificationsRead($request->getSafe('task_id', 'intval'));
+            return $this->sendSuccess(['marked' => $marked]);
+        } catch (Exception $e) {
+            return $this->sendError($e->getMessage(), in_array($e->getCode(), [403, 422], true) ? $e->getCode() : 500);
         }
     }
 

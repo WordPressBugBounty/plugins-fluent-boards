@@ -219,6 +219,26 @@ function fluent_boards_update_option($key, $value)
     return $exit;
 }
 
+/**
+ * Whether public sharing is allowed site-wide, per the General Settings switches.
+ * A setting that was never saved counts as allowed, so sharing keeps working on existing sites.
+ *
+ * @param string $type 'board' (public board view) or 'task' (task share links)
+ */
+function fluent_boards_is_sharing_allowed($type)
+{
+    $type = $type === 'board' ? 'board' : 'task';
+
+    $settings = \maybe_unserialize(fluent_boards_get_option('general_settings', []));
+    $settings = is_array($settings) ? $settings : [];
+    $key = 'allow_' . $type . '_sharing';
+
+    $allowed = !array_key_exists($key, $settings)
+        || filter_var($settings[$key], FILTER_VALIDATE_BOOLEAN);
+
+    return (bool)apply_filters('fluent_boards/is_sharing_allowed', $allowed, $type);
+}
+
 
 function fluentBoardsDb()
 {

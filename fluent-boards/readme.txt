@@ -1,10 +1,10 @@
 === FluentBoards - Project Management, Task Management, Goal Tracking, Kanban Board, and, Team Collaboration===
 Contributors: techjewel,adreastrian,wpmanageninja
 Tags: project management, task manager, kanban, project, task management
-Requires at least: 5.0
+Requires at least: 5.9
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.3.0
+Stable tag: 2.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -172,6 +172,29 @@ You can filter any task by assignees, stages, and task priorities.
 8. Project - Table View
 
 == Changelog ==
+
+= v2.4.0 (Date: November 23, 2026) =
+
+- New: Global search, rebuilt with ranked results, filters, and keyboard shortcuts
+- New: Weekly task summary emails, with a custom schedule
+- New: Site-wide sharing controls and one Share panel for members, public boards, and task links
+- New: Copy stages with their tasks and details
+- New: Full-size image previews in task descriptions
+- New: Single-URL connections for AI agents through MCP
+- Improvement: Grouped task notifications, simpler preferences, and separate mention emails
+- Improvement: Task emails follow each recipient's language
+- Improvement: Recent and common emoji suggestions
+- Improvement: Full activity dates and archive-date sorting
+- Improvement: Clearer MCP tool instructions and responses
+- Improvement: Members-only [fluent_board id] shortcode, now shown in the Share panel
+- Improvement: Drop images straight into task comments
+- Improvement: HTML attachments are saved as text files and downloaded safely
+- Fixed: Security hardening for REST requests, comment links, CSV imports, and CRM contact details
+- Fixed: Unread counts and dependency badges not updating after viewing tasks
+- Fixed: Inherited notification settings and Table View column preferences
+- Fixed: Missing members in search and lost selections during searches or failed bulk actions
+- Fixed: Timezone differences in Trello and Asana import dates
+- Fixed: Duplicate site initials in email previews
 
 = v2.3.0 (Date: October 30, 2026) =
 
@@ -681,131 +704,8 @@ You can filter any task by assignees, stages, and task priorities.
 * Fixed: Email Validation Issue in Members
 * Other Improvements and Bug Fixes
 
-= v1.13 (Date: June 10, 2024) =
-* New: Convert Task to Subtask
-* New: WpEditor in Board Description
-* New: Added All Board Report & Individual URL
-* Improvement: Enhanced Stage Sort UI/UX
-* Improvement: Added Due Days in Fluent Form Integration
-* Improvement: UX Improvement in Board Member
-* Improvement: UX Improvement in Subtask Add/Edit
-* Improvement: Date & Time in Comments & Activities. (on hover)
-* Fixed: Broken UI for Longtext in description
-* Fixed: Deleting imported Subtask Issue
-* Fixed: Board Label Scroll Issue
-* Fixed: Issue with Member Invitation Email
-* Fixed: Task/Subtask Count while Importing from Trello
-* Fixed: Issue with Recently Viewed Boards
-* Other Improvement & Bug Fixes
-
-= 1.12 (Date: Jun 03, 2024) =
-* New: Drag & Drop  in Touch Devices
-* New: Completed Task Count now visible on Board Cards
-* Improvement: Better UX for task creation
-* Improvement: Subtask Edit/Scroll Issue
-* Improvement: Allowing Subtasks in Duplicate Board
-* Improvement: Improved task moving functionality
-* Improvement: Reduced number of AJAX calls
-* Fixed: Issue with label editing
-* Fixed: Issues with moving tasks and stages
-* Fixed: Subtask Modification Issue . Compatible now  with older versions
-* Fixed: Recently viewed Boards issue
-* Other Improvement & Bug Fixes
-
-= 1.11 (Date: May 31, 2024) =
-* New: Timesheet Export
-* New: Webhook (Task Creation)
-* New: Stage Background
-* Added: Custom Solid color & Gradient
-* Added: Progress Bar for Subtasks
-* Added: All WP Allowed Files Supports in Attachement
-* Added: Due Days & Priority for Task Create Action in Automation
-* Added: Board Search
-* Improvement: Updating description now easier
-* Improvement: Role & Permission
-* Improvement: Boards UI
-* Fixed: Description Formatting Break Issue
-* Fixed: Subtask Reorder
-* Fixed: Link Add in Attachments
-* Fixed: Permission Issue
-* Other Improvement & Bug Fixes
-
-= 1.10 (Date: May 20, 2024) =
-* Added Frontend Portal via Shortcode
-* Improved User Permissions & Roles
-* Mobile Responsiveness Improvements
-* Notifications Improvements
-* Added Translation Files
-* Other Improvements & Bug Fixes
-
-= 1.0 =
-* Added Basic Reporting (More coming soon)
-* Refactored FluentCRM Connections
-* Improvement of UI & Bug Fixes
-
-= 0.76 =
-* New: Stage Drag and Drop
-* New: You can attach zip file now. Files are downloadable.
-* Improvement: Board Labels
-* Improvement: My Tasks Section
-* UI Improvements
-* Internal Performance Improvements
-* Other Improvements & Bug Fixes
-
-= 0.75 =
-* New: Import from Asana
-* New: Menu Position in Advanced Modules
-* New: Fullscreen Mode
-* New: Create Subtask from Task Menu in Kanban
-* New: Option to Add/Delete Stages in Onboarding
-* New: Completed Tasks in MyTasks
-* New: Animation upon Task Status Change
-* Improvement: Frontend Settings
-* Improvement: Mobile Responsive
-* Improvement: UI in Task/Stage Template
-* Bug Fix: Broken URL in Task Title Issue
-* Bug Fix: Task Count Issue
-* Other Improvement and Bug Fixes
-
-= 0.73 =
-* New: Advanced Modules with Frontend Capability
-* New: Import from Trello
-* New: Fluent Support Integration
-* New: Task Template & Stage Template
-* New: Due Date as well as Start Date with newly improved design
-* Improvement: UI of Task Attachment
-* Improvement: FluentCRM Contact Section Quick view
-* Improvement: Internal Performance
-* Bug Fix: 7G Firewall Issue for Nginx
-* Other UI/UX improvement & Bug Fixes
-
-= 0.65 =
-* Bug Fixes: Notification
-* Bug Fixes: My Task
-* Bug Fixes: Member Role
-* Bug Fixes: Board Member search and CRM contact Search
-* Performance Improvement in Table View
-* Improvement: UI of Move Task
-* New: Duplicate Board
-* New: Subtask added in CRM Contact Quick View Section
-* New: Fluent Form Integration
-* New: Stage Change Trigger in CRM Automation
-* Other UI/UX improvement & Bug Fixes
-
-
-= 0.62 =
-* Fix Task Timestamp Issue
-* Fix Task move issues
-* Improved UI/UX
-
-= 0.61 =
-* New: Task Assignee Add/Remove in CRM Contact Section
-* Performance Improvements in Drag and Drop
-* UI improvements in activity and archived items
-* Other UI/UX improvement & Bug Fixes
-
-= .6 =
-* Initial Release of the plugin
+= Older versions =
+See changelog.txt for v1.13 and older.
 
 == Upgrade Notice ==
 The latest version is compatible with the previous version, So nothing to worry about.

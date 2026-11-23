@@ -95,8 +95,7 @@ class Commands
         $meta = [
             'object_id'   => $board->id,
             'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
-            'settings'    => Constant::BOARD_USER_SETTINGS,
-            'preferences' => Constant::BOARD_NOTIFICATION_TYPES
+            'settings'    => Constant::BOARD_USER_SETTINGS
         ];
 
 

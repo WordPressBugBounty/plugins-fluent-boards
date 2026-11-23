@@ -2,9 +2,9 @@
 
 namespace FluentBoards\App\Services;
 
-use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Meta;
-use FluentBoards\App\Models\Relation;
+use FluentBoards\App\Models\User;
+use FluentBoards\App\App;
 
 class OptionService
 {
@@ -40,10 +40,13 @@ class OptionService
     {
         return [
             Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENT => true,
+            Constant::GLOBAL_EMAIL_NOTIFICATION_MENTION => true,
             Constant::GLOBAL_EMAIL_NOTIFICATION_STAGE_CHANGE => true,
             Constant::GLOBAL_EMAIL_NOTIFICATION_TASK_ASSIGN => true,
             Constant::GLOBAL_EMAIL_NOTIFICATION_DUE_DATE => true,
             Constant::GLOBAL_EMAIL_NOTIFICATION_REMOVE_FROM_TASK => true,
+            Constant::BOARD_EMAIL_PRIORITY_CHANGE => true,
+            Constant::BOARD_EMAIL_DESCRIPTION_UPDATE => true,
             Constant::GLOBAL_EMAIL_NOTIFICATION_TASK_ARCHIVE => true,
             Constant::GLOBAL_EMAIL_NOTIFICATION_CREATING_TASK => true,
             Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENTING => true,
@@ -56,43 +59,55 @@ class OptionService
         return true === $value || 1 === $value || '1' === $value || 'true' === $value;
     }
 
-    public function updateGlobalNotificationSettings($newSettings)
+    /**
+     * @param array      $newSettings
+     * @param array|null $onlyKeys When given, only these global keys change.
+     *                             Boards without overrides read these values at delivery time.
+     */
+    public function updateGlobalNotificationSettings($newSettings, $onlyKeys = null)
     {
         $userId = get_current_user_id();
 
-        $globalNotification = Meta::where('object_id', $userId)
-            ->where('object_type', Constant::OBJECT_TYPE_USER)
-            ->where('key', Constant::USER_GLOBAL_NOTIFICATIONS)
-            ->first();
-
         $allowedSettings = $this->getDefaultGlobalNotificationSettings();
         $newSettings = array_intersect_key($newSettings, $allowedSettings);
+        if (is_array($onlyKeys)) {
+            $newSettings = array_intersect_key($newSettings, array_flip($onlyKeys));
+        }
+
         $filteredSettings = [];
         foreach ($newSettings as $index => $setting) {
             $filteredSettings[$index] = $this->normalizeNotificationPreferenceValue($setting);
         }
 
-        $newSettings = array_merge($allowedSettings, $filteredSettings);
-
-        $globalNotification->value = $newSettings;
-        $globalNotification->save();
-
-        //set this settings to all board
-        $relatedBoardsQuery = Board::where('type', 'to-do')->byAccessUser($userId)->get();
-        $notificationService = new NotificationService();
-        foreach ($relatedBoardsQuery as $board)
-        {
-            $notificationService->updateBoardNotificationSettings($newSettings, $board->id);
-        }
+        App::getInstance('db')->transaction(function () use ($userId, $onlyKeys, $allowedSettings, $filteredSettings) {
+            $globalNotification = $this->loadGlobalNotificationSettings($userId);
+            $baseSettings = is_array($onlyKeys) && is_array($globalNotification->value)
+                ? $globalNotification->value
+                : $allowedSettings;
+            $globalNotification->value = array_merge($baseSettings, $filteredSettings);
+            $globalNotification->save();
+        });
     }
 
     public function getGlobalNotificationSettings()
     {
-        $userId = get_current_user_id();
-        $globalNotification = Meta::where('object_id', $userId)
+        return App::getInstance('db')->transaction(function () {
+            return $this->loadGlobalNotificationSettings(get_current_user_id());
+        });
+    }
+
+    /** Called inside a transaction so concurrent first visits and partial saves share one row. */
+    private function loadGlobalNotificationSettings($userId)
+    {
+        User::where('ID', $userId)->lockForUpdate()->firstOrFail(['ID']);
+        $rows = Meta::where('object_id', $userId)
             ->where('object_type', Constant::OBJECT_TYPE_USER)
             ->where('key', Constant::USER_GLOBAL_NOTIFICATIONS)
-            ->first();
+            ->orderBy('id')->lockForUpdate()->get();
+        $globalNotification = $rows->first();
+        if ($rows->count() > 1) {
+            Meta::whereIn('id', $rows->slice(1)->pluck('id')->all())->delete();
+        }
 
         //default notification settings
         $newSettingsArray = $this->getDefaultGlobalNotificationSettings();
@@ -111,6 +126,10 @@ class OptionService
 
         $storedSettings = maybe_unserialize($globalNotification->value);
         if (is_array($storedSettings)) {
+            // Mention emails used to follow the comment preference; keep that until the user sets it.
+            if (!array_key_exists(Constant::GLOBAL_EMAIL_NOTIFICATION_MENTION, $storedSettings) && array_key_exists(Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENT, $storedSettings)) {
+                $storedSettings[Constant::GLOBAL_EMAIL_NOTIFICATION_MENTION] = $storedSettings[Constant::GLOBAL_EMAIL_NOTIFICATION_COMMENT];
+            }
             $filteredSettings = array_merge($newSettingsArray, array_intersect_key($storedSettings, $newSettingsArray));
             foreach ($filteredSettings as $index => $setting) {
                 $filteredSettings[$index] = $this->normalizeNotificationPreferenceValue($setting);

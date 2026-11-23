@@ -24,6 +24,8 @@ class ActivationHandler
         DBSeeder::run();
 
         $this->setOnboarding();
+        // Telegram, Slack and Discord notifications will ship in a later release.
+        // (new DiscordHandler())->ensureReconciliation();
     }
 
     private function setOnboarding()

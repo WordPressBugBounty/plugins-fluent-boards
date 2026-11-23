@@ -18,78 +18,123 @@ class TaskQueryTools
 
     private static function shortTermError()
     {
-        return MCPHelper::error('invalid_param', __('Search terms need at least three characters. Use "id:123" to look up one task.', 'fluent-boards'), [
-            'min_length' => self::MIN_TERM_LENGTH,
-        ]);
+        return MCPHelper::invalid('query', 'query needs at least three characters of title text. Use "id:123" to find one task by its id.');
     }
 
     public static function listMyTasks($params = [])
     {
-        $userId = !empty($params['user_id']) ? absint($params['user_id']) : get_current_user_id();
+        $currentUserId = get_current_user_id();
+        $userId = !empty($params['user_id']) ? absint($params['user_id']) : $currentUserId;
         if (!$userId) {
-            return MCPHelper::error('forbidden', __('No user context available', 'fluent-boards'));
+            return MCPHelper::error('forbidden', 'The request has no signed-in user.');
+        }
+
+        // Only someone who may list users is told that an id has no user. For anyone else
+        // an unknown id gives an empty list, like a user with no tasks, so the tool cannot
+        // be used to find out which user ids exist.
+        if ($userId !== $currentUserId && !get_user_by('ID', $userId)
+            && (current_user_can('list_users') || PermissionManager::isAdmin($currentUserId))
+        ) {
+            return MCPHelper::error('not_found', sprintf('No WordPress user has id %d. get-board lists the members of a board with their ids.', $userId), [
+                'fields' => ['user_id'],
+            ]);
         }
 
         $taskType = !empty($params['task_type']) ? sanitize_text_field($params['task_type']) : 'assigned';
         if (!in_array($taskType, self::TASK_TYPES, true)) {
-            return MCPHelper::error('invalid_param', __('Invalid task type', 'fluent-boards'), [
-                'allowed' => self::TASK_TYPES,
-            ]);
+            return MCPHelper::notOneOf('task_type', self::TASK_TYPES);
         }
 
         $orderBy = !empty($params['order_by']) ? sanitize_text_field($params['order_by']) : 'due_at';
         if (!in_array($orderBy, self::ORDER_BY, true)) {
-            return MCPHelper::error('invalid_param', __('Invalid order_by value', 'fluent-boards'), [
-                'allowed' => self::ORDER_BY,
-            ]);
+            return MCPHelper::notOneOf('order_by', self::ORDER_BY);
         }
 
-        $order = !empty($params['order']) && strtoupper($params['order']) === 'DESC' ? 'DESC' : 'ASC';
+        $order = !empty($params['order']) ? strtoupper((string) $params['order']) : 'ASC';
+        if (!in_array($order, ['ASC', 'DESC'], true)) {
+            return MCPHelper::notOneOf('order', ['ASC', 'DESC']);
+        }
+
+        $range = MCPHelper::readDateRange($params, 'due_from', 'due_to');
+        if (is_wp_error($range)) {
+            return $range;
+        }
+
+        $boardIds = self::readBoardIds($params);
+        if (is_wp_error($boardIds)) {
+            return $boardIds;
+        }
+
         $pagination = MCPHelper::normalizePagination($params, 20, 50);
 
         // 'others' is the service's default branch (tasks with no due date).
         $serviceTaskType = $taskType === 'others' ? '' : $taskType;
 
-        try {
-            $result = (new UserService())->getMemberAssociatedTasks($userId, [
-                'page'     => $pagination['page'],
-                'per_page' => $pagination['per_page'],
-                'taskType' => $serviceTaskType,
-                'boardIds' => MCPHelper::sanitizeIdArray($params['board_ids'] ?? []),
-                'orderBy'  => $orderBy,
-                'order'    => $order,
-            ]);
-        } catch (\Exception $e) {
-            return MCPHelper::error('invalid_param', $e->getMessage());
-        }
+        $result = (new UserService())->getMemberAssociatedTasks($userId, [
+            'page'     => $pagination['page'],
+            'per_page' => $pagination['per_page'],
+            'taskType' => $serviceTaskType,
+            'boardIds' => $boardIds,
+            'orderBy'  => $orderBy,
+            'order'    => $order,
+            'dueFrom'  => $range['from'],
+            'dueTo'    => $range['to'],
+        ]);
 
-        $items = [];
-        foreach ($result['tasks'] as $task) {
-            $items[] = self::formatRow($task);
+        // The service does not load assignees. One query adds them, so a row here has the
+        // same fields as a search-tasks row.
+        $tasks = $result['tasks'];
+        $taskIds = array_map('intval', array_column($tasks, 'id'));
+        if ($taskIds) {
+            $assigneesByTask = [];
+            foreach (Task::with('assignees')->whereIn('id', $taskIds)->get(['id']) as $withAssignees) {
+                $assigneesByTask[(int) $withAssignees->id] = $withAssignees->assignees;
+            }
+            foreach ($tasks as $index => $task) {
+                $tasks[$index]['assignees'] = $assigneesByTask[(int) $task['id']] ?? [];
+            }
         }
 
         return [
             'user_id'    => $userId,
             'task_type'  => $taskType,
-            'items'      => $items,
-            'pagination' => [
-                'total'        => (int) ($result['paginationInfo']['total'] ?? 0),
-                'current_page' => (int) ($result['paginationInfo']['current_page'] ?? 1),
-                'per_page'     => (int) ($result['paginationInfo']['per_page'] ?? $pagination['per_page']),
-                'last_page'    => (int) ($result['paginationInfo']['last_page'] ?? 1),
-            ],
+            'items'      => MCPHelper::formatTaskList($tasks, true),
+            'pagination' => MCPHelper::paginationMeta(
+                $result['paginationInfo']['total'] ?? 0,
+                $result['paginationInfo']['current_page'] ?? 1,
+                $result['paginationInfo']['per_page'] ?? $pagination['per_page']
+            ),
         ];
     }
 
     public static function searchTasks($params = [])
     {
+        global $wpdb;
+
         $query = isset($params['query']) ? strtolower(sanitize_text_field($params['query'])) : '';
         if ($query === '') {
-            return MCPHelper::error('invalid_param', __('Provide a search query', 'fluent-boards'));
+            return MCPHelper::invalid('query', 'query is required: text from the task title, or "id:123".');
+        }
+
+        $boardIds = self::readBoardIds($params);
+        if (is_wp_error($boardIds)) {
+            return $boardIds;
         }
 
         $pagination = MCPHelper::normalizePagination($params, 20, 50);
         $includeArchived = !empty($params['include_archived']);
+        $inDescriptions = !empty($params['search_descriptions']);
+
+        $matchText = function ($tasksQuery, $term) use ($wpdb, $inDescriptions) {
+            // The term is literal text: % and _ in it are not wildcards.
+            $like = '%' . $wpdb->esc_like($term) . '%';
+            $tasksQuery->where(function ($textQuery) use ($like, $inDescriptions) {
+                $textQuery->where('title', 'LIKE', $like);
+                if ($inDescriptions) {
+                    $textQuery->orWhere('description', 'LIKE', $like);
+                }
+            });
+        };
 
         // Same prefixes the product's global search box accepts. Title matching relies on the
         // column's case-insensitive collation rather than LOWER(), which would rule out any
@@ -97,23 +142,24 @@ class TaskQueryTools
         if (strpos($query, 'id:') === 0) {
             $taskId = absint(preg_replace('/[^0-9]/', '', substr($query, 3)));
             if (!$taskId) {
-                return MCPHelper::error('invalid_param', __('Provide a numeric task id after "id:"', 'fluent-boards'));
+                return MCPHelper::invalid('query', 'After "id:" send a task id as a number, for example "id:123".');
             }
-            $tasksQuery = Task::query()->whereNull('parent_id')->where('id', $taskId);
+            // A subtask is found too: its row carries parent_id.
+            $tasksQuery = Task::query()->where('id', $taskId);
         } elseif (strpos($query, 'archived:') === 0) {
             $term = trim(substr($query, 9));
             if (mb_strlen($term) < self::MIN_TERM_LENGTH) {
                 return self::shortTermError();
             }
             $includeArchived = true;
-            $tasksQuery = Task::query()->whereNull('parent_id')->whereNotNull('archived_at')
-                ->where('title', 'LIKE', '%' . $term . '%');
+            $tasksQuery = Task::query()->whereNull('parent_id')->whereNotNull('archived_at');
+            $matchText($tasksQuery, $term);
         } else {
             if (mb_strlen($query) < self::MIN_TERM_LENGTH) {
                 return self::shortTermError();
             }
-            $tasksQuery = Task::query()->whereNull('parent_id')
-                ->where('title', 'LIKE', '%' . $query . '%');
+            $tasksQuery = Task::query()->whereNull('parent_id');
+            $matchText($tasksQuery, $query);
         }
 
         $currentUserId = get_current_user_id();
@@ -124,13 +170,12 @@ class TaskQueryTools
                 return [
                     'query'      => $query,
                     'items'      => [],
-                    'pagination' => ['total' => 0, 'current_page' => 1, 'per_page' => $pagination['per_page'], 'last_page' => 0],
+                    'pagination' => MCPHelper::paginationMeta(0, 1, $pagination['per_page']),
                 ];
             }
             $tasksQuery->whereIn('board_id', $allowedBoardIds);
         }
 
-        $boardIds = MCPHelper::sanitizeIdArray($params['board_ids'] ?? []);
         if ($boardIds) {
             $tasksQuery->whereIn('board_id', $boardIds);
         }
@@ -139,75 +184,48 @@ class TaskQueryTools
             $tasksQuery->whereNull('archived_at');
         }
 
-        $paginated = $tasksQuery->with(['board', 'stage', 'labels'])
+        $paginated = $tasksQuery->with(['board', 'stage', 'labels', 'assignees'])
             ->orderBy('updated_at', 'DESC')
             ->paginate($pagination['per_page'], ['*'], 'page', $pagination['page']);
 
-        $items = [];
-        foreach ($paginated->items() as $task) {
-            $items[] = self::formatRow($task);
-        }
-
         return [
             'query'      => $query,
-            'items'      => $items,
-            'pagination' => [
-                'total'        => (int) $paginated->total(),
-                'current_page' => (int) $paginated->currentPage(),
-                'per_page'     => (int) $paginated->perPage(),
-                'last_page'    => (int) $paginated->lastPage(),
-            ],
+            'items'      => MCPHelper::formatTaskList($paginated->items(), true),
+            'pagination' => MCPHelper::paginationMeta($paginated->total(), $paginated->currentPage(), $paginated->perPage()),
         ];
     }
 
     /**
-     * Compact row shape. UserService returns plain arrays while the search query returns models,
-     * so read both through the same accessor. Kept deliberately light: no avatars or emails.
+     * Read the board_ids filter. A board the caller cannot read would give an empty list
+     * that reads as "no tasks", so it is refused.
+     *
+     * @return int[]|\WP_Error
      */
-    private static function formatRow($task)
+    private static function readBoardIds($params)
     {
-        $get = function ($key) use ($task) {
-            if (is_array($task)) {
-                return $task[$key] ?? null;
-            }
-            return $task->{$key} ?? null;
-        };
+        if (!isset($params['board_ids'])) {
+            return [];
+        }
 
-        $nested = function ($value, $key) {
-            if (is_array($value)) {
-                return $value[$key] ?? null;
-            }
-            if (is_object($value)) {
-                return $value->{$key} ?? null;
-            }
-            return null;
-        };
+        if (!is_array($params['board_ids'])) {
+            return MCPHelper::invalid('board_ids', 'board_ids must be a list of board ids, for example [3, 8].');
+        }
 
-        $board = $get('board');
-        $stage = $get('stage');
-        $labels = $get('labels') ?: [];
-
-        $labelTitles = [];
-        foreach ($labels as $label) {
-            $title = $nested($label, 'title');
-            if ($title) {
-                $labelTitles[] = $title;
+        $boardIds = array_values(array_unique(MCPHelper::sanitizeIdArray($params['board_ids'])));
+        $unreadable = [];
+        foreach ($boardIds as $boardId) {
+            if (!MCPHelper::canReadBoard($boardId) || !\FluentBoards\App\Models\Board::where('id', $boardId)->exists()) {
+                $unreadable[] = $boardId;
             }
         }
 
-        return [
-            'id'          => (int) $get('id'),
-            'title'       => $get('title'),
-            'board_id'    => (int) $get('board_id'),
-            'board_title' => $nested($board, 'title'),
-            'stage_id'    => (int) $get('stage_id'),
-            'stage_title' => $nested($stage, 'title'),
-            'status'      => $get('status'),
-            'priority'    => $get('priority'),
-            'due_at'      => MCPHelper::toIso8601($get('due_at')),
-            'started_at'  => MCPHelper::toIso8601($get('started_at')),
-            'archived_at' => MCPHelper::toIso8601($get('archived_at')),
-            'labels'      => $labelTitles,
-        ];
+        if ($unreadable) {
+            return MCPHelper::error('not_found', sprintf(
+                'You cannot read board %s, or it does not exist. list-boards shows the boards you can use.',
+                implode(', ', $unreadable)
+            ), ['fields' => ['board_ids']]);
+        }
+
+        return $boardIds;
     }
 }

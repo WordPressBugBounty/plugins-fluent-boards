@@ -8,6 +8,7 @@ use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Models\Task;
 use FluentBoards\App\Models\User;
 use FluentBoards\App\Models\Board;
+use FluentBoards\App\Services\AssigneeSuggestionService;
 use FluentBoards\App\Services\CommentService;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\DescriptionMarkdownConverter;
@@ -731,6 +732,16 @@ class BoardController extends Controller
         }
     }
 
+    /**
+     * Ranked user ids the current user most often and most recently assigned on this board.
+     */
+    public function getAssigneeSuggestions($board_id)
+    {
+        return $this->sendSuccess([
+            'suggested_ids' => (new AssigneeSuggestionService())->getSuggestedIds($board_id),
+        ]);
+    }
+
     /*
      * TODO: Refactor this method - for Masiur
      */
@@ -1098,7 +1109,7 @@ class BoardController extends Controller
 
             $formattedContacts = Collection::make($contactIds)
                 ->map(function ($contactId) use ($tasksByContact, $boardContactIds) {
-                    $contact = Helper::crm_contact($contactId);
+                    $contact = Helper::boardCrmContact($contactId);
                     if (!$contact) {
                         return null; // Skip if subscriber not found
                     }

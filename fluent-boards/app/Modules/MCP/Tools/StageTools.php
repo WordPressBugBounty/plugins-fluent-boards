@@ -20,15 +20,13 @@ class StageTools
         }
 
         if (!MCPHelper::canWriteBoard($board->id)) {
-            return MCPHelper::error('forbidden', __('You do not have permission to manage stages on this board', 'fluent-boards'));
+            return MCPHelper::boardForbidden($board->id, true);
         }
 
         $status = null;
         if (!empty($params['default_task_status'])) {
             if (!in_array($params['default_task_status'], ['open', 'closed'], true)) {
-                return MCPHelper::error('invalid_param', __('Invalid stage default task status', 'fluent-boards'), [
-                    'allowed' => ['open', 'closed'],
-                ]);
+                return MCPHelper::notOneOf('default_task_status', ['open', 'closed']);
             }
             $status = $params['default_task_status'];
         }
@@ -43,12 +41,16 @@ class StageTools
                 return $stage;
             }
 
-            if ($title !== null && $title !== '') {
+            if ($title !== null && $title === '') {
+                return MCPHelper::invalid('title', 'title cannot be empty. Leave title out to keep the current one.');
+            }
+
+            if ($title !== null) {
                 $stage = $stageService->updateStageProperty('title', $title, $stage->id);
             }
         } else {
             if (!$title) {
-                return MCPHelper::error('invalid_param', __('Stage title is required', 'fluent-boards'));
+                return MCPHelper::invalid('title', 'title is required to create a stage. To update a stage send its stage_id.');
             }
 
             $stage = $stageService->createStage([
@@ -77,10 +79,9 @@ class StageTools
         $stage = Stage::find($stage->id);
 
         return [
-            'stage'   => MCPHelper::formatStage($stage),
-            'message' => $isUpdate
-                ? __('Stage has been updated', 'fluent-boards')
-                : __('Stage has been created', 'fluent-boards'),
+            'stage'    => MCPHelper::formatStage($stage),
+            'board_id' => (int) $board->id,
+            'created'  => !$isUpdate,
         ];
     }
 
@@ -92,7 +93,7 @@ class StageTools
         }
 
         if (!MCPHelper::canWriteBoard($board->id)) {
-            return MCPHelper::error('forbidden', __('You do not have permission to manage stages on this board', 'fluent-boards'));
+            return MCPHelper::boardForbidden($board->id, true);
         }
 
         $stage = self::findStage($params['stage_id'] ?? 0, $board->id, true);
@@ -103,15 +104,18 @@ class StageTools
         $archived = array_key_exists('archived', $params) ? (bool) $params['archived'] : true;
         $boardService = new BoardService();
 
-        $stage = $archived
-            ? $boardService->archiveStage($board->id, $stage)
-            : $boardService->restoreStage($board->id, $stage);
+        // Archiving twice would stamp the stage again and fire the archive events a second time.
+        if ($archived === (bool) $stage->archived_at) {
+            MCPHelper::addWarning($archived ? 'The stage was already archived. Nothing changed.' : 'The stage was not archived. Nothing changed.');
+        } else {
+            $stage = $archived
+                ? $boardService->archiveStage($board->id, $stage)
+                : $boardService->restoreStage($board->id, $stage);
+        }
 
         return [
-            'stage'   => MCPHelper::formatStage($stage),
-            'message' => $archived
-                ? __('Stage has been archived', 'fluent-boards')
-                : __('Stage has been restored', 'fluent-boards'),
+            'stage'    => MCPHelper::formatStage($stage),
+            'board_id' => (int) $board->id,
         ];
     }
 
@@ -123,7 +127,7 @@ class StageTools
     {
         $stageId = absint($stageId);
         if (!$stageId) {
-            return MCPHelper::error('invalid_param', __('Provide stage_id', 'fluent-boards'));
+            return MCPHelper::invalid('stage_id', 'stage_id is required: a stage id from get-board.');
         }
 
         $query = Stage::where('id', $stageId)->where('board_id', absint($boardId));
@@ -135,10 +139,11 @@ class StageTools
         $stage = $query->first();
 
         if (!$stage) {
-            return MCPHelper::error('not_found', __('Stage not found on this board', 'fluent-boards'), [
-                'board_id' => absint($boardId),
-                'stage_id' => $stageId,
-            ]);
+            return MCPHelper::error('not_found', sprintf(
+                'Board %d has no stage with id %d. get-board lists the active stages.',
+                absint($boardId),
+                $stageId
+            ), ['fields' => ['stage_id']]);
         }
 
         return $stage;

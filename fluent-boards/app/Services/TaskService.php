@@ -238,11 +238,10 @@ class TaskService
         $task->load('assignees');
         $currentUserId = get_current_user_id();
         $assigneeIds = array_diff($task->assignees->pluck('ID')->all(), [$currentUserId]);
+        do_action('fluent_boards/task_assignees_added', $task, $assigneeIds);
         $notificationService = new NotificationService();
         $recipientIds = $notificationService->getEmailEnabledUserIds($task->board_id, $assigneeIds, Constant::BOARD_EMAIL_TASK_ASSIGN);
-        foreach ($recipientIds as $recipientId) {
-            $this->sendMailAfterTaskModify('add_assignee', $recipientId, $task->id);
-        }
+        $this->sendMailAfterTaskModify('add_assignee', $recipientIds, $task);
 
         $this->manageDefaultAssignees($task, $stage->id);
         $this->manageDefaultWatchers($task, $stage->id);
@@ -530,6 +529,10 @@ class TaskService
                     }
                     break;
 
+                case 'stage_id':
+                    $task = $this->moveTaskToStage($value, $task);
+                    break;
+
                 case 'crm_contact_id':
                     $this->updateAssociate($value, $task);
                     break;
@@ -646,7 +649,7 @@ class TaskService
 
         if ($operation == 'added') {
             if ((new NotificationService())->checkIfEmailEnable($payloadAssigneeId, Constant::BOARD_EMAIL_TASK_ASSIGN, $task->board_id) && $payloadAssigneeId != get_current_user_id()) {
-                $this->sendMailAfterTaskModify('add_assignee', $payloadAssigneeId, $task->id);
+                $this->sendMailAfterTaskModify('add_assignee', $payloadAssigneeId, $task);
             }
 //            $assigneeIdsToSendEmail = $this->filterAssigneeToSendEmail($task, $idArray, Constant::BOARD_EMAIL_TASK_ASSIGN);
 //            $this->sendMailAfterAddAssignees($assigneeIdsToSendEmail, $task->id);
@@ -656,11 +659,60 @@ class TaskService
             }
         } else {
             if ((new NotificationService())->checkIfEmailEnable($payloadAssigneeId, Constant::BOARD_EMAIL_REMOVE_FROM_TASK, $task->board_id) && $payloadAssigneeId != get_current_user_id()) {
-                $this->sendMailAfterTaskModify('remove_assignee', $payloadAssigneeId, $task->id);
+                $this->sendMailAfterTaskModify('remove_assignee', $payloadAssigneeId, $task);
             }
             do_action('fluent_boards/task_assignee_removed', $task, $payloadAssigneeId);
         }
 
+    }
+
+    /**
+     * Move a task to another stage of its own board, applying the stage's default status and
+     * assignees, then fire `task_stage_updated`. No-op when the task is already in the stage.
+     *
+     * @param int      $stageId
+     * @param Task     $task
+     * @param int|null $position 1-based position; null appends to the end of the stage.
+     * @return Task
+     */
+    public function moveTaskToStage($stageId, $task, $position = null)
+    {
+        $stageId = absint($stageId);
+        if (!$stageId || (int) $task->stage_id === $stageId) {
+            return $task;
+        }
+
+        $targetStage = Stage::where('id', $stageId)
+            ->where('board_id', $task->board_id)
+            ->first();
+
+        if (!$targetStage) {
+            throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
+        }
+
+        $oldStageId = (int) $task->stage_id;
+
+        $this->cleanupArchivedByStageMetaIfExists($task->id);
+
+        $task->stage_id = $stageId;
+        if ($targetStage->defaultTaskStatus() === 'closed' && $task->status !== 'closed') {
+            $task->status = 'closed';
+            $task->last_completed_at = $task->last_completed_at ?: current_time('mysql');
+        }
+
+        if ($position !== null) {
+            $task = $task->moveToNewPosition($position);
+        } else {
+            $task->position = $this->getLastPositionOfTasks($stageId);
+            $task->save();
+        }
+
+        $this->manageDefaultAssignees($task, $stageId);
+
+        do_action('fluent_boards/task_stage_updated', $task, $oldStageId);
+        do_action('fluent_boards/task_updated', $task, 'position');
+
+        return $task;
     }
 
 //    public function filterAssigneeToSendEmail($task, $newAssigneeIds, $purpose)
@@ -743,7 +795,7 @@ class TaskService
         do_action('fluent_boards/task_archived', $task);
         if ($value != null) {
             $watchersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_TASK_ARCHIVE);
-            $this->sendMailAfterTaskModify('task_archived', $watchersToSendEmail, $task->id);
+            $this->sendMailAfterTaskModify('task_archived', $watchersToSendEmail, $task);
         }
     }
 
@@ -776,6 +828,10 @@ class TaskService
         $task->description = DescriptionMarkdownConverter::normalize($value);
         $task->save();
         do_action('fluent_boards/task_content_updated', $task, $col, $oldTask);
+        if ((string) $task->description !== (string) $oldTask->description) {
+            $recipients = (new NotificationService())->getWatcherEmailRecipientIds($task, Constant::BOARD_EMAIL_DESCRIPTION_UPDATE);
+            $this->sendMailAfterTaskModify('description_update', $recipients, $task);
+        }
     }
 
     private function updateDueDate($value, $task)
@@ -787,14 +843,17 @@ class TaskService
 
         $task = $task->reopen();
 
-        if($value){
-            do_action('fluent_boards/task_due_date_changed', $task, $oldValue);
-        } else {
-            do_action('fluent_boards/task_due_date_removed', $task);
+        if (!$this->taskDateChanged($oldValue, $value)) {
+            return;
         }
 
-        $wathersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_DUE_DATE_CHANGE);
-        $this->sendMailAfterTaskModify('due_date_update', $wathersToSendEmail, $task->id);
+        if ($value) {
+            do_action('fluent_boards/task_due_date_changed', $task, $oldValue);
+        } else {
+            do_action('fluent_boards/task_due_date_removed', $task, $oldValue);
+        }
+
+        $this->queueTaskDateEmail($task, 'due_at', $oldValue);
     }
 
     private function updateStartedDate($value, $task)
@@ -804,8 +863,32 @@ class TaskService
         $task->started_at = $value;
         $task->save();
 
-        if($value){
+        if (!$this->taskDateChanged($oldValue, $value)) {
+            return;
+        }
+
+        if ($value) {
             do_action('fluent_boards/task_start_date_changed', $task, $oldValue);
+        } else {
+            do_action('fluent_boards/task_start_date_removed', $task, $oldValue);
+        }
+        $this->queueTaskDateEmail($task, 'started_at', $oldValue);
+    }
+
+    /** The date picker can submit both fields even when only one changed. */
+    private function taskDateChanged($previous, $current)
+    {
+        $previous = Helper::normalizeDateValue($previous);
+        return ($previous ? strtotime($previous) : null) !== ($current ? strtotime($current) : null);
+    }
+
+    private function queueTaskDateEmail($task, $field, $previous)
+    {
+        $recipients = (new NotificationService())->getWatcherEmailRecipientIds($task, Constant::BOARD_EMAIL_DUE_DATE_CHANGE);
+        if ($recipients) {
+            TaskEmailDigest::enqueue('due_date_update', $task->id, $recipients, $task->board_id, [
+                'field' => $field, 'from' => $previous, 'to' => $task->{$field},
+            ]);
         }
     }
 
@@ -815,6 +898,10 @@ class TaskService
         $task->priority = $value;
         $task->save();
         do_action('fluent_boards/task_priority_changed', $task, $oldPriority);
+        if ((string) $task->priority !== (string) $oldPriority) {
+            $recipients = (new NotificationService())->getWatcherEmailRecipientIds($task, Constant::BOARD_EMAIL_PRIORITY_CHANGE);
+            $this->sendMailAfterTaskModify('priority_change', $recipients, $task, $oldPriority);
+        }
     }
 
     /** Watching is self-service: a user may only start or stop their own watch. */
@@ -1514,7 +1601,13 @@ class TaskService
             }
         }
 
-        $tasks = $tasksQuery->orderBy('created_at', 'DESC')->with('assignees')->paginate($perPage, ['*'], 'page', $page);
+        // Sort by archive date; only ASC/DESC are allowed, newest first by default.
+        $order = strtoupper($data['order'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
+
+        $tasks = $tasksQuery->orderBy('archived_at', $order)
+            ->orderBy('id', $order)
+            ->with('assignees')
+            ->paginate($perPage, ['*'], 'page', $page);
 
         $taskIds = [];
         foreach ($tasks as $task) {
@@ -1671,6 +1764,7 @@ class TaskService
             'custom_fields' => $customFieldFilters,
             'due_date' => $dueDateFilters,
         ]);
+        $this->applyTableDueRange($tasksQuery, Arr::get($data, 'due_from'), Arr::get($data, 'due_to'));
 
         if ($sortColumn === 'position') {
             $tasksQuery->orderBy('stage_id', 'asc');
@@ -1902,6 +1996,23 @@ class TaskService
         }
     }
 
+    /**
+     * Limit tasks to a due-date range. Each bound is a site-time "Y-m-d H:i:s" value; any
+     * other value is ignored. Tasks without a due date are outside every range.
+     */
+    private function applyTableDueRange($tasksQuery, $dueFrom, $dueTo)
+    {
+        $pattern = '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/';
+
+        if (is_string($dueFrom) && preg_match($pattern, $dueFrom)) {
+            $tasksQuery->where('due_at', '>=', $dueFrom);
+        }
+
+        if (is_string($dueTo) && preg_match($pattern, $dueTo)) {
+            $tasksQuery->where('due_at', '<=', $dueTo);
+        }
+    }
+
     private function applyTableStageFilters($tasksQuery, $stageFilters)
     {
         $stageIds = array_values(array_filter(array_map('intval', array_diff($stageFilters, ['archived']))));
@@ -2056,17 +2167,34 @@ class TaskService
         }
     }
 
-    public function sendMailAfterTaskModify($column, $assigneeIds, $taskId)
+    public function sendMailAfterTaskModify($column, $assigneeIds, $taskId, $previous = null)
     {
         if (empty($assigneeIds)) {
             return;
         }
 
-        $current_user_id = get_current_user_id();
-        /* this will run in background as soon as possible */
-        /* sending Model or Model Instance won't work here */
+        $task = $taskId instanceof Task ? $taskId : Task::find($taskId);
+        if (!$task) {
+            return;
+        }
 
-        as_enqueue_async_action('fluent_boards/one_time_schedule_send_email_for_'.$column, [$taskId, $assigneeIds, $current_user_id], 'fluent-boards');
+        $change = [];
+        if ($column === 'stage_change') {
+            $titles = Stage::where('board_id', $task->board_id)->whereIn('id', array_filter([$previous, $task->stage_id]))
+                ->pluck('title', 'id');
+            $change = ['to' => $titles->get($task->stage_id, ''), 'from' => $titles->get($previous)];
+        } elseif ($column === 'due_date_update') {
+            $change = ['to' => $task->due_at, 'from' => $previous];
+        } elseif ($column === 'priority_change') {
+            $change = ['to' => (string) $task->priority, 'from' => (string) $previous];
+        } elseif ($column === 'description_update') {
+            $description = (string) $task->description;
+            $change = [
+                'removed' => trim($description) === '',
+                'excerpt' => wp_trim_words(wp_strip_all_tags($description), 20),
+            ];
+        }
+        TaskEmailDigest::enqueue($column, $task->id, $assigneeIds, $task->board_id, $change);
     }
 
     public function getStageByTask($task_id)
@@ -2093,18 +2221,7 @@ class TaskService
             return $task;
         }
 
-        if ($nextStage->defaultTaskStatus() == 'closed' && $task->status != 'closed') {
-            $task->status = 'closed';
-            if (!$task->last_completed_at) {
-                $task->last_completed_at = current_time('mysql');
-            }
-        }
-
-        // Clean up archived_by_stage meta when moving to different stage
-        $this->cleanupArchivedByStageMetaIfExists($task->id);
-        
-        $task->stage_id = $nextStage->id;
-        $task->save();
+        $task = $this->moveTaskToStage($nextStage->id, $task);
 
         $task->load(['board', 'stage', 'attachments']);
 
@@ -2832,11 +2949,10 @@ class TaskService
 
     public function cloneTask(int $taskId, $taskData, $boardId = null): Task
     {
-        global $wpdb;
+        $db = App::getInstance('db');
         $attachmentFileService = new AttachmentFileService();
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transaction control for atomic task cloning operation
-        $wpdb->query('START TRANSACTION');
+        $db->beginTransaction();
 
         try {
             // Load task with all necessary relationships
@@ -2897,8 +3013,11 @@ class TaskService
 
             $this->cloneTaskCustomFields($task, $clonedTask);
 
-            // Apply stage default assignees if any are set
-            $this->manageDefaultAssignees($clonedTask, $clonedTask->stage_id);
+            // Apply stage default assignees if any are set. A copy headed for another board
+            // (automation duplicate) skips them: that board's stage applies its own afterwards.
+            if (empty($taskData['skip_stage_defaults'])) {
+                $this->manageDefaultAssignees($clonedTask, $clonedTask->stage_id);
+            }
 
             if($taskData['assignee']) {
                 $this->cloneAssignees($task, $clonedTask);
@@ -2917,7 +3036,7 @@ class TaskService
             if(!!defined('FLUENT_BOARDS_PRO_VERSION')) {
                 // Clone time tracking data if Pro version is active
                 if ($taskData['subtask']) {
-                    $this->cloneSubtasks($task, $clonedTask, (bool) $taskData['attachment'], $attachmentFileService);
+                    $this->cloneSubtasks($task, $clonedTask, (bool) $taskData['attachment'], $attachmentFileService, !empty($taskData['assignee']));
                 }
             }
 
@@ -2929,14 +3048,12 @@ class TaskService
             $clonedTask = $this->prepareClonedTaskForResponse($clonedTask);
             do_action('fluent_boards/task_cloned', $task, $clonedTask);
 
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transaction control for atomic task cloning operation
-            $wpdb->query('COMMIT');
+            $db->commit();
             return $clonedTask;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            $db->rollBack();
             $attachmentFileService->rollbackCreatedFiles();
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transaction control for atomic task cloning operation
-            $wpdb->query('ROLLBACK');
             throw new \Exception(
                 /* translators: %s is the error message */
                 esc_html(sprintf(\__('Failed to clone task: %s', 'fluent-boards'), $e->getMessage())),
@@ -2969,6 +3086,8 @@ class TaskService
                 Constant::SUBTASK_GROUP_NAME,
                 TaskShareService::TOKEN_META,
                 TaskShareService::SETTINGS_META,
+                TaskShareService::AUTHOR_META,
+                TaskShareService::AUTHOR_ID_META,
             ])
             ->get();
         foreach ($taskMetas as $meta) {
@@ -3104,7 +3223,7 @@ class TaskService
             }
         }
     }
-    private function cloneSubtasks(Task $originalTask, Task $clonedTask, bool $cloneAttachments = false, ?AttachmentFileService $attachmentFileService = null): void
+    private function cloneSubtasks(Task $originalTask, Task $clonedTask, bool $cloneAttachments = false, ?AttachmentFileService $attachmentFileService = null, bool $cloneAssignees = false): void
     {
         // First clone subtask groups
         $subtaskGroupMap = $this->cloneSubtaskGroups($originalTask, $clonedTask);
@@ -3116,6 +3235,9 @@ class TaskService
                 $clonedSubtask->parent_id = $clonedTask->id;
                 $clonedSubtask->board_id = $clonedTask->board_id; // Ensure subtask has same board_id as parent
                 $clonedSubtask->save();
+                if ($cloneAssignees) {
+                    $this->cloneAssignees($subtask, $clonedSubtask);
+                }
                 $attachmentFileService = $attachmentFileService ?: new AttachmentFileService();
                 $attachmentFileService->cloneTaskFilesToBoard($subtask, $clonedSubtask, $clonedTask->board_id, [
                     'description_images' => true,
@@ -3338,7 +3460,7 @@ class TaskService
                 do_action('fluent_boards/task_stage_updated', $task, $oldStageId);
 
                 $usersToSendEmail = (new NotificationService())->filterAssigneeToSendEmail($task->id, Constant::BOARD_EMAIL_STAGE_CHANGE);
-                $this->sendMailAfterTaskModify('stage_change', $usersToSendEmail, $task->id);
+                $this->sendMailAfterTaskModify('stage_change', $usersToSendEmail, $task, $oldStageId);
             }
 
             $successfulTasks[] = $task;
@@ -3554,11 +3676,12 @@ class TaskService
                     }
                     $task->watchers()->syncWithoutDetaching($watcherData);
                     
+                    do_action('fluent_boards/task_assignees_added', $task, $newAssignees);
                     // Send notifications and actions only for new assignees
                     foreach ($newAssignees as $userId) {
                         // Send email notification if enabled and not current user
                         if ((new \FluentBoards\App\Services\NotificationService())->checkIfEmailEnable($userId, Constant::BOARD_EMAIL_TASK_ASSIGN, $task->board_id) && $userId != get_current_user_id()) {
-                            $this->sendMailAfterTaskModify('add_assignee', $userId, $task->id);
+                            $this->sendMailAfterTaskModify('add_assignee', $userId, $task);
                         }
                         
                         // Dispatch WordPress actions

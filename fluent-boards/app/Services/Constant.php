@@ -21,11 +21,16 @@ class Constant{
     const TASK_ESTIMATED_MINUTES = '_estimated_minutes';
 
     const BOARD_EMAIL_COMMENT =  'email_after_comment';
+    const BOARD_EMAIL_MENTION =  'email_after_mention';
     const BOARD_EMAIL_TASK_ASSIGN =  'email_after_task_assign';
     const BOARD_EMAIL_STAGE_CHANGE =  'email_after_task_stage_change';
 
     const BOARD_EMAIL_DUE_DATE_CHANGE =  'email_after_task_due_date_change';
     const BOARD_EMAIL_REMOVE_FROM_TASK =  'email_after_remove_from_task';
+    const BOARD_EMAIL_PRIORITY_CHANGE = 'email_after_task_priority_change';
+    const BOARD_EMAIL_DESCRIPTION_UPDATE = 'email_after_task_description_update';
+    const CHAT_NOTIFICATION_EVENTS = ['comment', 'mention', 'add_assignee', 'remove_assignee', 'stage_change', 'due_date_update', 'priority_change', 'description_update', 'task_archived'];
+
     const BOARD_EMAIL_TASK_ARCHIVE =  'email_after_task_archive';
 
 
@@ -44,6 +49,18 @@ class Constant{
 
     const OBJECT_TYPE_USER = 'user';
 
+    const AUTOMATION_STATUS_ACTIVE = 'active';
+    const AUTOMATION_STATUS_DRAFT = 'draft';
+    const AUTOMATION_STATUS_PAUSED = 'paused';
+
+    const AUTOMATION_RUN_RUNNING = 'running';
+    const AUTOMATION_RUN_WAITING = 'waiting';
+    const AUTOMATION_RUN_SUCCESS = 'success';
+    const AUTOMATION_RUN_FAILED = 'failed';
+    const AUTOMATION_RUN_SKIPPED = 'skipped';
+    const AUTOMATION_RUN_CANCELLED = 'cancelled';
+    const AUTOMATION_COMMENT_SOURCE = 'automation';
+
     const TASK_WATCH_NOTIFICATION_TYPES = [
         'comment_add'               => true,
         'comment_update'            => true,
@@ -58,10 +75,13 @@ class Constant{
 
     const BOARD_NOTIFICATION_TYPES = [
         'email_after_comment'       => true,
+        'email_after_mention'       => true,
         'email_after_task_assign'    => true,
         'email_after_task_stage_change'    => true,
         'email_after_task_due_date_change' => true,
         'email_after_remove_from_task' => true,
+        self::BOARD_EMAIL_PRIORITY_CHANGE => true,
+        self::BOARD_EMAIL_DESCRIPTION_UPDATE => true,
         'email_after_task_archive' => true,
         'dashboard_notification' => true
     ];
@@ -88,6 +108,11 @@ class Constant{
     const IS_BOARD_ADMIN = 'is_admin';
 
     const USER_RECENT_BOARDS = 'user_recent_boards';
+    // Per-user, per-board assignee history; the board id is appended. See AssigneeSuggestionService.
+    const USER_ASSIGNEE_SUGGESTIONS_PREFIX = 'assignee_suggestions_board_';
+    const ASSIGNEE_SUGGESTION_LIMIT = 5;
+    const ASSIGNEE_SUGGESTION_HISTORY_LIMIT = 50;
+    const BOARD_EMAIL_OVERRIDE = '_board_email_override';
     const USER_GLOBAL_NOTIFICATIONS = 'user_global_notifications';
     const USER_NOTIFICATION_PAUSE = 'notification_pause_until';
     const USER_BOARD_NOTIFICATION_PAUSE_PREFIX = 'board_notification_pause_until_';
@@ -106,6 +131,7 @@ class Constant{
     const BOARD_INVITATION = 'board_email_invitation';
 
     const GLOBAL_EMAIL_NOTIFICATION_COMMENT = 'email_after_comment';
+    const GLOBAL_EMAIL_NOTIFICATION_MENTION = 'email_after_mention';
     const GLOBAL_EMAIL_NOTIFICATION_TASK_ASSIGN = 'email_after_task_assign';
     const GLOBAL_EMAIL_NOTIFICATION_STAGE_CHANGE = 'email_after_task_stage_change';
     const GLOBAL_EMAIL_NOTIFICATION_DUE_DATE = 'email_after_task_due_date_change';

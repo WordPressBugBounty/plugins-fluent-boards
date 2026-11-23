@@ -252,8 +252,7 @@ class BoardService
                 'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
                 'settings'    => maybe_serialize([
                     Constant::IS_BOARD_ADMIN => true
-                ]),
-                'preferences' => maybe_serialize(Constant::BOARD_NOTIFICATION_TYPES)
+                ])
             ]
         );
     }
@@ -480,8 +479,7 @@ class BoardService
             $memberId,
             [
                 'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
-                'settings'    => maybe_serialize($settings),
-                'preferences' => maybe_serialize(Constant::BOARD_NOTIFICATION_TYPES)
+                'settings'    => maybe_serialize($settings)
             ]
         );
         if(!$isViewerOnly) {
@@ -569,8 +567,7 @@ class BoardService
                 $userId,
                 [
                     'object_type' => Constant::OBJECT_TYPE_BOARD_USER,
-                    'settings'    => maybe_serialize($settings),
-                    'preferences' => maybe_serialize(Constant::BOARD_NOTIFICATION_TYPES)
+                    'settings'    => maybe_serialize($settings)
                 ]
             );
         }
@@ -1153,7 +1150,7 @@ class BoardService
             $task->isOverdue = $task->isOverdue();
             $task->isUpcoming = $task->upcoming();
             $task->is_watching = $task->isWatching();
-            $task->contact = Helper::crm_contact($task->crm_contact_id);
+            $task->contact = Helper::boardCrmContact($task->crm_contact_id);
             $task->assignees = Helper::sanitizeUserCollections($task->assignees);
             $task->watchers = Helper::sanitizeUserCollections($task->watchers);
         }
@@ -1287,6 +1284,9 @@ class BoardService
         Meta::where('object_id', $boardId)
             ->where('object_type', Constant::OBJECT_TYPE_BOARD)
             ->delete();
+
+        // Per-user assignee suggestion history is stored on the user, keyed by this board.
+        (new AssigneeSuggestionService())->deleteForBoard($boardId);
     }
 
     public function copyBoard($boardData)

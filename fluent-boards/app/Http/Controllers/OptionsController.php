@@ -9,11 +9,11 @@ use FluentBoards\App\Models\User;
 use FluentBoards\App\Models\Board;
 use FluentBoards\App\Models\Relation;
 use FluentBoards\App\Services\BoardService;
-use FluentBoards\App\Services\DescriptionMarkdownConverter;
 use FluentBoards\App\Services\Helper;
 use FluentBoards\App\Services\OptionService;
 use FluentBoards\App\Services\Constant;
 use FluentBoards\App\Services\PermissionManager;
+use FluentBoards\App\Services\GlobalSearchService;
 use FluentBoards\Framework\Http\Request\Request;
 use FluentBoards\Framework\Support\Arr;
 use FluentBoardsPro\App\Hooks\Handlers\ProScheduleHandler;
@@ -434,6 +434,15 @@ class OptionsController extends Controller
 
     public function updateGlobalNotificationSettings(Request $request)
     {
+        // Profile pages loaded before the upgrade may still send the removed "apply to older boards"
+        // restore. Reject it before writing: saving without it would reset every preference to its
+        // default (jQuery drops the empty settings) or silently skip the restore.
+        if ($request->get('restore_legacy_boards') !== null) {
+            return $this->sendError([
+                'message' => __('This page is out of date. Please reload it and save your notification preferences again. Board preferences are now in each board\'s menu.', 'fluent-boards'),
+            ], 422);
+        }
+
         try {
             // updatedSettings is an array, sanitize each element
             $rawSettings = $request->get('updatedSettings');
@@ -446,7 +455,14 @@ class OptionsController extends Controller
                 }
             }
 
-            $this->optionService->updateGlobalNotificationSettings($newSettings);
+            // Optional: the profile cards send only their own keys, so other keys keep their values.
+            $onlyKeys = null;
+            $rawKeys = $request->get('keys');
+            if (is_array($rawKeys)) {
+                $onlyKeys = array_values(array_filter(array_map('sanitize_key', $rawKeys)));
+            }
+
+            $this->optionService->updateGlobalNotificationSettings($newSettings, $onlyKeys);
 
             return $this->sendSuccess([
                 'message' => __("Notification settings are updated", 'fluent-boards'),
@@ -553,132 +569,52 @@ class OptionsController extends Controller
         ];
     }
 
-    public function globalSearch()
+    public function globalSearch(Request $request)
     {
-        $currentUserId = get_current_user_id();
+        $service = new GlobalSearchService(get_current_user_id());
+        $mode = $request->getSafe('mode', 'sanitize_key', '');
 
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
-        $query = isset($_REQUEST['query']) ? strtolower(sanitize_text_field(wp_unslash($_REQUEST['query']))) : '';
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
-        $scope = isset($_REQUEST['scope']) ? sanitize_text_field(wp_unslash($_REQUEST['scope'])) : 'all';
+        if ($mode === 'suggest') {
+            $recentIdsText = (string) $request->getSafe('recent_ids', 'sanitize_text_field', '');
+            $recentIds = array_filter(array_map('absint', explode(',', $recentIdsText)));
 
-        // Pagination parameters
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
-        $taskPage = isset($_REQUEST['task_page']) ? max(1, (int)$_REQUEST['task_page']) : 0;
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
-        $boardPage = isset($_REQUEST['board_page']) ? max(1, (int)$_REQUEST['board_page']) : 0;
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- REST API endpoint, nonce verification handled by WordPress REST API
-        $perPage = isset($_REQUEST['per_page']) ? (int)$_REQUEST['per_page'] : 20;
-        $perPage = max(1, min(100, $perPage));
-
-        // Build base queries
-        $firstThreeChars = substr($query, 0, 3);
-        $firstNineChars = substr($query, 0, 9);
-
-        if($firstThreeChars == 'id:') {
-            $idPart = preg_replace('/[^a-zA-Z0-9]/', '', substr($query, 3));
-            $tasksQuery = Task::query()->where('parent_id', null)->whereRaw('id LIKE ?', ['%' . $idPart . '%']);
-            $boardQuery = Board::query()->whereRaw('id LIKE ?', ['%' . $idPart . '%']);
-        }elseif($firstNineChars == 'archived:') {
-            $archivedPart = trim(substr($query, 9));
-            $tasksQuery = Task::query()->where('parent_id', null)->whereNotNull('archived_at')->whereRaw('LOWER(title) LIKE ?', ['%' . $archivedPart . '%']);
-            $boardQuery = Board::query()->whereNotNull('archived_at')->whereRaw('LOWER(title) LIKE ?', ['%' . $archivedPart . '%']);
-        } else {
-            $tasksQuery = Task::query()->where('parent_id', null)->whereRaw('LOWER(title) LIKE ?', ['%' . $query . '%']);
-            $boardQuery = Board::query()->whereRaw('LOWER(title) LIKE ?', ['%' . $query . '%']);
+            return $this->sendSuccess($service->suggestions($recentIds), 200);
         }
 
-        // Apply scope and permissions
-        $isUserAdmin = PermissionManager::isAdmin($currentUserId);
-        if ($scope == 'all') {
-            if (!$isUserAdmin) {
-                $boardIds = PermissionManager::getBoardIdsForUser($currentUserId);
-                $boardQuery->whereIn('id', $boardIds);
-                $tasksQuery->whereIn('board_id', $boardIds);
-            }
-        } else {
-            // For 'current_board' scope, we don't search boards
-            $boardQuery->where('id', -1);
+        if ($mode === 'options') {
+            $field = $request->getSafe('field', 'sanitize_key', '');
+            $query = $request->getSafe('q', 'sanitize_text_field', '');
 
-            $inBoard = absint($scope);
-            if ($isUserAdmin || in_array($inBoard, PermissionManager::getBoardIdsForUser($currentUserId))) {
-                $tasksQuery->where('board_id', $inBoard);
-            } else {
-                $tasksQuery->where('id', -1); // Force no results
-            }
+            return $this->sendSuccess([
+                'options' => $service->filterOptions($field, $query),
+            ], 200);
         }
 
-        $allActiveBoardsIds = Board::query()->where('archived_at', null)->pluck('id')->toArray();
+        // Id and status lists arrive comma-separated; label names arrive as labels[]
+        // because a name can contain a comma. The service sanitizes every value.
+        $query = $request->getSafe('q', 'sanitize_text_field', '');
+        $type = $request->getSafe('type', 'sanitize_key', 'all');
+        $page = $request->getSafe('page', 'intval', 1);
+        $assignees = $request->getSafe('assignees', 'sanitize_text_field', '');
+        $boardIds = $request->getSafe('board_ids', 'sanitize_text_field', '');
+        $labels = $request->get('labels', []);
+        $statuses = $request->getSafe('statuses', 'sanitize_text_field', '');
+        $archived = $request->getSafe('archived', 'sanitize_text_field', '');
+        $currentBoard = $request->getSafe('current_board', 'intval', 0);
 
-        $boards = [];
-        $tasks = [];
-        $totalBoards = 0;
-        $totalTasks = 0;
-        $formattedBoards = [];
-        $formattedTasks = [];
+        $results = $service->search([
+            'q'             => $query,
+            'type'          => $type,
+            'page'          => $page,
+            'assignees'     => $assignees,
+            'board_ids'     => $boardIds,
+            'labels'        => $labels,
+            'statuses'      => $statuses,
+            'archived'      => $archived,
+            'current_board' => $currentBoard,
+        ]);
 
-        // Fetch Boards if requested
-        if ($boardPage > 0) {
-            $totalBoards = $boardQuery->count();
-            $boardOffset = ($boardPage - 1) * $perPage;
-            $boards = $boardQuery->skip($boardOffset)->take($perPage)->get();
-        }
-
-        // Fetch Tasks if requested
-        if ($taskPage > 0) {
-            $totalTasks = $tasksQuery->count();
-            $taskOffset = ($taskPage - 1) * $perPage;
-            $tasks = $tasksQuery->skip($taskOffset)->take($perPage)->get();
-        }
-
-        foreach ($boards as $board) {
-            $formattedBoards[] = [
-                'type'        => 'board',
-                'id'          => $board->id,
-                'title'       => $board->title,
-                'description' => DescriptionMarkdownConverter::normalize($board->description),
-            ];
-        }
-        foreach ($tasks as $task) {
-            if (!in_array($task->board_id, $allActiveBoardsIds)) {
-                continue;
-            }
-
-            $board = $task->board;
-            $formattedTasks[] = [
-                'type'        => 'task',
-                'id'          => $task->id,
-                'title'       => $task->title,
-                'description' => DescriptionMarkdownConverter::normalize($task->description),
-                'board_id'    => $task->board_id,
-                'board'       => [
-                    'id'    => $board->id,
-                    'title' => $board->title,
-                    'url'   => Helper::getBoardUrl($board->id)
-                ],
-                'stage'       => [
-                    'id'    => $task->stage_id,
-                    'title' => $task->stage->title ?? '',
-                ],
-            ];
-        }
-
-        return $this->sendSuccess([
-            'tasks' => [
-                'data' => $formattedTasks,
-                'current_page' => $taskPage,
-                'per_page' => $perPage,
-                'total' => $totalTasks,
-                'last_page' => (int) ceil($totalTasks / $perPage)
-            ],
-            'boards' => [
-                'data' => $formattedBoards,
-                'current_page' => $boardPage,
-                'per_page' => $perPage,
-                'total' => $totalBoards,
-                'last_page' => (int) ceil($totalBoards / $perPage)
-            ]
-        ], 200);
+        return $this->sendSuccess($results, 200);
     }
 
     public function getDashboardViewSettings(Request $request)
@@ -1111,6 +1047,12 @@ class OptionsController extends Controller
                 'message' => __('This feature is only available in Fluent Boards Pro. Please upgrade.', 'fluent-boards')
             ]);
         }
+        $previousGeneralSettings = fluent_boards_get_option('general_settings', []);
+        $previousGeneralSettings = is_array($previousGeneralSettings) ? $previousGeneralSettings : \maybe_unserialize($previousGeneralSettings);
+        if (!is_array($previousGeneralSettings)) {
+            $previousGeneralSettings = [];
+        }
+
         // updatedSettings is an array, sanitize each element
         $rawSettings = $request->get('updatedSettings', []);
         $settings = [];
@@ -1137,11 +1079,32 @@ class OptionsController extends Controller
         $scheduleHandler = new ProScheduleHandler();
 
         $dailyReminderEnabled = $savedGeneralSettings['daily_reminder_enabled'] ?? false;
+        $weeklySummaryEnabled = $savedGeneralSettings['weekly_summary_enabled'] ?? false;
+        $weeklySummaryScheduleChanged = (
+            Arr::get($previousGeneralSettings, 'weekly_summary_enabled') != Arr::get($savedGeneralSettings, 'weekly_summary_enabled') ||
+            Arr::get($previousGeneralSettings, 'weekly_summary_day') != Arr::get($savedGeneralSettings, 'weekly_summary_day') ||
+            Arr::get($previousGeneralSettings, 'weekly_summary_time') != Arr::get($savedGeneralSettings, 'weekly_summary_time')
+        );
 
         if (filter_var($dailyReminderEnabled, FILTER_VALIDATE_BOOLEAN)) {
             // force schedule from this settings update
             $scheduleHandler->clearDailyTaskReminderScheduler();
             $scheduleHandler->scheduleDailyTaskReminder();
+        }
+
+        if (
+            method_exists($scheduleHandler, 'clearWeeklyTaskSummaryScheduler') &&
+            method_exists($scheduleHandler, 'resetWeeklySummaryTracking') &&
+            method_exists($scheduleHandler, 'scheduleWeeklyTaskSummary')
+        ) {
+            if ($weeklySummaryScheduleChanged) {
+                $scheduleHandler->clearWeeklyTaskSummaryScheduler();
+                $scheduleHandler->resetWeeklySummaryTracking();
+            }
+
+            if (filter_var($weeklySummaryEnabled, FILTER_VALIDATE_BOOLEAN)) {
+                $scheduleHandler->scheduleWeeklyTaskSummary();
+            }
         }
 
         return $this->sendSuccess([

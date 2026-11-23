@@ -19,19 +19,29 @@ class CommentTools
         }
 
         if (!MCPHelper::canWriteBoard($task->board_id)) {
-            return MCPHelper::error('forbidden', __('You do not have permission to comment on this task', 'fluent-boards'));
+            return MCPHelper::boardForbidden($task->board_id, true);
         }
 
         $description = isset($params['description']) ? wp_kses_post($params['description']) : '';
-        if ($description === '') {
-            return MCPHelper::error('invalid_param', __('Comment description is required', 'fluent-boards'));
+        if (trim(wp_strip_all_tags($description)) === '') {
+            return MCPHelper::invalid('description', 'description is required: the text of the comment.');
         }
 
-        $privacy = !empty($params['privacy']) && $params['privacy'] === 'public' ? 'public' : 'private';
+        $privacy = !empty($params['privacy']) ? $params['privacy'] : 'private';
+        if (!in_array($privacy, ['private', 'public'], true)) {
+            return MCPHelper::notOneOf('privacy', ['private', 'public']);
+        }
+
         $mentionedIds = MCPHelper::sanitizeIdArray($params['mentioned_ids'] ?? []);
-        $boardMemberIds = (new NotificationService())->resolveBoardMentionUserIds($task->board_id, $mentionedIds);
-        if (array_diff($mentionedIds, $boardMemberIds)) {
-            return MCPHelper::error('forbidden', __('One or more mentioned users are not members of this board', 'fluent-boards'));
+        $notificationService = new NotificationService();
+        $boardMemberIds = $notificationService->resolveBoardMentionUserIds($task->board_id, $mentionedIds);
+        $notMembers = array_values(array_diff($mentionedIds, $boardMemberIds));
+        if ($notMembers) {
+            return MCPHelper::invalid('mentioned_ids', sprintf(
+                'User %s is not a member of board %d and cannot be mentioned. Use ids from the members of get-board.',
+                implode(', ', $notMembers),
+                (int) $task->board_id
+            ), ['non_board_member_user_ids' => $notMembers]);
         }
 
         $mentionedIds = $boardMemberIds;
@@ -45,24 +55,24 @@ class CommentTools
             'status'       => 'published',
             'description'  => $commentService->processMentionAndLink($description, $mentionedIds),
             'settings'     => [
-                'mentioned_users' => $mentionedIds,
-                'source'          => 'mcp',
+                'mentioned_id' => $mentionedIds,
+                'source'       => 'mcp',
             ],
             'created_by'   => get_current_user_id(),
         ], $task->id);
 
+        if ($mentionedIds) {
+            $notificationService->mentionInComment($comment, $mentionedIds);
+        }
+
         return [
             'comment' => [
-                'id'          => (int) $comment->id,
-                'board_id'    => (int) $comment->board_id,
-                'task_id'     => (int) $comment->task_id,
-                'privacy'     => $comment->privacy,
-                'status'      => $comment->status,
-                'description' => $comment->description,
-                'created_by'  => $comment->created_by ? (int) $comment->created_by : null,
-                'created_at'  => MCPHelper::toIso8601($comment->created_at),
+                'id'         => (int) $comment->id,
+                'board_id'   => (int) $comment->board_id,
+                'task_id'    => (int) $comment->task_id,
+                'privacy'    => $comment->privacy,
+                'created_at' => MCPHelper::toIso8601($comment->created_at),
             ],
-            'message' => __('Comment has been added', 'fluent-boards'),
         ];
     }
 }

@@ -1,10 +1,16 @@
 <?php
+
 //if accessed directly exit
 if (!defined('ABSPATH')) exit;
 
 use FluentBoards\App\Http\Controllers\AiController;
+use FluentBoards\App\Http\Controllers\AutomationController;
 use FluentBoards\App\Http\Controllers\BoardController;
 use FluentBoards\App\Http\Controllers\CommentController;
+// use FluentBoards\App\Http\Controllers\SlackController;
+// use FluentBoards\App\Http\Policies\SlackPolicy;
+// use FluentBoards\App\Http\Controllers\DiscordController;
+// use FluentBoards\App\Http\Policies\DiscordPolicy;
 use FluentBoards\App\Http\Controllers\FolderController;
 use FluentBoards\App\Http\Controllers\ImportController;
 use FluentBoards\App\Http\Controllers\LabelController;
@@ -15,6 +21,8 @@ use FluentBoards\App\Http\Controllers\SharedTaskController;
 use FluentBoards\App\Http\Controllers\ReportController;
 use FluentBoards\App\Http\Controllers\StageController;
 use FluentBoards\App\Http\Controllers\TaskController;
+// use FluentBoards\App\Http\Controllers\TelegramController;
+// use FluentBoards\App\Http\Policies\TelegramPolicy;
 use FluentBoards\App\Http\Controllers\UserController;
 use FluentBoards\App\Http\Controllers\WebhookController;
 
@@ -22,6 +30,68 @@ use FluentBoards\App\Http\Controllers\WebhookController;
 /**
  * @var $router \FluentBoards\Framework\Http\Router
  */
+
+// Telegram, Slack and Discord notifications will ship in a later release.
+// if (\FluentBoards\App\Services\TelegramService::coreOwnsTelegram()) {
+    // // Telegram profile operations always act on the signed-in user.
+    // $router->prefix('profile/telegram')->withPolicy(TelegramPolicy::class)->group(function ($router) {
+        // $router->get('/', [TelegramController::class, 'profile']);
+        // $router->post('/connect', [TelegramController::class, 'connect']);
+        // $router->post('/check', [TelegramController::class, 'check']);
+        // $router->delete('/', [TelegramController::class, 'disconnect']);
+        // $router->post('/preference', [TelegramController::class, 'preference']);
+        // $router->post('/preferences', [TelegramController::class, 'preferences']);
+        // $router->post('/test', [TelegramController::class, 'test']);
+    // });
+    // $router->prefix('admin/telegram')->withPolicy('AdminPolicy')->group(function ($router) {
+        // $router->get('/', [TelegramController::class, 'settings']);
+        // $router->post('/', [TelegramController::class, 'saveSettings']);
+    // });
+    // // Personal per-board overrides of the global Telegram event preferences.
+    // $router->prefix('projects/{board_id}/telegram-preferences')->withPolicy('SingleBoardPolicy')->group(function ($router) {
+        // $router->get('/', [TelegramController::class, 'boardPreferences'])->int('board_id');
+        // $router->post('/', [TelegramController::class, 'saveBoardPreferences'])->int('board_id');
+    // });
+
+// }
+
+// // Slack profile operations always act on the signed-in user.
+// $router->prefix('profile/slack')->withPolicy(SlackPolicy::class)->group(function ($router) {
+    // $router->get('/', [SlackController::class, 'profile']);
+    // $router->post('/connect', [SlackController::class, 'connect']);
+    // $router->delete('/', [SlackController::class, 'disconnect']);
+    // $router->post('/preference', [SlackController::class, 'preference']);
+    // $router->post('/preferences', [SlackController::class, 'preferences']);
+    // $router->post('/test', [SlackController::class, 'test']);
+// });
+// $router->prefix('admin/slack')->withPolicy('AdminPolicy')->group(function ($router) {
+    // $router->get('/', [SlackController::class, 'settings']);
+    // $router->post('/', [SlackController::class, 'saveSettings']);
+// });
+// // Personal per-board overrides of the global Slack event preferences.
+// $router->prefix('projects/{board_id}/slack-preferences')->withPolicy('SingleBoardPolicy')->group(function ($router) {
+    // $router->get('/', [SlackController::class, 'boardPreferences'])->int('board_id');
+    // $router->post('/', [SlackController::class, 'saveBoardPreferences'])->int('board_id');
+// });
+
+// // Discord profile operations always act on the signed-in user.
+// $router->prefix('profile/discord')->withPolicy(DiscordPolicy::class)->group(function ($router) {
+    // $router->get('/', [DiscordController::class, 'profile']);
+    // $router->post('/connect', [DiscordController::class, 'connect']);
+    // $router->delete('/', [DiscordController::class, 'disconnect']);
+    // $router->post('/preference', [DiscordController::class, 'preference']);
+    // $router->post('/preferences', [DiscordController::class, 'preferences']);
+    // $router->post('/test', [DiscordController::class, 'test']);
+// });
+// $router->prefix('admin/discord')->withPolicy('AdminPolicy')->group(function ($router) {
+    // $router->get('/', [DiscordController::class, 'settings']);
+    // $router->post('/', [DiscordController::class, 'saveSettings']);
+// });
+// // Personal per-board overrides of the global Discord event preferences.
+// $router->prefix('projects/{board_id}/discord-preferences')->withPolicy('SingleBoardPolicy')->group(function ($router) {
+    // $router->get('/', [DiscordController::class, 'boardPreferences'])->int('board_id');
+    // $router->post('/', [DiscordController::class, 'saveBoardPreferences'])->int('board_id');
+// });
 
 $router->prefix('tasks')->withPolicy('AuthPolicy')->group(function ($router) {
     $router->get('/top-in-boards', [TaskController::class, 'getTopTasksForBoards']);
@@ -94,11 +164,14 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
     $router->post('/add-members', [BoardController::class, 'addMembersInBoard']);
 
     $router->get('/assignees', [BoardController::class, 'getAssigneesByBoard'])->int('board_id');
+    // Suggest assignee feature is disabled for now.
+    // $router->get('/assignee-suggestions',[BoardController::class, 'getAssigneeSuggestions'])->int('board_id');
     $router->get('/activities', [BoardController::class, 'getActivities'])->int('board_id');
 
     $router->put('/stage-move-all-task', [BoardController::class, 'moveAllTasks'])->int('board_id');
     // NOTE: The global "Add" drawer was removed from the v2 UI. This stage-create endpoint is shared (in-board stage creation still uses it), so it must stay.
     $router->post('/stage-create', [BoardController::class, 'createStage'])->int('board_id');
+    $router->post('/stage/{stage_id}/copy', [StageController::class, 'copyStage'])->int('board_id')->int('stage_id');
     $router->put('/stage/{stage_id}/sort-task', [StageController::class, 'sortStageTasks'])->int('board_id')->int('stage_id');
     $router->put('/stage/{stage_id}/archive-all-task', [BoardController::class, 'archiveAllTasksInStage'])->int('board_id')->int('stage_id');
     $router->put('/re-position-stages', [BoardController::class, 'repositionStages'])->int('board_id');
@@ -143,6 +216,7 @@ $router->prefix('projects/{board_id}')->withPolicy('SingleBoardPolicy')->group(f
         // NOTE: The global "Add" drawer was removed from the v2 UI. This is the primary task-create endpoint used throughout the app, so it must stay.
         $router->post('/', [TaskController::class, 'create']);
         $router->post('/create-task-from-image', [TaskController::class, 'createTaskFromImage'])->int('board_id');
+        $router->get('/shared', [TaskController::class, 'getSharedTasks'])->int('board_id');
         $router->get('/archived', [TaskController::class, 'getArchivedTasks'])->int('board_id');
         $router->get('/{task_id}', [TaskController::class, 'find'])->int('board_id')->int('task_id')->int('task_id');
         $router->put('/{task_id}', [TaskController::class, 'updateTaskProperties'])->int('board_id')->int('task_id');
@@ -205,6 +279,7 @@ $router->prefix('admin')->withPolicy('AdminPolicy')->group(function ($router) {
     $router->post('/mcp/toggle', [MCPSettingsController::class, 'toggle']);
     $router->post('/mcp/member-access', [MCPSettingsController::class, 'toggleMemberAccess']);
     $router->post('/mcp/install-adapter', [MCPSettingsController::class, 'installAdapter']);
+    $router->post('/mcp/hub-enable', [MCPSettingsController::class, 'enableHub']);
 
     $router->get('pages', [OptionsController::class, 'getPages']);
 
@@ -247,6 +322,21 @@ $router->prefix('outgoing-webhooks')->withPolicy('WebhookPolicy')->group(functio
     $router->delete('/{id}', [WebhookController::class, 'deleteOutgoingWebhook'])->int('id');
 });
 
+$router->prefix('automations')->withPolicy('AutomationPolicy')->group(function ($router) {
+    $router->get('/', [AutomationController::class, 'index']);
+    $router->post('/', [AutomationController::class, 'create']);
+    $router->get('/registry', [AutomationController::class, 'registry']);
+    $router->get('/logs', [AutomationController::class, 'activityLogs']);
+    $router->get('/analytics', [AutomationController::class, 'analytics']);
+    $router->get('/options/{option_key}', [AutomationController::class, 'options']);
+    $router->post('/bulk-actions', [AutomationController::class, 'bulkActions']);
+    $router->get('/{id}', [AutomationController::class, 'find'])->int('id');
+    $router->put('/{id}', [AutomationController::class, 'update'])->int('id');
+    $router->post('/{id}/duplicate', [AutomationController::class, 'duplicate'])->int('id');
+    $router->delete('/{id}', [AutomationController::class, 'delete'])->int('id');
+    $router->get('/{id}/logs', [AutomationController::class, 'logs'])->int('id');
+});
+
 
 $router->prefix('member/{id}')->withPolicy('UserPolicy')->group(function ($router) {
     $router->get('/', [UserController::class, 'getMemberInfo']);
@@ -273,6 +363,8 @@ $router->prefix('notifications')->withPolicy('UserPolicy')->group(function ($rou
     $router->get('/', [NotificationController::class, 'getAllNotifications']);
     $router->get('/unread', [NotificationController::class, 'getAllUnreadNotifications']);
     $router->get('/unread-count', [NotificationController::class, 'newNotificationNumber']);
+    $router->put('/read-batch', [NotificationController::class, 'readBatch']);
+    $router->put('/read-task', [NotificationController::class, 'readTaskNotifications']);
     $router->put('/read', [NotificationController::class, 'readNotification']);
 });
 
@@ -287,10 +379,6 @@ $router->prefix('shared-task')->withPolicy('SharedTaskPolicy')->group(function (
 });
 
 
-// User utility routes
-$router->withPolicy('UserPolicy')->group(function ($router) {
-    $router->get('/global-search', [OptionsController::class, 'globalSearch']);
-});
 
 
 $router->prefix('options')->withPolicy('AuthPolicy')->group(function ($router) {

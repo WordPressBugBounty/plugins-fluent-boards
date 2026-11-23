@@ -35,6 +35,225 @@ class MCPAccessService
         add_filter('rest_pre_dispatch', [self::class, 'gateRestRequest'], 10, 3);
         add_action('wp_authenticate_application_password_errors', [self::class, 'blockXmlRpcLogin'], 10, 3);
         add_action('application_password_did_authenticate', [self::class, 'captureAuthenticatedItem'], 10, 2);
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- FluentHub's hook
+        add_filter('fluent_kit/mcp_hub_product_user_can_connect', [self::class, 'vouchForHubUser'], 10, 3);
+    }
+
+    /** Fluent Boards' id on FluentHub: its MCP server id and product slug. */
+    const HUB_SLUG = 'fluent-boards';
+
+    /**
+     * Let the people who may use Fluent Boards MCP sign in through FluentHub's one URL.
+     *
+     * FluentHub admits site administrators to every plugin and has no role setting. Anyone
+     * else connects only through the plugin that admits them, so this filter is the only
+     * way a board member or a Fluent Boards admin who is not a site administrator can use
+     * the one URL. It answers for the Fluent Boards tools only, with the rule of an
+     * application password: Fluent Boards MCP is on,
+     * and the user is a Fluent Boards admin, or a board member while member access is on.
+     * Such a user reaches Fluent Boards through the hub and no other plugin.
+     *
+     * @param bool          $allowed What FluentHub or an earlier callback decided.
+     * @param string        $slug    Product slug the question is about.
+     * @param \WP_User|int $user
+     * @return bool
+     */
+    public static function vouchForHubUser($allowed, $slug, $user = null)
+    {
+        // Another product's question, or already allowed: never change the answer.
+        if ($slug !== self::HUB_SLUG || $allowed === true) {
+            return $allowed;
+        }
+
+        $userId = is_object($user) && isset($user->ID) ? (int) $user->ID : (int) $user;
+
+        // The same two conditions as canUseMcp(), asked about this user. canUseMcp() also
+        // needs someone to be signed in on the request, which FluentHub's question does
+        // not promise.
+        return $userId > 0 && self::isGloballyEnabled() && self::isApproved($userId);
+    }
+
+    /**
+     * FluentHub's one-URL connection, as the MCP screens show it.
+     *
+     * Read from the fluent_kit/mcp_hub_state filter (fluent-toolkit
+     * docs/mcp-product-connect.md), never from a FluentToolkit class. Returns null when
+     * FluentHub is absent or answers with a contract version this code does not know:
+     * the screens then look as they do without FluentHub.
+     *
+     * @param array|null $state For tests: a state in place of the filter's answer.
+     * @return array|null
+     */
+    public static function hubState($state = null)
+    {
+        if ($state === null) {
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- FluentHub's hook
+            $state = apply_filters('fluent_kit/mcp_hub_state', null, self::HUB_SLUG);
+        }
+
+        if (!is_array($state) || (int) ($state['version'] ?? 0) !== 1
+            || empty($state['hub']) || empty($state['sign_in']) || empty($state['product'])
+        ) {
+            return null;
+        }
+
+        // Printed as given: the wording and the connection name are FluentHub's.
+        $clients = [];
+        foreach ((array) ($state['clients'] ?? []) as $client) {
+            if (!is_array($client) || empty($client['key']) || empty($client['snippet'])) {
+                continue;
+            }
+
+            $clients[] = [
+                'key'     => sanitize_key($client['key']),
+                'label'   => sanitize_text_field((string) ($client['label'] ?? $client['key'])),
+                'note'    => sanitize_text_field((string) ($client['note'] ?? '')),
+                'snippet' => (string) $client['snippet'],
+            ];
+        }
+
+        $products = [];
+        foreach ((array) ($state['products'] ?? []) as $product) {
+            if (!is_array($product) || empty($product['slug'])) {
+                continue;
+            }
+
+            $products[] = [
+                'slug'        => sanitize_key($product['slug']),
+                'name'        => sanitize_text_field((string) ($product['name'] ?? $product['slug'])),
+                'served'      => !empty($product['served']),
+                'can_enable'  => !empty($product['can_enable']),
+                'tools_count' => (int) ($product['tools_count'] ?? 0),
+            ];
+        }
+
+        return [
+            'ready'            => !empty($state['ready']) && !empty($clients),
+            'endpoint_url'     => esc_url_raw((string) ($state['hub']['endpoint_url'] ?? '')),
+            'hub_reason'       => sanitize_key((string) ($state['hub']['reason'] ?? '')),
+            'sign_in_reason'   => sanitize_key((string) ($state['sign_in']['reason'] ?? '')),
+            'included'         => !empty($state['product']['included']),
+            'user_can_connect' => !empty($state['user_can_connect']),
+            'can_manage'       => !empty($state['can_manage']),
+            'manage_url'       => esc_url_raw((string) ($state['manage_url'] ?? '')),
+            'profile_url'      => esc_url_raw((string) ($state['profile_url'] ?? '')),
+            'clients'          => $clients,
+            'products'         => $products,
+        ];
+    }
+
+    /**
+     * Turn on the FluentHub MCP server ("hub"), or the MCP of another Fluent plugin on the
+     * site (its slug), through FluentHub's own call. That call checks that the user may
+     * manage the site and runs the plugin's own switch. It can only turn things on.
+     *
+     * Call it only from a POST route that checked a nonce and the admin policy.
+     *
+     * @param string     $target "hub" or a plugin slug from the hub state's products.
+     * @param array|null $result For tests: a result in place of the filter's answer.
+     * @return array status (done|forbidden|unavailable), message, and hub (the fresh state) when done.
+     */
+    public static function enableHub($target, $result = null)
+    {
+        $target = sanitize_key((string) $target);
+        if ($target === '') {
+            $target = 'hub';
+        }
+
+        if ($result === null) {
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- FluentHub's hook
+            $result = apply_filters('fluent_kit/mcp_hub_enable', null, self::HUB_SLUG, $target);
+        }
+
+        // null: FluentHub is not active, or is a release without this call.
+        if (!is_array($result)) {
+            return [
+                'status'  => 'unavailable',
+                'message' => __('FluentHub is not active on this site.', 'fluent-boards'),
+            ];
+        }
+
+        $status = (string) ($result['status'] ?? '');
+        $reason = (string) ($result['reason'] ?? '');
+
+        if ($status === 'done') {
+            return [
+                'status'  => 'done',
+                'message' => $target === 'hub'
+                    ? __('The FluentHub MCP server is on.', 'fluent-boards')
+                    : __('On. Your AI app sees it the next time it loads its tools.', 'fluent-boards'),
+                'hub'     => self::hubState(isset($result['state']) && is_array($result['state']) ? $result['state'] : null),
+            ];
+        }
+
+        if ($status === 'forbidden') {
+            $refusal = $reason === 'product_refused' ? sanitize_text_field((string) ($result['message'] ?? '')) : '';
+
+            return [
+                'status'  => 'forbidden',
+                'message' => $refusal !== '' ? $refusal : __('Only a site administrator can turn this on.', 'fluent-boards'),
+            ];
+        }
+
+        $messages = [
+            'adapter_missing'  => __('FluentHub needs a newer MCP adapter before this can be turned on.', 'fluent-boards'),
+            'adapter_outdated' => __('FluentHub needs a newer MCP adapter before this can be turned on.', 'fluent-boards'),
+            'unknown_product'  => __('FluentHub does not know this plugin.', 'fluent-boards'),
+            'not_active'       => __('This plugin is not active on the site.', 'fluent-boards'),
+            'no_handler'       => __('This plugin cannot be turned on from here. Use its own MCP settings.', 'fluent-boards'),
+        ];
+
+        return [
+            'status'  => 'unavailable',
+            'message' => $messages[$reason] ?? __('This could not be turned on. Open FluentHub to check its MCP settings.', 'fluent-boards'),
+        ];
+    }
+
+    /**
+     * The name an AI app gives this site's Fluent Boards connection in the
+     * application-password snippets: a short product code plus the site address.
+     *
+     * An app refuses a second connection with a name it already has, so one fixed name
+     * collides for the owner of two sites. An app also builds each tool's name as
+     * mcp__{name}__{tool}, which must fit in 64 characters, so the address is cut to
+     * what the longest tool name leaves.
+     *
+     * @param int|null $longestToolName For tests: the length of the longest tool name.
+     * @return string
+     */
+    public static function connectionName($longestToolName = null)
+    {
+        if ($longestToolName === null) {
+            $longestToolName = 0;
+            $names = (array) apply_filters('fluent_boards/mcp_ability_names', array_keys(\FluentBoards\App\Modules\MCP\AbilitiesRegistrar::getDefinitions()));
+            foreach ($names as $name) {
+                $longestToolName = max($longestToolName, strlen((string) $name));
+            }
+        }
+
+        $prefix = 'fbs';
+        // 64, less "mcp__", "__", the tool name, the prefix and its dash.
+        $room = 64 - 5 - 2 - (int) $longestToolName - strlen($prefix) - 1;
+
+        $host = strtolower((string) wp_parse_url(home_url(), PHP_URL_HOST));
+        $path = trim((string) wp_parse_url(home_url(), PHP_URL_PATH), '/');
+        $address = trim((string) preg_replace('/[^a-z0-9]+/', '-', preg_replace('/^www\./', '', $host) . ($path !== '' ? '-' . strtolower($path) : '')), '-');
+
+        if ($room < 1 || $address === '') {
+            return $prefix;
+        }
+
+        if (strlen($address) <= $room) {
+            return $prefix . '-' . $address;
+        }
+
+        // Cut: two sites whose addresses start alike would get one name. Keep a short hash
+        // of the whole address at the end, so example.com/site-one and example.com/site-two
+        // stay apart.
+        $hash = substr(md5($address), 0, 4);
+        $readable = $room > 6 ? rtrim(substr($address, 0, $room - 5), '-') : '';
+
+        return $readable !== '' ? $prefix . '-' . $readable . '-' . $hash : $prefix . '-' . substr($hash, 0, min(4, $room));
     }
 
     public static function isGloballyEnabled()
@@ -102,6 +321,11 @@ class MCPAccessService
             'endpoint'                => MCPInit::getEndpointUrl(),
             'username'                => $user ? $user->user_login : '',
             'connections'             => self::listConnections($userId),
+            // The name of this connection in the setup code, different on every site.
+            'connection_name'         => self::connectionName(),
+            // FluentHub's one-URL connection, or null. It describes the signed-in user, so
+            // it is sent only when a person looks at their own account.
+            'hub'                     => (int) $userId === get_current_user_id() ? self::hubState() : null,
         ];
     }
 
@@ -252,7 +476,7 @@ class MCPAccessService
         $callback = $args['permission_callback'];
         $args['permission_callback'] = function (...$params) use ($callback) {
             if (!self::canUseMcp()) {
-                return self::deniedError();
+                return self::abilityDeniedError();
             }
 
             return call_user_func_array($callback, $params);
@@ -363,6 +587,18 @@ class MCPAccessService
         $owned = get_user_option(self::CREDENTIALS_OPTION, $userId);
 
         return is_array($owned) ? array_values(array_filter($owned, 'is_string')) : [];
+    }
+
+    /**
+     * The denial an AI agent reads as a tool result: the JSON error envelope of the MCP
+     * tools, in plain English. deniedError() is the HTTP answer a person sees.
+     */
+    private static function abilityDeniedError()
+    {
+        return \FluentBoards\App\Modules\MCP\Helpers\MCPHelper::error(
+            'forbidden',
+            'Your WordPress user may not use the Fluent Boards tools on this site. They are open to Fluent Boards admins, and to board members when a site admin turns on member access in the Fluent Boards MCP settings.'
+        );
     }
 
     private static function deniedError()

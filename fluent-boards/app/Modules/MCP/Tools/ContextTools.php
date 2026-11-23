@@ -3,127 +3,89 @@
 namespace FluentBoards\App\Modules\MCP\Tools;
 
 use FluentBoards\App\Models\Board;
-use FluentBoards\App\Models\Stage;
-use FluentBoards\App\Models\Task;
 use FluentBoards\App\Modules\MCP\Helpers\MCPHelper;
+use FluentBoards\App\Modules\MCP\MCPInit;
+use FluentBoards\App\Services\PermissionManager;
 
 /**
- * Discovery context for MCP agents.
+ * Discovery context for MCP agents: the first call of a session.
  */
 class ContextTools
 {
-    const CACHE_TTL = 60;
+    const BOARDS_LIMIT = 30;
 
+    /**
+     * Who the agent acts as, the site clock, the boards it can use and the rules.
+     *
+     * Not cached: the clock must be current, and a board the agent just created must be in
+     * the list. The cost is two small queries.
+     */
     public static function getContext($params = [])
     {
         $userId = get_current_user_id();
-        $cacheKey = 'fluent_boards_mcp_context_' . $userId;
+        $user = $userId ? get_user_by('ID', $userId) : null;
+        $boardIds = PermissionManager::getBoardIdsForUser($userId);
 
-        $cached = get_transient($cacheKey);
-        if (is_array($cached)) {
-            return $cached;
+        $boards = [];
+        $boardsTotal = 0;
+        if ($boardIds) {
+            $query = Board::whereIn('id', $boardIds)->whereNull('archived_at');
+            $boardsTotal = (int) (clone $query)->count();
+
+            foreach ($query->orderBy('updated_at', 'DESC')->limit(self::BOARDS_LIMIT)->get(['id', 'title', 'type']) as $board) {
+                $boards[] = [
+                    'id'    => (int) $board->id,
+                    'title' => $board->title,
+                    'type'  => $board->type,
+                ];
+            }
         }
 
-        $context = self::buildContext();
-        set_transient($cacheKey, $context, self::CACHE_TTL);
+        if ($boardsTotal > count($boards)) {
+            MCPHelper::addWarning(sprintf(
+                'boards holds the %d most recently changed of %d boards. list-boards returns the rest and has a title search.',
+                count($boards),
+                $boardsTotal
+            ));
+        }
 
-        return $context;
+        $context = [
+            'you'          => [
+                'user_id'           => (int) $userId,
+                'name'              => $user ? $user->display_name : null,
+                'email'             => $user ? $user->user_email : null,
+                'is_admin'          => PermissionManager::isAdmin($userId),
+                'can_create_boards' => PermissionManager::userHasBoardCreationPermission($userId),
+            ],
+            'site'         => [
+                'url'          => site_url(),
+                'timezone'     => MCPHelper::siteTimezoneName(),
+                'current_time' => current_datetime()->format('c'),
+                'week_starts'  => 'Sunday',
+                'version'      => defined('FLUENT_BOARDS_PLUGIN_VERSION') ? FLUENT_BOARDS_PLUGIN_VERSION : null,
+            ],
+            'boards'       => $boards,
+            'boards_total' => $boardsTotal,
+            'priorities'   => TaskTools::getAllowedTaskPriorities(),
+            'rules'        => MCPInit::rules(),
+        ];
+
+        /**
+         * Filter the context the first MCP call returns. Fluent Boards Pro adds its part here.
+         *
+         * @since 2.3.1
+         *
+         * @param array $context
+         */
+        return (array) apply_filters('fluent_boards/mcp_context', $context);
     }
 
+    /**
+     * Kept for callers of earlier releases. The context is no longer cached.
+     *
+     * @deprecated 2.3.1
+     */
     public static function invalidateCache()
     {
-        global $wpdb;
-
-        $like = $wpdb->esc_like('_transient_fluent_boards_mcp_context_') . '%';
-        $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $like));
-
-        $like = $wpdb->esc_like('_transient_timeout_fluent_boards_mcp_context_') . '%';
-        $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $like));
-    }
-
-    private static function buildContext()
-    {
-        $boardIds = \FluentBoards\App\Services\PermissionManager::getBoardIdsForUser();
-
-        return [
-            'you'             => MCPHelper::currentUser(),
-            'site'            => [
-                'site_url'              => site_url(),
-                'fluent_boards_version' => defined('FLUENT_BOARDS_PLUGIN_VERSION') ? FLUENT_BOARDS_PLUGIN_VERSION : null,
-                'timezone'              => wp_timezone_string(),
-                'current_time'          => current_time('mysql'),
-                'mcp_endpoint'          => \FluentBoards\App\Modules\MCP\MCPInit::getEndpointUrl(),
-            ],
-            'stats'           => [
-                'accessible_boards' => count($boardIds),
-                'active_boards'     => $boardIds ? (int) Board::whereIn('id', $boardIds)->whereNull('archived_at')->count() : 0,
-                'active_stages'     => $boardIds ? (int) Stage::whereIn('board_id', $boardIds)->whereNull('archived_at')->count() : 0,
-                'active_tasks'      => $boardIds ? (int) Task::whereIn('board_id', $boardIds)->whereNull('archived_at')->whereNull('parent_id')->count() : 0,
-            ],
-            'enums'           => [
-                'board_types'      => ['to-do', 'roadmap'],
-                'task_statuses'    => ['open', 'closed', 'archived'],
-                'stage_statuses'   => ['open', 'closed'],
-                'priorities'       => ['', 'urgent', 'high', 'medium', 'low'],
-                'comment_privacy'  => ['private', 'public'],
-                'sort_directions'  => ['ASC', 'DESC', 'asc', 'desc'],
-            ],
-            'safety_levels'   => self::buildSafetyLevels(),
-            'rate_hints'      => [
-                'fluent-boards/list-boards' => ['max_per_page' => 100],
-                'fluent-boards/list-tasks'  => ['max_per_page' => 100],
-                'fluent-boards/get-board'   => ['include_tasks_limited_to' => 100],
-            ],
-            'mcp_capabilities'=> [
-                'version' => '1.0.0',
-                'supports' => [
-                    'dedicated_mcp_server',
-                    'board_access_scoping',
-                    'board_create',
-                    'viewer_only_write_block',
-                    'task_create_update_move_archive',
-                    'task_comments',
-                    'board_label_management',
-                    'task_label_assignment',
-                    'stage_management',
-                    'task_assignment',
-                    'cross_board_task_queries',
-                    'compact_context',
-                ],
-            ],
-            'guidelines'      => [
-                'Call get-fluentboards-context once per session before choosing write tools.',
-                'Use list-boards before board-scoped tools unless the user already gave a board_id.',
-                'Write tools follow Fluent Boards permissions: viewer-only board users can read but cannot mutate.',
-                'Use get-task before risky edits when the requested task identity is ambiguous.',
-            ],
-        ];
-    }
-
-    private static function buildSafetyLevels()
-    {
-        return [
-            'fluent-boards/get-fluentboards-context' => 'readonly',
-            'fluent-boards/list-boards'        => 'readonly',
-            'fluent-boards/get-board'          => 'readonly',
-            'fluent-boards/create-board'       => 'creates_or_mutates',
-            'fluent-boards/list-tasks'         => 'readonly',
-            'fluent-boards/get-task'           => 'readonly',
-            'fluent-boards/create-task'        => 'creates_or_mutates',
-            'fluent-boards/update-task'        => 'creates_or_mutates',
-            'fluent-boards/move-task'          => 'creates_or_mutates',
-            'fluent-boards/archive-task'       => 'creates_or_mutates',
-            'fluent-boards/add-comment'        => 'creates_or_mutates',
-            'fluent-boards/list-labels'        => 'readonly',
-            'fluent-boards/save-label'         => 'creates_or_mutates',
-            'fluent-boards/delete-label'       => 'deletes',
-            'fluent-boards/add-task-label'     => 'creates_or_mutates',
-            'fluent-boards/remove-task-label'  => 'creates_or_mutates',
-            'fluent-boards/list-my-tasks'      => 'readonly',
-            'fluent-boards/search-tasks'       => 'readonly',
-            'fluent-boards/save-stage'         => 'creates_or_mutates',
-            'fluent-boards/archive-stage'      => 'creates_or_mutates',
-            'fluent-boards/assign-task'        => 'creates_or_mutates',
-        ];
     }
 }

@@ -157,9 +157,11 @@ class UserController extends Controller
 
         $user->is_wp_admin = user_can($user_id, 'manage_options') ? 'yes' : 'no';
 
-        if (defined('FLUENTCRM')) {
-            $subscriber = Subscriber::where('user_id', $user_id)->first();
-            $user->fluentcrm_subscriber = $subscriber ?? null;
+        // Expose only the contact id (used for the CRM profile link), and only to
+        // users who may read FluentCRM contacts. Never the raw Subscriber row.
+        if (defined('FLUENTCRM') && Helper::canViewCrmContacts()) {
+            $subscriber = Subscriber::where('user_id', $user_id)->select(['id'])->first();
+            $user->fluentcrm_subscriber = $subscriber ? ['id' => (int) $subscriber->id] : null;
         }
 
         return [

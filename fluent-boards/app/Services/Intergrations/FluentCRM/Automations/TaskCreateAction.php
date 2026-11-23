@@ -260,7 +260,7 @@ class TaskCreateAction extends BaseAction
             $title       = apply_filters('fluent_crm/parse_campaign_email_text', $title, $subscriber);
 
             (new Task())->createTask([
-                'title'          => $title,
+                'title'          => sanitize_text_field($title),
                 'board_id'       => $board->id,
                 'crm_contact_id' => $subscriber->id,
                 'type'           => 'task',

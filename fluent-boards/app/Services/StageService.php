@@ -246,6 +246,131 @@ class StageService
         return $stage;
     }
 
+    /**
+     * Copy a stage inside its own board, optionally with its tasks and their details.
+     *
+     * Tasks are copied one by one through TaskService::cloneTask(), which owns its own
+     * transaction, so a task that fails is skipped and counted instead of aborting the copy.
+     *
+     * @param int   $boardId
+     * @param int   $stageId
+     * @param array $data ['title' => string, 'with_tasks' => bool]
+     * @return array ['stage' => Stage, 'copied_tasks' => int, 'failed_tasks' => int]
+     * @throws \Exception
+     */
+    public function copyStage($boardId, $stageId, $data = [])
+    {
+        $boardId = absint($boardId);
+
+        $sourceStage = Stage::where('id', absint($stageId))
+            ->where('board_id', $boardId)
+            ->whereNull('archived_at')
+            ->first();
+
+        if (!$sourceStage) {
+            throw new \Exception(esc_html__('Stage not found', 'fluent-boards'));
+        }
+
+        $withTasks = !empty($data['with_tasks']);
+        $taskIds = [];
+
+        if ($withTasks) {
+            // Bottom-up: a task cloned into another stage is inserted at the top,
+            // so cloning the last task first keeps the original order.
+            $taskIds = Task::where('board_id', $boardId)
+                ->where('stage_id', $sourceStage->id)
+                ->whereNull('parent_id')
+                ->whereNull('archived_at')
+                ->orderBy('position', 'desc')
+                ->pluck('id')
+                ->toArray();
+
+            $maxTasks = (int) apply_filters('fluent_boards/copy_stage_max_tasks', 200, $sourceStage);
+
+            if ($maxTasks > 0 && count($taskIds) > $maxTasks) {
+                throw new \Exception(esc_html(sprintf(
+                    /* translators: %d is the maximum number of tasks that can be copied with a stage */
+                    __('This stage has too many tasks to copy at once. Up to %d tasks can be copied with a stage.', 'fluent-boards'),
+                    $maxTasks
+                )));
+            }
+        }
+
+        $title = trim((string) Arr::get($data, 'title', ''));
+        if ($title === '') {
+            /* translators: %s is the title of the stage being copied */
+            $title = sprintf(__('%s - Copy', 'fluent-boards'), $sourceStage->title);
+        }
+
+        // 1-based index right after the source stage among the board's active stages.
+        $positionIndex = Stage::where('board_id', $boardId)
+            ->whereNull('archived_at')
+            ->where('position', '<=', $sourceStage->position)
+            ->count() + 1;
+
+        $newStage = $this->createStage([
+            'title'    => $title,
+            'position' => $positionIndex,
+        ], $boardId);
+
+        $settings = $sourceStage->settings ?: [];
+        // A copy must not become a reusable stage template on its own.
+        unset($settings['is_template']);
+
+        $newStage->settings = $settings;
+        $newStage->color = $sourceStage->color;
+        $newStage->bg_color = $sourceStage->bg_color;
+        $newStage->save();
+
+        do_action('fluent_boards/board_stage_added', Board::find($boardId), $newStage);
+
+        $copied = 0;
+        $failed = 0;
+
+        if ($taskIds) {
+            if (function_exists('set_time_limit')) {
+                @set_time_limit(0); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Squiz.PHP.DiscouragedFunctions.Discouraged
+            }
+
+            $taskService = new TaskService();
+
+            foreach ($taskIds as $taskId) {
+                $task = Task::where('id', $taskId)->where('board_id', $boardId)->first();
+                if (!$task) {
+                    $failed++;
+                    continue;
+                }
+
+                try {
+                    $taskService->cloneTask((int) $task->id, [
+                        'title'               => $task->title,
+                        'stage_id'            => $newStage->id,
+                        'assignee'            => true,
+                        'label'               => true,
+                        'attachment'          => true,
+                        'subtask'             => true,
+                        'comment'             => false,
+                        // The original assignees are copied, the stage defaults must not be added on top.
+                        'skip_stage_defaults' => true,
+                    ], $boardId);
+                    $copied++;
+                } catch (\Exception $e) {
+                    $failed++;
+                }
+            }
+        }
+
+        $result = [
+            'stage'        => $newStage,
+            'copied_tasks' => $copied,
+            'failed_tasks' => $failed,
+        ];
+
+        do_action('fluent_boards/stage_copied', $newStage, $sourceStage, $result);
+
+        return $result;
+    }
+
     public function getLastPositionOfStagesOfBoard($boardId)
     {
         // return last position of stages of board
@@ -567,7 +692,12 @@ class StageService
                         $recipients[] = $watcher->user_email;
                     }
                 }
-                $taskService->sendMailAfterTaskModify('stage_change', $recipients, $task->id);
+                if ($recipients) {
+                    TaskEmailDigest::enqueue('stage_change', $task->id, $recipients, $task->board_id, [
+                        'from' => $sourceStage->title,
+                        'to'   => $targetStage->title,
+                    ]);
+                }
             }
         }
 

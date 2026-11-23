@@ -115,21 +115,39 @@ class Mailer
     public function sendNotification(array $context)
     {
         $context['recipient'] = $this->to;
+        self::notifyReady($context);
+        return $this->sendGroupedNotifications([$context]);
+    }
+
+    /** Other channels receive the selected event independently of email batching and retries. */
+    public static function notifyReady(array $context)
+    {
+        try {
+            do_action('fluent_boards/notification_ready', $context);
+        } catch (Throwable $e) {
+            error_log('FluentBoards notification observer failed: fluent_boards/notification_ready');
+        }
+    }
+
+    /** Send one email and report its transport result for each included event. */
+    public function sendGroupedNotifications(array $contexts)
+    {
+        $error = null;
         try {
             $sent = $this->send();
         } catch (Throwable $e) {
-            self::reportFailure($context, $e);
-            return false;
+            $error = $e;
+            $sent = false;
         }
-
-        if (!$sent) {
-            self::reportFailure($context);
-            return false;
+        foreach ($contexts as $context) {
+            $context['recipient'] = $this->to;
+            if ($sent) {
+                self::dispatchResult(true, $context);
+            } else {
+                self::reportFailure($context, $error);
+            }
         }
-
-        // Accepted by wp_mail, not proof of delivery to the recipient's inbox.
-        self::dispatchResult(true, $context);
-        return true;
+        return (bool) $sent;
     }
 
     /** Log only type/ID; email_failed receives context and a WP_Error for diagnostics. */

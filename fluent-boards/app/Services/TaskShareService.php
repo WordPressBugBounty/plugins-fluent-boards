@@ -21,6 +21,10 @@ class TaskShareService
 
     const SETTINGS_META = 'share_settings';
 
+    const AUTHOR_META = 'share_author_name';
+
+    const AUTHOR_ID_META = 'share_author_id';
+
     const SECRET_LENGTH = 40;
 
     /** What a share link shows by default: the task card (without assignees) plus its description. */
@@ -34,6 +38,29 @@ class TaskShareService
         'task_attachments' => false,
         'task_comments'    => false,
     ];
+
+    /** List publicly accessible tasks without returning bearer credentials or loading task metadata. */
+    public function getSharedTasks($boardId, $page)
+    {
+        $boardId = absint($boardId);
+        $archivedStages = Stage::where('board_id', $boardId)->whereNotNull('archived_at')->select('id');
+        $taskMeta = TaskMeta::whereColumn('task_id', (new Task())->getTable() . '.id');
+        $tokens = (clone $taskMeta)->where('key', self::TOKEN_META)->where('value', '!=', '');
+
+        return Task::where('board_id', $boardId)
+            ->whereIn('board_id', Board::whereNull('archived_at')->select('id'))
+            ->whereNull('archived_at')
+            ->where(function ($query) use ($archivedStages) {
+                $query->whereNull('stage_id')->orWhereNotIn('stage_id', $archivedStages);
+            })
+            // Probe the task_id index for each board task. The count needs only token existence.
+            ->where((clone $tokens)->selectRaw('1')->limit(1), '=', 1)
+            ->orderBy('title')->orderBy('id')
+            ->toBase()->select('id', 'board_id', 'title')
+            ->selectSub($tokens->selectRaw('MIN(created_at)'), 'shared_at')
+            ->selectSub($taskMeta->where('key', self::AUTHOR_META)->selectRaw('MAX(value)'), 'shared_by')
+            ->paginate(25, ['*'], 'page', max(1, intval($page)));
+    }
 
     /**
      * Current share state for the admin UI: enabled flag, URL and settings.
@@ -59,6 +86,11 @@ class TaskShareService
         if (!$task->getMeta(self::TOKEN_META)) {
             $secret = wp_generate_password(self::SECRET_LENGTH, false, false);
             $task->updateMeta(self::TOKEN_META, $secret);
+            $user = wp_get_current_user();
+            if ($user->exists()) {
+                $task->updateMeta(self::AUTHOR_ID_META, $user->ID);
+                $task->updateMeta(self::AUTHOR_META, $user->display_name);
+            }
         }
 
         $settings = $this->normalizeSettings($input);
@@ -75,7 +107,7 @@ class TaskShareService
     public function revokeShare(Task $task)
     {
         TaskMeta::where('task_id', $task->id)
-            ->whereIn('key', [self::TOKEN_META, self::SETTINGS_META])
+            ->whereIn('key', [self::TOKEN_META, self::SETTINGS_META, self::AUTHOR_META, self::AUTHOR_ID_META])
             ->delete();
 
         do_action('fluent_boards/task_share_link_revoked', $task);
@@ -89,6 +121,11 @@ class TaskShareService
      */
     public function findSharedTask($token)
     {
+        // Site-wide switch (General Settings): while off, stored links stay but stop resolving.
+        if (!fluent_boards_is_sharing_allowed('task')) {
+            return null;
+        }
+
         $token = is_string($token) ? $token : '';
         if (!preg_match('/^([A-Za-z0-9_-]{1,16})\.([A-Za-z0-9]{' . self::SECRET_LENGTH . '})$/', $token, $matches)) {
             return null;

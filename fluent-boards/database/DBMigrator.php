@@ -2,6 +2,7 @@
 
 namespace FluentBoards\Database;
 
+use FluentBoards\App\Hooks\Handlers\AutomationHandler;
 use FluentBoards\Database\Migrations\AttachmentMigrator;
 use FluentBoards\Database\Migrations\BoardMigrator;
 use FluentBoards\Database\Migrations\BoardTermMigrator;
@@ -54,6 +55,8 @@ class DBMigrator
         CommentsMigrator::migrate($isForced);
         AttachmentMigrator::migrate($isForced);
         TeamMigrator::migrate($isForced);
+        // Also records the automation schema version, which gates the automation trigger hooks.
+        AutomationHandler::installSchema();
 	}
 
 	public static function handle_new_site($new_site)

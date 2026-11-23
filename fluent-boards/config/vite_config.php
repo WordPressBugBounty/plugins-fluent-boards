@@ -1,4 +1,24 @@
 <?php return [
+    '_UpgradeUrl.js' => [
+        'file' => 'UpgradeUrl.js',
+        'name' => 'UpgradeUrl',
+        'imports' => [
+            '_vendor.js',
+            '_isHtml.js',
+            '_vendor-element-plus.js',
+            '_descriptionToPlainText.js',
+            '_renderDescription.js'
+        ],
+        'dynamicImports' => [
+            'node_modules/.pnpm/mermaid@11.17.2/node_modules/mermaid/dist/mermaid.core.mjs',
+            'resources/admin/Components/Report/Reports.vue',
+            'resources/admin/Components/Report/Overview/Overview.vue',
+            'resources/admin/Components/Report/Tasks/Tasks.vue',
+            'resources/admin/Components/Report/Timesheet/Timesheet.vue',
+            'resources/admin/Components/Report/Activity/Activity.vue',
+            'resources/admin/Components/Report/Roadmap/Roadmap.vue'
+        ]
+    ],
     '__AssigneeProgressList.js' => [
         'file' => '_AssigneeProgressList.js',
         'name' => '_AssigneeProgressList',
@@ -65,7 +85,7 @@
             '_vendor-echarts.js',
             '_isHtml.js',
             '_vendor.js',
-            'resources/admin/app.js'
+            '_UpgradeUrl.js'
         ]
     ],
     '_descriptionToPlainText.js' => [
@@ -138,7 +158,7 @@
         'imports' => [
             '_reportHelpers.js',
             '__StatCard.js',
-            'resources/admin/app.js',
+            '_UpgradeUrl.js',
             '_isHtml.js',
             '_vendor.js',
             '__AssigneeProgressList.js',
@@ -164,7 +184,7 @@
             '_descriptionToPlainText.js',
             '_chartPalette.js',
             '_vendor-echarts.js',
-            'resources/admin/app.js',
+            '_UpgradeUrl.js',
             '_renderDescription.js',
             '__ChartTypeToggle.js'
         ]
@@ -178,7 +198,7 @@
             '_vendor-element-plus.js',
             '_vendor.js',
             '_descriptionToPlainText.js',
-            'resources/admin/app.js',
+            '_UpgradeUrl.js',
             '_isHtml.js',
             '_renderDescription.js'
         ]
@@ -198,7 +218,7 @@
             '_vendor.js',
             '_vendor-element-plus.js',
             '_descriptionToPlainText.js',
-            'resources/admin/app.js',
+            '_UpgradeUrl.js',
             '__ChartTypeToggle.js',
             '_vendor-echarts.js',
             '_renderDescription.js'
@@ -220,7 +240,7 @@
             '_isHtml.js',
             '_chartPalette.js',
             '_vendor-echarts.js',
-            'resources/admin/app.js',
+            '_UpgradeUrl.js',
             '_renderDescription.js'
         ]
     ],
@@ -232,7 +252,7 @@
         'imports' => [
             '_vendor-element-plus.js',
             '_vendor.js',
-            'resources/admin/app.js',
+            '_UpgradeUrl.js',
             '_descriptionToPlainText.js',
             '_renderDescription.js',
             '_isHtml.js',
@@ -249,19 +269,11 @@
         'isEntry' => true,
         'imports' => [
             '_vendor.js',
-            '_renderDescription.js',
+            '_UpgradeUrl.js',
             '_vendor-element-plus.js',
+            '_descriptionToPlainText.js',
             '_isHtml.js',
-            '_descriptionToPlainText.js'
-        ],
-        'dynamicImports' => [
-            'node_modules/.pnpm/mermaid@11.17.2/node_modules/mermaid/dist/mermaid.core.mjs',
-            'resources/admin/Components/Report/Reports.vue',
-            'resources/admin/Components/Report/Overview/Overview.vue',
-            'resources/admin/Components/Report/Tasks/Tasks.vue',
-            'resources/admin/Components/Report/Timesheet/Timesheet.vue',
-            'resources/admin/Components/Report/Activity/Activity.vue',
-            'resources/admin/Components/Report/Roadmap/Roadmap.vue'
+            '_renderDescription.js'
         ]
     ],
     'resources/admin/crm-contact-app3/app.js' => [
@@ -294,6 +306,20 @@
             '_vendor.js',
             '_vendor-element-plus.js',
             '_isHtml.js',
+            '_renderDescription.js'
+        ]
+    ],
+    'resources/admin/single_board.js' => [
+        'file' => 'admin/single_board.js',
+        'name' => 'single_board',
+        'src' => 'resources/admin/single_board.js',
+        'isEntry' => true,
+        'imports' => [
+            '_vendor.js',
+            '_UpgradeUrl.js',
+            '_isHtml.js',
+            '_descriptionToPlainText.js',
+            '_vendor-element-plus.js',
             '_renderDescription.js'
         ]
     ],
